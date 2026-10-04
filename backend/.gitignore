@@ -1,0 +1,41 @@
+# Environment Variables - NEVER commit these!
+.env
+.env.local
+.env.production
+.env.*.local
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+ENV/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Database files - don't commit local DB
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploads and processed files
+backend/uploads/
+backend/processed/
+backend/exports/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
