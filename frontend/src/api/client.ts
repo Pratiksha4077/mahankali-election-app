@@ -140,9 +140,12 @@ export const authAPI = {
     const res = await apiClient.get("/auth/me");
     return res.data?.data || res.data;
   },
-  updateSelfPermissions: async (permissions_granted: boolean) => {
+  updateSelfPermissions: async (permissions_granted: boolean, permissions?: Record<string, boolean>) => {
     try {
-      const res = await apiClient.post("/admin/users/self-permissions", { permissions_granted });
+      const res = await apiClient.post("/admin/users/self-permissions", {
+        permissions_granted,
+        permissions: permissions || undefined
+      });
       return res.data;
     } catch (e) {
       return { success: false };

@@ -34,7 +34,7 @@ class MongoUserService:
         limit: int = 50
     ) -> Dict[str, Any]:
         db = get_mongo_db()
-        filter_q: Dict[str, Any] = {}
+        filter_q: Dict[str, Any] = {"isDeleted": {"$ne": True}}
 
         if status and status != "ALL":
             filter_q["accountStatus"] = status
@@ -168,26 +168,45 @@ class MongoUserService:
         return format_user_doc(res) if res else None
 
     @staticmethod
-    async def set_user_permissions(user_id: str, permissions_granted: bool) -> Optional[Dict[str, Any]]:
+    async def set_user_permissions(
+        user_id: str,
+        permissions_granted: bool,
+        permissions_detail: Optional[Dict[str, Any]] = None,
+        permissions: Optional[Dict[str, Any]] = None
+    ) -> Optional[Dict[str, Any]]:
         db = get_mongo_db()
         query = {"_id": ObjectId(user_id)} if ObjectId.is_valid(user_id) else {"_id": user_id}
+        
+        detail = permissions if permissions is not None else permissions_detail
+        update_doc: Dict[str, Any] = {
+            "permissions_granted": permissions_granted,
+            "permissionsUpdatedAt": datetime.utcnow(),
+            "updatedAt": datetime.utcnow()
+        }
+        if detail is not None:
+            update_doc["permissions"] = detail
+            if any(detail.values()):
+                update_doc["permissions_granted"] = True
+
         res = await db.users.find_one_and_update(
             query,
-            {"$set": {
-                "permissions_granted": permissions_granted,
-                "permissionsUpdatedAt": datetime.utcnow(),
-                "updatedAt": datetime.utcnow()
-            }},
+            {"$set": update_doc},
             return_document=True
         )
         return format_user_doc(res) if res else None
 
     @staticmethod
     async def delete_user(user_id: str) -> bool:
+        """Soft delete user record so data is never permanently lost."""
         db = get_mongo_db()
         query = {"_id": ObjectId(user_id)} if ObjectId.is_valid(user_id) else {"_id": user_id}
-        res = await db.users.delete_one(query)
-        return res.deleted_count > 0
+        res = await db.users.update_one(query, {"$set": {
+            "isDeleted": True,
+            "accountStatus": "DELETED",
+            "is_active": False,
+            "deletedAt": datetime.utcnow()
+        }})
+        return res.modified_count > 0
 
     @staticmethod
     async def log_activity(
@@ -250,6 +269,7 @@ class MongoUserService:
                 possible_usernames.append(str(user_doc["mobileNumber"]))
 
         match_q = {
+            "isDeleted": {"$ne": True},
             "$or": [
                 {"userId": {"$in": possible_ids}},
                 {"user_id": {"$in": possible_ids}},
@@ -290,24 +310,33 @@ class MongoUserService:
 
     @staticmethod
     async def delete_activity(activity_id: str) -> bool:
+        """Soft delete a single activity record (data is NOT permanently deleted)."""
         db = get_mongo_db()
         q = {"_id": ObjectId(activity_id)} if ObjectId.is_valid(activity_id) else {"_id": activity_id}
-        res = await db.app_activities.delete_one(q)
-        return res.deleted_count > 0
+        res = await db.app_activities.update_one(q, {"$set": {
+            "isDeleted": True,
+            "deletedAt": datetime.utcnow()
+        }})
+        return res.modified_count > 0
 
     @staticmethod
     async def delete_activities(activity_ids: List[str]) -> int:
+        """Soft delete multiple activity records (data is NOT permanently deleted)."""
         db = get_mongo_db()
         id_objs = []
         for aid in activity_ids:
             if ObjectId.is_valid(aid):
                 id_objs.append(ObjectId(aid))
             id_objs.append(aid)
-        res = await db.app_activities.delete_many({"_id": {"$in": id_objs}})
-        return res.deleted_count
+        res = await db.app_activities.update_many(
+            {"_id": {"$in": id_objs}},
+            {"$set": {"isDeleted": True, "deletedAt": datetime.utcnow()}}
+        )
+        return res.modified_count
 
     @staticmethod
     async def clear_user_activities(user_id: str, action_type: Optional[str] = None) -> int:
+        """Soft delete all activities in a section (data is NOT permanently deleted)."""
         db = get_mongo_db()
         user_doc = None
         if ObjectId.is_valid(user_id):
@@ -329,6 +358,7 @@ class MongoUserService:
                 possible_usernames.append(str(user_doc["username"]))
 
         match_q: Dict[str, Any] = {
+            "isDeleted": {"$ne": True},
             "$or": [
                 {"userId": {"$in": possible_ids}},
                 {"user_id": {"$in": possible_ids}},
@@ -348,5 +378,8 @@ class MongoUserService:
             elif at == "LOCATIONS":
                 match_q["action"] = {"$regex": "LOCATION|VILLAGE|CHECKIN|BOOTH", "$options": "i"}
 
-        res = await db.app_activities.delete_many(match_q)
-        return res.deleted_count
+        res = await db.app_activities.update_many(
+            match_q,
+            {"$set": {"isDeleted": True, "deletedAt": datetime.utcnow()}}
+        )
+        return res.modified_count

@@ -10,9 +10,11 @@ import { adminAPI } from "../../api/client";
 import { User } from "../../models/types";
 import { theme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
+import { useTheme } from "../../context/ThemeContext";
 
 export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { t } = useLanguage();
+  const { theme } = useTheme();
 
   const [users, setUsers] = useState<User[]>([]);
   const [activeTab, setActiveTab] = useState<"all" | "disabled">("all");
@@ -143,16 +145,16 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
   const disabledCount = userList.filter(u => !u.is_active).length;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
       <Header
         title="User Management"
         showBack
         onBack={() => navigation.goBack()}
       />
 
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         {/* Header Tabs: All (31) vs Disabled (0) (Matches Screenshot Page 1) */}
-        <View style={styles.tabsRow}>
+        <View style={[styles.tabsRow, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
           <TouchableOpacity
             style={[styles.tabBtn, activeTab === "all" && styles.activeTabBtn]}
             onPress={() => setActiveTab("all")}
@@ -177,9 +179,9 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
           data={userList}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <View style={styles.userCard}>
+            <View style={[styles.userCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
               <View style={styles.cardTopRow}>
-                <Text style={styles.userName}>{item.username}</Text>
+                <Text style={[styles.userName, { color: theme.colors.textPrimary }]}>{item.username}</Text>
                 <View style={styles.rolePill}>
                   <Text style={styles.rolePillText}>{item.role}</Text>
                 </View>
@@ -193,20 +195,61 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
               <View style={styles.cardDetailsRow}>
                 <View style={styles.detailItem}>
                   <Ionicons name="call-outline" size={14} color={theme.colors.textMuted} style={{ marginRight: 4 }} />
-                  <Text style={styles.detailText}>{item.mobile || item.mobileNumber || "-"}</Text>
+                  <Text style={[styles.detailText, { color: theme.colors.textSecondary }]}>{item.mobile || item.mobileNumber || "-"}</Text>
                 </View>
-                <View
-                  style={[styles.permBadge, { backgroundColor: item.permissions_granted === true ? "#064E3B" : "#7F1D1D" }]}
-                >
-                  <Ionicons
-                    name={item.permissions_granted === true ? "phone-portrait" : "alert-circle"}
-                    size={11}
-                    color={item.permissions_granted === true ? "#34D399" : "#F87171"}
-                    style={{ marginRight: 3 }}
-                  />
-                  <Text style={[styles.permBadgeText, { color: item.permissions_granted === true ? "#34D399" : "#F87171" }]}>
-                    {item.permissions_granted === true ? "Device Perms: OK" : "Device Perms: No"}
-                  </Text>
+
+                {/* Granular Device Permission Badges */}
+                <View style={{ flexDirection: "row", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                  <View
+                    style={[
+                      styles.permBadge,
+                      { backgroundColor: (item.permissions?.location ?? item.permissions_granted) ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
+                    ]}
+                  >
+                    <Ionicons
+                      name="navigate"
+                      size={10}
+                      color={(item.permissions?.location ?? item.permissions_granted) ? "#10B981" : "#EF4444"}
+                      style={{ marginRight: 2 }}
+                    />
+                    <Text style={[styles.permBadgeText, { color: (item.permissions?.location ?? item.permissions_granted) ? "#34D399" : "#F87171" }]}>
+                      स्थान
+                    </Text>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.permBadge,
+                      { backgroundColor: item.permissions?.phoneCall ? "rgba(16, 185, 129, 0.15)" : "rgba(148, 163, 184, 0.15)" }
+                    ]}
+                  >
+                    <Ionicons
+                      name="call"
+                      size={10}
+                      color={item.permissions?.phoneCall ? "#10B981" : "#94A3B8"}
+                      style={{ marginRight: 2 }}
+                    />
+                    <Text style={[styles.permBadgeText, { color: item.permissions?.phoneCall ? "#34D399" : "#94A3B8" }]}>
+                      कॉल
+                    </Text>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.permBadge,
+                      { backgroundColor: item.permissions?.sms ? "rgba(16, 185, 129, 0.15)" : "rgba(148, 163, 184, 0.15)" }
+                    ]}
+                  >
+                    <Ionicons
+                      name="chatbubbles"
+                      size={10}
+                      color={item.permissions?.sms ? "#10B981" : "#94A3B8"}
+                      style={{ marginRight: 2 }}
+                    />
+                    <Text style={[styles.permBadgeText, { color: item.permissions?.sms ? "#34D399" : "#94A3B8" }]}>
+                      SMS
+                    </Text>
+                  </View>
                 </View>
               </View>
 

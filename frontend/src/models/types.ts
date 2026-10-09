@@ -12,6 +12,11 @@ export interface User {
   accountStatus?: string;
   assignedVillages?: string[];
   permissions_granted?: boolean;
+  permissions?: {
+    location?: boolean;
+    phoneCall?: boolean;
+    sms?: boolean;
+  };
   created_at?: string;
   last_activity?: string;
 }

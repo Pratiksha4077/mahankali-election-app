@@ -6,12 +6,14 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
 import { adminAPI } from "../../api/client";
-import { theme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
+import { useTheme } from "../../context/ThemeContext";
+import { theme } from "../../theme/theme";
 
 export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
   const user = route.params?.user;
   const { t } = useLanguage();
+  const { theme } = useTheme();
 
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
@@ -176,8 +178,8 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
   const handleDeleteSingle = (activityId: string, itemTitle: string) => {
     Alert.alert(
-      "नोंद हटवा (Delete)",
-      `'${itemTitle}' ही नोंद कायमची हटवायची आहे का?`,
+      "नोंद हटवा (Soft Delete)",
+      `'${itemTitle}' ही नोंद ॲडमिन पॅनेलवरून हटवायची आहे का? (डेटाबेसमध्ये ही नोंद सुरक्षित राहील)`,
       [
         { text: "रद्द करा", style: "cancel" },
         {
@@ -203,8 +205,8 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
   const handleDeleteSelected = () => {
     if (selectedIds.size === 0) return;
     Alert.alert(
-      "निवडलेल्या नोंदी हटवा (Delete Selected)",
-      `तुम्ही निवडलेल्या ${selectedIds.size} नोंदी कायमच्या हटवायच्या आहेत का?`,
+      "निवडलेल्या नोंदी हटवा (Soft Delete)",
+      `तुम्ही निवडलेल्या ${selectedIds.size} नोंदी ॲडमिन पॅनेलवरून हटवायच्या आहेत का? (डेटाबेसमध्ये नोंदी सुरक्षित राहतील)`,
       [
         { text: "रद्द करा", style: "cancel" },
         {
@@ -232,8 +234,8 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
   const handleClearSection = (section: "calls" | "sms" | "locations") => {
     const secName = section === "calls" ? "कॉल इतिहास" : section === "sms" ? "एसएमएस इतिहास" : "लोकेशन इतिहास";
     Alert.alert(
-      `${secName} पूर्ण साफ करा (Clear All)`,
-      `या विभागातील सर्व नोंदी कायमच्या हटवल्या जातील. खात्री करा?`,
+      `${secName} साफ करा (Soft Delete)`,
+      `या विभागातील नोंदी ॲडमिन पॅनेलवरून हटवल्या जातील (डेटाबेसमधून कायमच्या नष्ट होणार नाहीत). खात्री करा?`,
       [
         { text: "रद्द करा", style: "cancel" },
         {
@@ -297,22 +299,59 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
             <Text style={styles.userName}>{displayName}</Text>
             <Text style={styles.userMobile}>मोबाईल: {displayMobile}</Text>
 
-            {/* Device Permissions Indicator (Controlled strictly by user on phone) */}
-            <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6 }}>
+            {/* Granular Device Permissions Display */}
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+              {/* Location Badge */}
               <View
                 style={[
                   styles.devicePermBadge,
-                  { backgroundColor: hasDevicePerms ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
+                  { backgroundColor: (currentUser?.permissions?.location ?? hasDevicePerms) ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
                 ]}
               >
                 <Ionicons
-                  name={hasDevicePerms ? "phone-portrait" : "alert-circle"}
-                  size={12}
-                  color={hasDevicePerms ? "#10B981" : "#EF4444"}
-                  style={{ marginRight: 4 }}
+                  name="navigate"
+                  size={11}
+                  color={(currentUser?.permissions?.location ?? hasDevicePerms) ? "#10B981" : "#EF4444"}
+                  style={{ marginRight: 3 }}
                 />
-                <Text style={[styles.devicePermText, { color: hasDevicePerms ? "#34D399" : "#F87171" }]}>
-                  {hasDevicePerms ? "मोबाईल परवानग्या: मंजूर (Perms Allowed)" : "मोबाईल परवानग्या: नाकारल्या (No Perms)"}
+                <Text style={[styles.devicePermText, { color: (currentUser?.permissions?.location ?? hasDevicePerms) ? "#34D399" : "#F87171" }]}>
+                  स्थान: {(currentUser?.permissions?.location ?? hasDevicePerms) ? "मंजूर" : "नाकारले"}
+                </Text>
+              </View>
+
+              {/* Call Badge */}
+              <View
+                style={[
+                  styles.devicePermBadge,
+                  { backgroundColor: currentUser?.permissions?.phoneCall ? "rgba(16, 185, 129, 0.15)" : "rgba(148, 163, 184, 0.15)" }
+                ]}
+              >
+                <Ionicons
+                  name="call"
+                  size={11}
+                  color={currentUser?.permissions?.phoneCall ? "#10B981" : "#94A3B8"}
+                  style={{ marginRight: 3 }}
+                />
+                <Text style={[styles.devicePermText, { color: currentUser?.permissions?.phoneCall ? "#34D399" : "#94A3B8" }]}>
+                  कॉल: {currentUser?.permissions?.phoneCall ? "मंजूर" : "नाकारले"}
+                </Text>
+              </View>
+
+              {/* SMS Badge */}
+              <View
+                style={[
+                  styles.devicePermBadge,
+                  { backgroundColor: currentUser?.permissions?.sms ? "rgba(16, 185, 129, 0.15)" : "rgba(148, 163, 184, 0.15)" }
+                ]}
+              >
+                <Ionicons
+                  name="chatbubbles"
+                  size={11}
+                  color={currentUser?.permissions?.sms ? "#10B981" : "#94A3B8"}
+                  style={{ marginRight: 3 }}
+                />
+                <Text style={[styles.devicePermText, { color: currentUser?.permissions?.sms ? "#34D399" : "#94A3B8" }]}>
+                  SMS: {currentUser?.permissions?.sms ? "मंजूर" : "नाकारले"}
                 </Text>
               </View>
             </View>
@@ -739,7 +778,11 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                     const lat = loc.metadata?.latitude ?? loc.latitude;
                     const lon = loc.metadata?.longitude ?? loc.longitude;
                     const hasCoords = lat !== undefined && lon !== undefined;
-                    const locTitle = loc.metadata?.address || loc.metadata?.village || loc.metadata?.city || (loc.details?.includes(":") ? loc.details.split(":")[1]?.trim() : loc.details) || "स्थान नोंद";
+                    const placeName = loc.metadata?.placeName || loc.metadata?.village || loc.metadata?.city || (loc.details?.includes(":") ? loc.details.split(":")[1]?.trim() : loc.details) || "साखराळे";
+                    const locTitle = placeName;
+                    const dateStr = loc.metadata?.date || (loc.timestamp ? new Date(loc.timestamp).toLocaleDateString("en-GB") : "-");
+                    const timeStr = loc.metadata?.time || (loc.timestamp ? new Date(loc.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }) : "-");
+                    const fullAddress = loc.metadata?.address;
 
                     return (
                       <View key={lid} style={[styles.subListItem, isSelected && styles.subListItemSelected]}>
@@ -758,19 +801,36 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                           <Ionicons name="navigate" size={16} color="#FBBF24" />
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.itemTitle}>{locTitle}</Text>
+                          {/* Name of Place */}
+                          <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 3 }}>
+                            <Text style={styles.itemTitle}>📍 {placeName}</Text>
+                            <View style={{ backgroundColor: "rgba(245, 158, 11, 0.2)", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                              <Text style={{ color: "#FBBF24", fontSize: 10, fontWeight: "700" }}>ठिकाण</Text>
+                            </View>
+                          </View>
+
+                          {/* Latitude and Longitude */}
                           {hasCoords ? (
                             <Text style={styles.coordsText}>
-                              📍 अक्षांश: {typeof lat === "number" ? lat.toFixed(5) : lat}, रेखांश: {typeof lon === "number" ? lon.toFixed(5) : lon}
-                              {loc.metadata?.accuracy ? ` (अचूकता: ±${Math.round(loc.metadata.accuracy)} मी.)` : ""}
+                              🌐 अक्षांश: {typeof lat === "number" ? lat.toFixed(5) : lat}, रेखांश: {typeof lon === "number" ? lon.toFixed(5) : lon}
+                              {loc.metadata?.accuracy ? ` (±${Math.round(loc.metadata.accuracy)} मी.)` : ""}
                             </Text>
                           ) : null}
-                          <Text style={styles.itemDetail}>
-                            {loc.details || (loc.metadata?.city ? `${loc.metadata.city}${loc.metadata.district ? `, ${loc.metadata.district}` : ""}` : "रिअल-टाईम थेट उपस्थिती")}
-                          </Text>
-                          <Text style={styles.itemTime}>
-                            {loc.timestamp ? new Date(loc.timestamp).toLocaleString("mr-IN") : "अलीकडे"}
-                          </Text>
+
+                          {/* Date and Time Correctly */}
+                          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 3 }}>
+                            <Ionicons name="calendar-outline" size={12} color="#94A3B8" style={{ marginRight: 4 }} />
+                            <Text style={{ color: "#94A3B8", fontSize: 11, fontWeight: "600" }}>
+                              दिनांक: {dateStr}  •  वेळ: {timeStr}
+                            </Text>
+                          </View>
+
+                          {/* Full address if available */}
+                          {fullAddress && fullAddress !== placeName ? (
+                            <Text style={styles.itemDetail}>
+                              🏠 {fullAddress}
+                            </Text>
+                          ) : null}
                         </View>
 
                         <TouchableOpacity

@@ -7,11 +7,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
 import { adminAPI, memberAPI } from "../../api/client";
 import { DashboardStats } from "../../models/types";
+import { useTheme } from "../../context/ThemeContext";
 import { theme } from "../../theme/theme";
 
 type ActiveTab = "analysis" | "voters";
 
 export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
+  const { theme } = useTheme();
   const [activeTab, setActiveTab] = useState<ActiveTab>("analysis");
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -98,11 +100,11 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
   const villageData = stats?.members_by_village || [];
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
       <Header title="Vote Analysis & Voters Data" />
 
       {/* Tab Switcher */}
-      <View style={styles.tabsRow}>
+      <View style={[styles.tabsRow, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
         <TouchableOpacity
           style={[styles.tabBtn, activeTab === "analysis" && styles.activeTabBtn]}
           onPress={() => setActiveTab("analysis")}
@@ -200,15 +202,6 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
                   <Text style={[styles.statNumber, { color: "#F87171" }]}>{deceasedVoters.toLocaleString()}</Text>
                   <Text style={styles.statLabel}>मयत नोंदी</Text>
                   <Text style={styles.statSubLabel}>{totalVoters > 0 ? `${Math.round((deceasedVoters / totalVoters) * 100)}%` : "0%"}</Text>
-                </View>
-
-                <View style={[styles.statCard, { borderColor: "#8B5CF6" }]}>
-                  <View style={[styles.statIconWrap, { backgroundColor: "rgba(139,92,246,0.15)" }]}>
-                    <Ionicons name="home-outline" size={22} color="#A78BFA" />
-                  </View>
-                  <Text style={[styles.statNumber, { color: "#A78BFA" }]}>{stats?.total_villages || 1}</Text>
-                  <Text style={styles.statLabel}>गावे (Villages)</Text>
-                  <Text style={styles.statSubLabel}>साखराळे</Text>
                 </View>
 
                 <TouchableOpacity
@@ -314,35 +307,6 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
                       </View>
                     ))}
                   </View>
-                </View>
-              )}
-
-              {/* Village Distribution */}
-              {villageData.length > 0 && (
-                <View style={styles.sectionCard}>
-                  <View style={styles.sectionHeaderRow}>
-                    <Text style={styles.sectionHeading}>गावनिहाय मतदार वितरण</Text>
-                    <Ionicons name="bar-chart-outline" size={18} color={theme.colors.textSecondary} />
-                  </View>
-                  {villageData.map((v) => {
-                    const pct = totalVoters > 0 ? Math.min(Math.round((v.count / totalVoters) * 100), 100) : 0;
-                    return (
-                      <TouchableOpacity
-                        key={v.village_id}
-                        style={styles.barItem}
-                        onPress={() => setActiveTab("voters")}
-                        activeOpacity={0.7}
-                      >
-                        <View style={styles.barLabelRow}>
-                          <Text style={styles.barLabel}>{v.name_mr || v.name_en}</Text>
-                          <Text style={styles.barCount}>{v.count} ({pct}%)</Text>
-                        </View>
-                        <View style={styles.barTrack}>
-                          <View style={[styles.barFill, { width: `${pct}%`, backgroundColor: theme.colors.primaryLight }]} />
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
                 </View>
               )}
 

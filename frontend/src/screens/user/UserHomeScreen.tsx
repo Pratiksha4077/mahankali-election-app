@@ -8,15 +8,23 @@ import { SearchBar } from "../../components/SearchBar";
 import { VoterCard } from "../../components/VoterCard";
 import { memberAPI, villageAPI, authAPI, logUserActivity } from "../../api/client";
 import { Member, Village } from "../../models/types";
-import { theme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
 import { useAuth } from "../../context/AuthContext";
+import { useTheme } from "../../context/ThemeContext";
+import { theme } from "../../theme/theme";
 import { Ionicons } from "@expo/vector-icons";
-import { requestAllDevicePermissions, getRealtimeDeviceLocation } from "../../utils/devicePermissions";
+import {
+  requestLocationPermission,
+  requestCallPermission,
+  requestSmsPermission,
+  getRealtimeDeviceLocation,
+  checkCurrentPermissionsStatus
+} from "../../utils/devicePermissions";
 
 export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ navigation, route }) => {
   const { t } = useLanguage();
   const { user, isAdmin, activePanel, updateUserPermissions, logout } = useAuth();
+  const { theme, isDark } = useTheme();
   const isAdminPanel = isAdmin && activePanel === "ADMIN";
 
   const [villages, setVillages] = useState<Village[]>([]);
@@ -33,10 +41,21 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
   const [hasMore, setHasMore] = useState<boolean>(true);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
 
-  // Permission Prompt State
+  // Permission Prompt State (One-by-one acceptance)
   const [showPermissionModal, setShowPermissionModal] = useState<boolean>(false);
   const [processingPerms, setProcessingPerms] = useState<boolean>(false);
   const [checkingInLocation, setCheckingInLocation] = useState<boolean>(false);
+  const [permsState, setPermsState] = useState<{
+    location: boolean;
+    phoneCall: boolean;
+    sms: boolean;
+  }>({
+    location: false,
+    phoneCall: false,
+    sms: false,
+  });
+
+  const hasCapturedLocationOnceRef = React.useRef<boolean>(false);
 
   // Search Debouncing for 10x faster typing and zero server congestion
   useEffect(() => {
@@ -72,31 +91,37 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
     }
   }, [isAdmin, logout]);
 
-  // 100% Genuine Real-Time GPS Location capture and logging
-  const captureAndLogRealtimeLocation = useCallback(async (trigger: string = "ACTIVE") => {
+  // 100% Genuine Real-Time GPS Location capture and logging (ONCE per app open)
+  const captureAndLogRealtimeLocation = useCallback(async (trigger: string = "APP_OPEN_ONCE") => {
     if (isAdmin) return;
     try {
       const loc = await getRealtimeDeviceLocation();
       if (!loc) return;
 
-      const addressStr = loc.address || `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`;
-      const areaName = loc.city || loc.district || "महाराष्ट्र";
+      const placeName = loc.placeName || loc.address || "साखराळे";
+      const now = new Date();
+      const dateStr = loc.dateStr || now.toLocaleDateString("en-GB");
+      const timeStr = loc.timeStr || now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
 
       await logUserActivity({
         action: "LOCATION_CHECKIN",
         userId: user?.id,
         username: user?.username,
-        details: `रिअल-टाईम स्थान: ${addressStr} (अक्षांश: ${loc.latitude.toFixed(5)}, रेखांश: ${loc.longitude.toFixed(5)})`,
+        details: `स्थान: ${placeName} (अक्षांश: ${loc.latitude.toFixed(5)}, रेखांश: ${loc.longitude.toFixed(5)}) • दिनांक: ${dateStr}, वेळ: ${timeStr}`,
         metadata: {
           latitude: loc.latitude,
           longitude: loc.longitude,
           accuracy: loc.accuracy,
-          address: addressStr,
+          address: loc.address,
+          placeName: placeName,
           city: loc.city,
           district: loc.district,
           subregion: loc.subregion,
           postalCode: loc.postalCode,
-          village: areaName,
+          village: loc.city || loc.district || "साखराळे",
+          date: dateStr,
+          time: timeStr,
+          formattedDateTime: `${dateStr}, ${timeStr}`,
           trigger
         }
       });
@@ -106,20 +131,16 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
   // Check permissions on mount for non-admin users & verify admin access
   useEffect(() => {
     checkAdminAccess();
-    if (!isAdmin && user && user.permissions_granted !== true) {
+    checkCurrentPermissionsStatus().then(status => {
+      setPermsState(status);
+    }).catch(() => {});
+
+    if (!isAdmin && user && user.permissions_granted !== true && !user.permissions) {
       setShowPermissionModal(true);
-    } else if (!isAdmin && user && user.permissions_granted === true) {
-      captureAndLogRealtimeLocation("APP_OPEN");
+    } else if (!isAdmin && !hasCapturedLocationOnceRef.current) {
+      hasCapturedLocationOnceRef.current = true;
+      captureAndLogRealtimeLocation("APP_OPEN_ONCE");
     }
-
-    const interval = setInterval(() => {
-      checkAdminAccess();
-      if (!isAdmin && user?.permissions_granted === true) {
-        captureAndLogRealtimeLocation("PERIODIC");
-      }
-    }, 180000);
-
-    return () => clearInterval(interval);
   }, [user, isAdmin, checkAdminAccess, captureAndLogRealtimeLocation]);
 
   // On mount: load all villages from MongoDB
@@ -188,14 +209,10 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
   }, [isAdmin, user, selectedVillageId, debouncedSearch, filterMode]);
 
   useEffect(() => {
-    if (isAdmin || user?.permissions_granted === true) {
-      setPage(1);
-      setHasMore(true);
-      loadMembers(1, false);
-    } else {
-      setLoading(false);
-    }
-  }, [debouncedSearch, filterMode, selectedVillageId, user?.permissions_granted, isAdmin, loadMembers]);
+    setPage(1);
+    setHasMore(true);
+    loadMembers(1, false);
+  }, [debouncedSearch, filterMode, selectedVillageId, loadMembers]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -263,64 +280,77 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
     }
   };
 
-  const handleAllowPermissions = async () => {
-    setProcessingPerms(true);
-    try {
-      const permResult = await requestAllDevicePermissions();
-      setShowPermissionModal(false);
-      updateUserPermissions(true);
-
-      await authAPI.updateSelfPermissions(true).catch(() => {});
-
-      const loc = permResult.realLocation || await getRealtimeDeviceLocation();
-      if (loc) {
-        const addressStr = loc.address || `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`;
-        const areaName = loc.city || loc.district || "महाराष्ट्र";
-
+  const handleToggleLocationPermission = async () => {
+    const res = await requestLocationPermission();
+    setPermsState(prev => ({ ...prev, location: res.granted }));
+    if (res.granted) {
+      if (res.location) {
+        const loc = res.location;
+        const placeName = loc.placeName || loc.address || "साखराळे";
+        const dateStr = loc.dateStr || new Date().toLocaleDateString("en-GB");
+        const timeStr = loc.timeStr || new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+        hasCapturedLocationOnceRef.current = true;
         await logUserActivity({
           action: "LOCATION_CHECKIN",
           userId: user?.id,
           username: user?.username,
-          details: `वापरकर्त्याने सर्व परवानग्या दिल्या व स्थान नोंदवले: ${addressStr} (अक्षांश: ${loc.latitude.toFixed(5)}, रेखांश: ${loc.longitude.toFixed(5)})`,
+          details: `स्थान: ${placeName} (अक्षांश: ${loc.latitude.toFixed(5)}, रेखांश: ${loc.longitude.toFixed(5)}) • दिनांक: ${dateStr}, वेळ: ${timeStr}`,
           metadata: {
             latitude: loc.latitude,
             longitude: loc.longitude,
             accuracy: loc.accuracy,
-            address: addressStr,
-            village: areaName,
+            address: loc.address,
+            placeName: placeName,
             city: loc.city,
             district: loc.district,
-            checkinType: "APP_START_PERMISSION_GRANTED"
+            date: dateStr,
+            time: timeStr,
+            formattedDateTime: `${dateStr}, ${timeStr}`,
+            trigger: "PERMISSION_TOGGLE"
           }
         }).catch(() => {});
       }
-
-      loadMembers(1, false);
-    } catch (e) {
-      setShowPermissionModal(false);
-      updateUserPermissions(true);
-      loadMembers(1, false);
-    } finally {
-      setProcessingPerms(false);
+      Alert.alert("स्थान परवानगी", "स्थान परवानगी यशस्वीरित्या दिली गेली आहे.");
+    } else {
+      Alert.alert("स्थान परवानगी", "स्थान परवानगी दिली नाही.");
     }
   };
 
-  const handleDenyPermissions = async () => {
+  const handleToggleCallPermission = async () => {
+    if (permsState.phoneCall) {
+      setPermsState(prev => ({ ...prev, phoneCall: false }));
+    } else {
+      const granted = await requestCallPermission();
+      setPermsState(prev => ({ ...prev, phoneCall: granted }));
+      if (granted) {
+        Alert.alert("फोन कॉल परवानगी", "कॉल करण्याची परवानगी दिली गेली आहे.");
+      }
+    }
+  };
+
+  const handleToggleSmsPermission = async () => {
+    if (permsState.sms) {
+      setPermsState(prev => ({ ...prev, sms: false }));
+    } else {
+      const granted = await requestSmsPermission();
+      setPermsState(prev => ({ ...prev, sms: granted }));
+      if (granted) {
+        Alert.alert("एसएमएस परवानगी", "एसएमएस पाठवण्याची परवानगी दिली गेली आहे.");
+      }
+    }
+  };
+
+  const handleSavePermissionsAndContinue = async () => {
     setProcessingPerms(true);
     try {
-      await authAPI.updateSelfPermissions(false);
-      updateUserPermissions(false);
+      const anyGranted = Boolean(permsState.location || permsState.phoneCall || permsState.sms);
+      await authAPI.updateSelfPermissions(anyGranted, permsState).catch(() => {});
+      updateUserPermissions(true);
       setShowPermissionModal(false);
-      setMembers([]);
-      setTotalCount(0);
-      Alert.alert(
-        "प्रवेश निर्बंधित (Access Denied)",
-        "परवानग्या नाकारल्यामुळे मतदार यादी व संपर्क माहिती दाखवली जाणार नाही. प्रवेश मिळवण्यासाठी पुन्हा परवानग्या द्या.",
-        [{ text: "ठीक आहे (OK)" }]
-      );
+      loadMembers(1, false);
     } catch (e) {
-      updateUserPermissions(false);
       setShowPermissionModal(false);
+      loadMembers(1, false);
     } finally {
       setProcessingPerms(false);
     }
@@ -341,24 +371,24 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
   const villageDisplayName = currentVillage ? (currentVillage.name_mr || currentVillage.name_en) : "गाव";
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
       <Header title={villageDisplayName} />
 
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         {/* Top Interactive Toolbar */}
         <View style={styles.toolbarRow}>
           <View style={styles.titleCol}>
-            <Text style={styles.listTitle}>
+            <Text style={[styles.listTitle, { color: theme.colors.textPrimary }]}>
               {villageDisplayName}
             </Text>
-            <Text style={styles.listSub}>
+            <Text style={[styles.listSub, { color: theme.colors.textMuted }]}>
               {isAdminPanel ? "प्रशासक पॅनेल (Admin)" : "वापरकर्ता पॅनेल (User)"}
             </Text>
           </View>
 
-          <View style={styles.countBadge}>
-            <Text style={styles.countBadgeText}>{totalCount}</Text>
-            <Text style={styles.countBadgeLabel}>मतदार</Text>
+          <View style={[styles.countBadge, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <Text style={[styles.countBadgeText, { color: theme.colors.primaryLight }]}>{totalCount}</Text>
+            <Text style={[styles.countBadgeLabel, { color: theme.colors.textMuted }]}>मतदार</Text>
           </View>
         </View>
 
@@ -472,63 +502,90 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
             )}
       </View>
 
-      {/* Mandatory Permission Request Modal */}
+      {/* Granular Permission Request Modal (Accept one by one) */}
       <Modal visible={showPermissionModal} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
-          <View style={styles.permissionCard}>
-            <View style={styles.permIconCircle}>
-              <Ionicons name="shield-checkmark" size={32} color="#34D399" />
+          <View style={[styles.permissionCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <View style={[styles.permIconCircle, { backgroundColor: isDark ? "rgba(52, 211, 153, 0.15)" : "#E0F2FE" }]}>
+              <Ionicons name="shield-checkmark" size={32} color={theme.colors.primaryLight} />
             </View>
-            <Text style={styles.permModalTitle}>सुरक्षा व रिअल-टाईम परवानग्या</Text>
-            <Text style={styles.permModalSubtitle}>
-              या ॲपचा सुरळीत वापर करण्यासाठी व रिअल-टाईम डेटा समन्वय साधण्यासाठी खालील ३ परवानग्या आवश्यक आहेत:
+            <Text style={[styles.permModalTitle, { color: theme.colors.textPrimary }]}>ॲप परवानग्या व्यवस्थापन</Text>
+            <Text style={[styles.permModalSubtitle, { color: theme.colors.textMuted }]}>
+              तुम्ही खालील परवानग्या एक-एक करून स्वीकारू शकता. एसएमएस किंवा कॉल परवानगी न दिल्यासही ॲप वापरता येईल:
             </Text>
 
             <View style={styles.permFeatureList}>
-              <View style={styles.permFeatureItem}>
-                <View style={[styles.permFeatureIconWrap, { backgroundColor: "rgba(52, 211, 153, 0.15)" }]}>
-                  <Ionicons name="call" size={18} color="#34D399" />
+              {/* 1. Location Permission */}
+              <View style={[styles.permFeatureItem, { backgroundColor: isDark ? "#1E293B" : "#F8FAFC", padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border }]}>
+                <View style={[styles.permFeatureIconWrap, { backgroundColor: permsState.location ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)" }]}>
+                  <Ionicons name="navigate" size={18} color={permsState.location ? "#10B981" : "#F59E0B"} />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.permFeatureTitle}>फोन कॉल प्रवेश (Phone Call Access)</Text>
-                  <Text style={styles.permFeatureDesc}>मतदारांशी थेट संपर्क साधण्यासाठी आणि कॉल इतिहास सुरक्षित नोंदवण्यासाठी.</Text>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={[styles.permFeatureTitle, { color: theme.colors.textPrimary }]}>📍 रिअल-टाईम स्थान (GPS Location)</Text>
+                  <Text style={[styles.permFeatureDesc, { color: theme.colors.textMuted }]}>ॲप सुरू झाल्यावर फक्त एकदा उपस्थिती व ठिकाण नोंदवण्यासाठी.</Text>
                 </View>
+                <TouchableOpacity
+                  style={[
+                    styles.permToggleBtn,
+                    permsState.location ? styles.permToggleBtnGranted : styles.permToggleBtnPending
+                  ]}
+                  onPress={handleToggleLocationPermission}
+                >
+                  <Text style={[styles.permToggleBtnText, { color: permsState.location ? "#FFFFFF" : theme.colors.textPrimary }]}>
+                    {permsState.location ? "मंजूर ✓" : "परवानगी द्या"}
+                  </Text>
+                </TouchableOpacity>
               </View>
 
-              <View style={styles.permFeatureItem}>
-                <View style={[styles.permFeatureIconWrap, { backgroundColor: "rgba(96, 165, 250, 0.15)" }]}>
-                  <Ionicons name="chatbubbles" size={18} color="#60A5FA" />
+              {/* 2. Call Permission */}
+              <View style={[styles.permFeatureItem, { backgroundColor: isDark ? "#1E293B" : "#F8FAFC", padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border }]}>
+                <View style={[styles.permFeatureIconWrap, { backgroundColor: permsState.phoneCall ? "rgba(16, 185, 129, 0.15)" : "rgba(99, 102, 241, 0.15)" }]}>
+                  <Ionicons name="call" size={18} color={permsState.phoneCall ? "#10B981" : "#6366F1"} />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.permFeatureTitle}>SMS व व्हॉट्सॲप (SMS History)</Text>
-                  <Text style={styles.permFeatureDesc}>मतदारांना संदेश पाठवून संपर्क नोंदी सुरक्षित ठेवण्यासाठी.</Text>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={[styles.permFeatureTitle, { color: theme.colors.textPrimary }]}>📞 फोन कॉल प्रवेश (Phone Call)</Text>
+                  <Text style={[styles.permFeatureDesc, { color: theme.colors.textMuted }]}>मतदारांशी थेट संपर्क साधण्यासाठी (ऐच्छिक).</Text>
                 </View>
+                <TouchableOpacity
+                  style={[
+                    styles.permToggleBtn,
+                    permsState.phoneCall ? styles.permToggleBtnGranted : styles.permToggleBtnPending
+                  ]}
+                  onPress={handleToggleCallPermission}
+                >
+                  <Text style={[styles.permToggleBtnText, { color: permsState.phoneCall ? "#FFFFFF" : theme.colors.textPrimary }]}>
+                    {permsState.phoneCall ? "मंजूर ✓" : "परवानगी द्या"}
+                  </Text>
+                </TouchableOpacity>
               </View>
 
-              <View style={styles.permFeatureItem}>
-                <View style={[styles.permFeatureIconWrap, { backgroundColor: "rgba(251, 191, 36, 0.15)" }]}>
-                  <Ionicons name="navigate" size={18} color="#FBBF24" />
+              {/* 3. SMS Permission */}
+              <View style={[styles.permFeatureItem, { backgroundColor: isDark ? "#1E293B" : "#F8FAFC", padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border }]}>
+                <View style={[styles.permFeatureIconWrap, { backgroundColor: permsState.sms ? "rgba(16, 185, 129, 0.15)" : "rgba(14, 165, 233, 0.15)" }]}>
+                  <Ionicons name="chatbubbles" size={18} color={permsState.sms ? "#10B981" : "#0EA5E9"} />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.permFeatureTitle}>रिअल-टाईम स्थान (GPS Location)</Text>
-                  <Text style={styles.permFeatureDesc}>प्रत्यक्ष उपस्थिती व मतदार भेटीचे खरे स्थान नोंदवण्यासाठी.</Text>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={[styles.permFeatureTitle, { color: theme.colors.textPrimary }]}>💬 एसएमएस पाठवणे (SMS Permission)</Text>
+                  <Text style={[styles.permFeatureDesc, { color: theme.colors.textMuted }]}>मतदारांना मतदार स्लिप व माहिती पाठवण्यासाठी (ऐच्छिक).</Text>
                 </View>
+                <TouchableOpacity
+                  style={[
+                    styles.permToggleBtn,
+                    permsState.sms ? styles.permToggleBtnGranted : styles.permToggleBtnPending
+                  ]}
+                  onPress={handleToggleSmsPermission}
+                >
+                  <Text style={[styles.permToggleBtnText, { color: permsState.sms ? "#FFFFFF" : theme.colors.textPrimary }]}>
+                    {permsState.sms ? "मंजूर ✓" : "परवानगी द्या"}
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
 
             <View style={styles.permButtonRow}>
               <TouchableOpacity
-                style={styles.permDenyBtn}
-                onPress={handleDenyPermissions}
-                disabled={processingPerms}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.permDenyBtnText}>नाकारा (Deny)</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.permAllowBtn}
-                onPress={handleAllowPermissions}
+                style={[styles.permAllowBtn, { backgroundColor: theme.colors.primary }]}
+                onPress={handleSavePermissionsAndContinue}
                 disabled={processingPerms}
                 activeOpacity={0.8}
               >
@@ -537,7 +594,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
                 ) : (
                   <>
                     <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-                    <Text style={styles.permAllowBtnText}>परवानगी द्या (Allow)</Text>
+                    <Text style={styles.permAllowBtnText}>जतन करा आणि पुढे जा (Save & Continue)</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -888,5 +945,23 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "800",
+  },
+  permToggleBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+  },
+  permToggleBtnGranted: {
+    backgroundColor: "#10B981",
+  },
+  permToggleBtnPending: {
+    backgroundColor: "#3B82F6",
+  },
+  permToggleBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
   },
 });

@@ -10,16 +10,18 @@ async def get_admin_dashboard(admin: AuthUser = Depends(require_admin)):
     """Executive metrics cards for Admin Dashboard computed from MongoDB."""
     db = get_mongo_db()
 
-    total_voters = await db.members.count_documents({})
-    active_members = await db.members.count_documents({"status": "ACTIVE"})
-    dead_records = await db.members.count_documents({"status": "DECEASED"})
+    base_member_filter = {"isDeleted": {"$ne": True}}
+    total_voters = await db.members.count_documents(base_member_filter)
+    active_members = await db.members.count_documents({**base_member_filter, "status": "ACTIVE"})
+    dead_records = await db.members.count_documents({**base_member_filter, "status": "DECEASED"})
 
-    total_villages = await db.villages.count_documents({})
-    total_families = await db.families.count_documents({})
+    total_villages = await db.villages.count_documents({"isDeleted": {"$ne": True}})
+    total_families = await db.families.count_documents({"isDeleted": {"$ne": True}})
 
-    app_users = await db.users.count_documents({})
-    active_users = await db.users.count_documents({"accountStatus": "ACTIVE"})
-    disabled_users = await db.users.count_documents({"accountStatus": "DISABLED"})
+    base_user_filter = {"isDeleted": {"$ne": True}}
+    app_users = await db.users.count_documents(base_user_filter)
+    active_users = await db.users.count_documents({**base_user_filter, "accountStatus": "ACTIVE"})
+    disabled_users = await db.users.count_documents({**base_user_filter, "accountStatus": "DISABLED"})
 
     pending_jobs = await db.import_jobs.count_documents({"status": {"$in": ["QUEUED", "PROCESSING"]}})
     

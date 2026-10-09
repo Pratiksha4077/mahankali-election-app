@@ -7,7 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
-import { theme } from "../theme/theme";
+import { useTheme } from "../context/ThemeContext";
 
 // User Screens
 import { UserHomeScreen } from "../screens/user/UserHomeScreen";
@@ -36,6 +36,7 @@ const Tab = createBottomTabNavigator();
 const MainTabs: React.FC = () => {
   const { t } = useLanguage();
   const { isAdmin, activePanel } = useAuth();
+  const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const isAdminView = isAdmin && activePanel === "ADMIN";
 

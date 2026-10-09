@@ -6,10 +6,13 @@ export interface RealtimeLocationResult {
   longitude: number;
   accuracy?: number;
   address?: string;
+  placeName?: string;
   city?: string;
   district?: string;
   subregion?: string;
   postalCode?: string;
+  dateStr?: string;
+  timeStr?: string;
   timestamp?: number;
 }
 
@@ -28,7 +31,7 @@ export interface PermissionStatusResult {
 
 /**
  * Get real-time GPS location of the user using expo-location.
- * Returns null if location is disabled or permission denied - ZERO MOCK COORDINATES!
+ * Returns null if location is disabled or permission denied.
  */
 export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResult | null> {
   try {
@@ -67,6 +70,7 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
 
     // 4. Reverse Geocoding to get real human-readable street / city / district
     let address = "";
+    let placeName = "";
     let city = "";
     let district = "";
     let subregion = "";
@@ -83,25 +87,76 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
 
         const parts = [g.name, g.street, g.district || g.subregion, g.city, g.region, g.postalCode].filter(Boolean);
         address = parts.join(", ");
+        placeName = [g.name || g.street, g.city || g.district].filter(Boolean).join(", ") || address;
       }
     } catch (geoErr) {
       console.warn("Reverse geocode warning:", geoErr);
     }
+
+    const now = new Date(pos.timestamp || Date.now());
+    const dateStr = now.toLocaleDateString("en-GB"); // DD/MM/YYYY
+    const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
 
     return {
       latitude,
       longitude,
       accuracy: accuracy ?? 10,
       address: address || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
+      placeName: placeName || address || "साखराळे",
       city: city || district || "महाराष्ट्र",
       district: district || city || "सांगली",
       subregion,
       postalCode,
+      dateStr,
+      timeStr,
       timestamp: pos.timestamp || Date.now(),
     };
   } catch (e) {
     console.error("GPS location error:", e);
     return null;
+  }
+}
+
+/**
+ * Request Location permission individually
+ */
+export async function requestLocationPermission(): Promise<{ granted: boolean; location: RealtimeLocationResult | null }> {
+  try {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    const granted = status === "granted";
+    let location: RealtimeLocationResult | null = null;
+    if (granted) {
+      location = await getRealtimeDeviceLocation();
+    }
+    return { granted, location };
+  } catch (e) {
+    return { granted: false, location: null };
+  }
+}
+
+/**
+ * Request Call permission individually (Android native)
+ */
+export async function requestCallPermission(): Promise<boolean> {
+  if (Platform.OS !== "android") return true;
+  try {
+    const res = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CALL_PHONE);
+    return res === PermissionsAndroid.RESULTS.GRANTED;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Request SMS permission individually (Android native)
+ */
+export async function requestSmsPermission(): Promise<boolean> {
+  if (Platform.OS !== "android") return true;
+  try {
+    const res = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.SEND_SMS);
+    return res === PermissionsAndroid.RESULTS.GRANTED;
+  } catch (e) {
+    return false;
   }
 }
 
@@ -125,12 +180,36 @@ export async function checkDevicePermissions(): Promise<boolean> {
 }
 
 /**
- * Prompts the user with native Android permission dialogues for Call, SMS, and Location.
+ * Checks current status of each permission individually
+ */
+export async function checkCurrentPermissionsStatus(): Promise<{ location: boolean; phoneCall: boolean; sms: boolean }> {
+  let location = false;
+  let phoneCall = false;
+  let sms = false;
+
+  try {
+    const loc = await Location.getForegroundPermissionsAsync();
+    location = loc.status === "granted";
+  } catch (e) {}
+
+  if (Platform.OS === "android") {
+    try {
+      phoneCall = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CALL_PHONE);
+      sms = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.SEND_SMS);
+    } catch (e) {}
+  } else {
+    phoneCall = true;
+    sms = true;
+  }
+
+  return { location, phoneCall, sms };
+}
+
+/**
+ * Prompts user with native dialogues for all permissions
  */
 export async function requestAllDevicePermissions(): Promise<PermissionStatusResult> {
   let realLocation: RealtimeLocationResult | null = null;
-
-  // 1. Location permission & real GPS acquisition
   let locationGranted = false;
   try {
     const { status } = await Location.requestForegroundPermissionsAsync();
@@ -142,18 +221,15 @@ export async function requestAllDevicePermissions(): Promise<PermissionStatusRes
     console.warn("Location permission error:", locErr);
   }
 
-  // 2. Android native Call and SMS permissions
   let callGranted = false;
   let smsGranted = false;
 
   if (Platform.OS === "android") {
     try {
-      const permissionsToRequest: any[] = [
+      const granted = await PermissionsAndroid.requestMultiple([
         PermissionsAndroid.PERMISSIONS.CALL_PHONE,
         PermissionsAndroid.PERMISSIONS.SEND_SMS,
-      ];
-
-      const granted = await PermissionsAndroid.requestMultiple(permissionsToRequest);
+      ]);
 
       callGranted = granted[PermissionsAndroid.PERMISSIONS.CALL_PHONE] === PermissionsAndroid.RESULTS.GRANTED;
       smsGranted = granted[PermissionsAndroid.PERMISSIONS.SEND_SMS] === PermissionsAndroid.RESULTS.GRANTED;

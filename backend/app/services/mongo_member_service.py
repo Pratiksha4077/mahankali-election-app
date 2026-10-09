@@ -33,12 +33,20 @@ class MongoMemberService:
         limit: int = 40
     ) -> Dict[str, Any]:
         db = get_mongo_db()
-        and_conditions = []
+        and_conditions = [
+            {"isDeleted": {"$ne": True}}
+        ]
         if village_id:
             vid_variants = [str(village_id)]
             if ObjectId.is_valid(str(village_id)):
                 vid_variants.append(ObjectId(str(village_id)))
-            and_conditions.append({"village.id": {"$in": vid_variants}})
+            and_conditions.append({
+                "$or": [
+                    {"village.id": {"$in": vid_variants}},
+                    {"village.nameMarathi": str(village_id)},
+                    {"village.name": str(village_id)}
+                ]
+            })
 
         if status and status != "ALL":
             and_conditions.append({"status": status})
@@ -71,17 +79,11 @@ class MongoMemberService:
 
         filter_q: Dict[str, Any] = {"$and": and_conditions} if and_conditions else {}
 
-        # Fast count optimization for high performance
-        if not filter_q or filter_q == {"status": "ACTIVE"}:
-            try:
-                total = await db.members.estimated_document_count()
-            except Exception:
-                total = await db.members.count_documents(filter_q)
-        else:
-            try:
-                total = await db.members.count_documents(filter_q)
-            except Exception:
-                total = 0
+        # Exact and accurate count documents
+        try:
+            total = await db.members.count_documents(filter_q)
+        except Exception:
+            total = 0
 
         # Lightweight field projection for 10x faster network and parsing speed
         projection = {

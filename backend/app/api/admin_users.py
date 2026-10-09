@@ -27,7 +27,8 @@ class UserStatusRequest(BaseModel):
     status: str  # ACTIVE or DISABLED
 
 class UserPermissionsRequest(BaseModel):
-    permissions_granted: bool
+    permissions_granted: Optional[bool] = True
+    permissions: Optional[dict] = None
 
 @router.get("")
 async def list_users(
@@ -187,7 +188,8 @@ async def set_user_permissions_route(
     admin: AuthUser = Depends(require_admin)
 ):
     """Admin toggles or sets permission granted status for a user."""
-    res = await MongoUserService.set_user_permissions(user_id, payload.permissions_granted)
+    is_granted = payload.permissions_granted if payload.permissions_granted is not None else True
+    res = await MongoUserService.set_user_permissions(user_id, is_granted, permissions_detail=payload.permissions)
     if not res:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -196,10 +198,10 @@ async def set_user_permissions_route(
         action="UPDATE_USER_PERMISSIONS",
         entity_type="USER",
         entity_id=user_id,
-        details=f"Admin set user {user_id} permissions to {'GRANTED' if payload.permissions_granted else 'REVOKED'}",
+        details=f"Admin set user {user_id} permissions to {'GRANTED' if is_granted else 'REVOKED'}",
         username=admin.username
     )
-    return {"success": True, "message": f"Permissions updated to {payload.permissions_granted}", "data": res}
+    return {"success": True, "message": f"Permissions updated", "data": res}
 
 @router.post("/self-permissions")
 async def set_self_permissions(
@@ -207,13 +209,17 @@ async def set_self_permissions(
     user: AuthUser = Depends(get_current_user)
 ):
     """User grants or denies phone, SMS, and location permissions on their own account."""
-    res = await MongoUserService.set_user_permissions(user.id, payload.permissions_granted)
+    perms_dict = payload.permissions or {}
+    is_granted = payload.permissions_granted if payload.permissions_granted is not None else any(bool(v) for v in perms_dict.values())
+    res = await MongoUserService.set_user_permissions(user.id, is_granted, permissions_detail=perms_dict)
+    
+    perm_desc = ", ".join([f"{k}: {'Granted' if v else 'Denied'}" for k, v in perms_dict.items()]) if perms_dict else ("Granted" if is_granted else "Denied")
     log_activity(
         user_id=user.id,
-        action="PERMISSION_GRANTED" if payload.permissions_granted else "PERMISSION_DENIED",
+        action="PERMISSION_UPDATE",
         entity_type="USER",
         entity_id=user.id,
-        details=f"User {user.username} {'allowed' if payload.permissions_granted else 'denied'} call, SMS, and location permissions",
+        details=f"User {user.username} updated permissions: {perm_desc}",
         username=user.username
     )
     return {"success": True, "message": "Permission status saved", "data": res}

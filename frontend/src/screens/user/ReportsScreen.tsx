@@ -2,13 +2,14 @@ import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
-import { theme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
-import { useAuth } from "../../context/AuthContext";
+import { useTheme } from "../../context/ThemeContext";
 
 export const ReportsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { t } = useLanguage();
+  const { theme } = useTheme();
 
+  // "by village" section removed as requested
   const reportItems = [
     { id: "alphabetical", titleKey: "rep_alphabetical", icon: "text", color: "#6366F1" },
     { id: "membership", titleKey: "rep_membership", icon: "card", color: "#3B82F6" },
@@ -20,12 +21,11 @@ export const ReportsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
     { id: "designation", titleKey: "rep_designation", icon: "briefcase", color: "#3B82F6" },
     { id: "profession", titleKey: "rep_profession", icon: "business", color: "#14B8A6" },
     { id: "color-rating", titleKey: "rep_color", icon: "color-palette", color: "#F97316" },
-    { id: "village", titleKey: "rep_village", icon: "home", color: "#10B981" },
     { id: "deceased", titleKey: "rep_deceased", icon: "skull", color: "#EF4444" },
   ];
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
       <Header title={t("reports_title")} />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -33,14 +33,20 @@ export const ReportsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
           {reportItems.map((item) => (
             <TouchableOpacity
               key={item.id}
-              style={styles.tileCard}
+              style={[
+                styles.tileCard,
+                {
+                  backgroundColor: theme.colors.card,
+                  borderColor: theme.colors.border,
+                }
+              ]}
               onPress={() => navigation.navigate("ReportDetail", { reportType: item.id, titleKey: item.titleKey })}
               activeOpacity={0.7}
             >
               <View style={[styles.iconCircle, { backgroundColor: `${item.color}20` }]}>
                 <Ionicons name={item.icon as any} size={28} color={item.color} />
               </View>
-              <Text style={styles.tileText}>
+              <Text style={[styles.tileText, { color: theme.colors.textPrimary }]}>
                 {t(item.titleKey as any)}
               </Text>
             </TouchableOpacity>
@@ -54,10 +60,9 @@ export const ReportsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: theme.colors.background,
   },
   scrollContent: {
-    padding: theme.spacing.lg,
+    padding: 16,
     paddingBottom: 40,
   },
   gridContainer: {
@@ -68,15 +73,18 @@ const styles = StyleSheet.create({
   },
   tileCard: {
     width: "48%",
-    backgroundColor: theme.colors.card,
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: 14,
     paddingVertical: 22,
     paddingHorizontal: 12,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: theme.colors.border,
     minHeight: 120,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   iconCircle: {
     width: 52,
@@ -87,55 +95,8 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   tileText: {
-    color: theme.colors.textPrimary,
-    fontSize: theme.typography.sizes.sm,
-    fontWeight: theme.typography.weights.semibold,
-    textAlign: "center",
-  },
-  deniedContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-  },
-  deniedIconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "rgba(239, 68, 68, 0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "rgba(239, 68, 68, 0.3)",
-  },
-  deniedTitle: {
-    color: "#EF4444",
-    fontSize: 18,
-    fontWeight: "800",
-    marginBottom: 10,
-    textAlign: "center",
-  },
-  deniedDesc: {
-    color: theme.colors.textSecondary,
     fontSize: 13,
-    lineHeight: 20,
+    fontWeight: "600",
     textAlign: "center",
-    maxWidth: 340,
-    marginBottom: 24,
   },
-  grantAccessBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#059669",
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 10,
-  },
-  grantAccessBtnText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "700",
-  }
 });

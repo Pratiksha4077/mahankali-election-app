@@ -11,12 +11,14 @@ import { Member, Category } from "../../models/types";
 import { theme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
 import { useAuth } from "../../context/AuthContext";
+import { useTheme } from "../../context/ThemeContext";
 import { getRealtimeDeviceLocation } from "../../utils/devicePermissions";
 
 export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
   const { memberId } = route.params || { memberId: "m-1" };
   const { t } = useLanguage();
   const { user } = useAuth();
+  const { theme } = useTheme();
 
   const [member, setMember] = useState<Member | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -584,17 +586,6 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
           {/* Social & Professional Demographics - Editable by User & Admin */}
           <View style={styles.sectionContainer}>
             <Text style={styles.sectionTitle}>सामाजिक व व्यावसायिक माहिती (Social & Details)</Text>
-
-            <View style={{ marginBottom: 10 }}>
-              <Text style={styles.inputLabel}>वडिलांचे / पतीचे नाव (Father / Husband Name)</Text>
-              <TextInput
-                style={styles.fieldInput}
-                value={fatherName}
-                onChangeText={setFatherName}
-                placeholder="वडिलांचे किंवा पतीचे नाव प्रविष्ट करा..."
-                placeholderTextColor={theme.colors.textMuted}
-              />
-            </View>
 
             <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
               <View style={{ flex: 1 }}>

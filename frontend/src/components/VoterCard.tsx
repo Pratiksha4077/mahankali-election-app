@@ -6,6 +6,7 @@ import { logUserActivity } from "../api/client";
 import { theme } from "../theme/theme";
 import { useLanguage } from "../context/LanguageContext";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 import { getRealtimeDeviceLocation } from "../utils/devicePermissions";
 
 interface VoterCardProps {
@@ -16,6 +17,7 @@ interface VoterCardProps {
 export const VoterCard: React.FC<VoterCardProps> = memo(({ member, onPress }) => {
   const { t } = useLanguage();
   const { user } = useAuth();
+  const { theme } = useTheme();
 
   const handleCall = async (e: any) => {
     e.stopPropagation?.();
@@ -91,18 +93,22 @@ export const VoterCard: React.FC<VoterCardProps> = memo(({ member, onPress }) =>
     <TouchableOpacity
       style={[
         styles.card,
+        {
+          backgroundColor: theme.colors.card,
+          borderColor: theme.colors.border,
+          borderLeftColor: categoryColor
+        },
         isDeceased && styles.deceasedCard,
-        { borderLeftColor: categoryColor }
       ]}
       onPress={onPress}
       activeOpacity={0.7}
     >
       {/* Left Badge Box (Booth Part & Serial Number) */}
-      <View style={[styles.badgeBox, isDeceased && styles.deceasedBadgeBox]}>
-        <Text style={styles.boothText}>
+      <View style={[styles.badgeBox, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, isDeceased && styles.deceasedBadgeBox]}>
+        <Text style={[styles.boothText, { color: theme.colors.primaryLight }]}>
           {member.booth_part_number ? member.booth_part_number : `B-${member.serial_number || 1}`}
         </Text>
-        <Text style={styles.serialText}>
+        <Text style={[styles.serialText, { color: theme.colors.textPrimary }]}>
           #{member.serial_number || "0"}
         </Text>
       </View>
@@ -110,7 +116,7 @@ export const VoterCard: React.FC<VoterCardProps> = memo(({ member, onPress }) =>
       {/* Center Voter Info */}
       <View style={styles.infoContainer}>
         <View style={styles.nameRow}>
-          <Text style={[styles.nameText, isDeceased && styles.deceasedText]} numberOfLines={1}>
+          <Text style={[styles.nameText, { color: theme.colors.textPrimary }, isDeceased && styles.deceasedText]} numberOfLines={1}>
             {member.full_name_mr || member.full_name_en}
           </Text>
           {isDeceased && (
@@ -121,7 +127,7 @@ export const VoterCard: React.FC<VoterCardProps> = memo(({ member, onPress }) =>
         </View>
 
         {member.relative_name_mr ? (
-          <Text style={styles.relativeText} numberOfLines={1}>
+          <Text style={[styles.relativeText, { color: theme.colors.textSecondary }]} numberOfLines={1}>
             {member.relation_type === "Husband" ? "पती: " : "वडील: "}
             {member.relative_name_mr}
             {member.house_number ? ` • घर: ${member.house_number}` : ""}
@@ -130,7 +136,7 @@ export const VoterCard: React.FC<VoterCardProps> = memo(({ member, onPress }) =>
 
         <View style={styles.locationRow}>
           <Ionicons name="location-sharp" size={14} color={theme.colors.secondary} />
-          <Text style={styles.locationText} numberOfLines={1}>
+          <Text style={[styles.locationText, { color: theme.colors.textMuted }]} numberOfLines={1}>
             {villageDisplay ? `${villageDisplay} ` : ""}
             {member.age ? `• वय: ${member.age} ` : ""}
             {member.gender ? `• ${member.gender === "Female" ? "स्त्री" : "पुरुष"}` : ""}

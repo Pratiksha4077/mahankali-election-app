@@ -397,11 +397,18 @@ def commit_mongo_job_records(job_id: str, duplicate_strategy: str = "SKIP") -> i
     imported_count = 0
 
     village_id = job.get("villageId")
-    v_query = {"_id": ObjectId(village_id)} if ObjectId.is_valid(village_id) else {"_id": village_id}
-    village_doc = db.villages.find_one(v_query)
+    village_doc = None
+    if village_id:
+        v_conditions = [{"_id": str(village_id)}, {"name": str(village_id)}, {"nameMarathi": str(village_id)}]
+        if ObjectId.is_valid(str(village_id)):
+            v_conditions.append({"_id": ObjectId(str(village_id))})
+        village_doc = db.villages.find_one({"$or": v_conditions})
+    if not village_doc:
+        village_doc = db.villages.find_one({})
 
+    vid_val = str(village_doc["_id"]) if village_doc else str(village_id or "6ac1d730a189ac7666aac04c")
     v_ref = {
-        "id": str(village_doc.get("_id", village_id)) if village_doc else village_id,
+        "id": vid_val,
         "name": village_doc.get("name", "Sakharele") if village_doc else "Sakharele",
         "nameMarathi": village_doc.get("nameMarathi", "साखराळे") if village_doc else "साखराळे"
     }
