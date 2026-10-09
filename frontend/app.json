@@ -33,8 +33,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "152349bd-fb43-43f2-a16a-2a96109698ac"
+        "projectId": "b168df0e-b04e-4c05-ae1a-1e3929ecd7c6"
       }
-    }
+    },
+    "owner": "mahakali"
   }
 }
