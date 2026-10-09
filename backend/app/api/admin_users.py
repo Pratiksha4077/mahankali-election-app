@@ -187,9 +187,15 @@ async def set_user_permissions_route(
     payload: UserPermissionsRequest,
     admin: AuthUser = Depends(require_admin)
 ):
-    """Admin toggles or sets permission granted status for a user."""
-    is_granted = payload.permissions_granted if payload.permissions_granted is not None else True
-    res = await MongoUserService.set_user_permissions(user_id, is_granted, permissions_detail=payload.permissions)
+    """Admin cannot grant device permissions remotely; device permissions must be granted on device."""
+    is_granted = payload.permissions_granted if payload.permissions_granted is not None else False
+    if is_granted or (payload.permissions and any(bool(v) for v in payload.permissions.values())):
+        raise HTTPException(
+            status_code=400,
+            detail="ॲडमिनद्वारे डिव्हाइस परवानग्या दूरस्थपणे मंजूर केल्या जाऊ शकत नाहीत. वापरकर्त्याने स्वतःच्या डिव्हाइसवर परवानग्या देणे आवश्यक आहे. (Device permissions cannot be granted remotely by Admin. Permissions must be granted on the user's device.)"
+        )
+
+    res = await MongoUserService.set_user_permissions(user_id, False, permissions_detail=payload.permissions)
     if not res:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -198,10 +204,10 @@ async def set_user_permissions_route(
         action="UPDATE_USER_PERMISSIONS",
         entity_type="USER",
         entity_id=user_id,
-        details=f"Admin set user {user_id} permissions to {'GRANTED' if is_granted else 'REVOKED'}",
+        details=f"Admin revoked user {user_id} device permissions",
         username=admin.username
     )
-    return {"success": True, "message": f"Permissions updated", "data": res}
+    return {"success": True, "message": "Permissions revoked", "data": res}
 
 @router.post("/self-permissions")
 async def set_self_permissions(

@@ -200,54 +200,57 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
 
                 {/* Granular Device Permission Badges */}
                 <View style={{ flexDirection: "row", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                  {/* Location Permission Badge */}
                   <View
                     style={[
                       styles.permBadge,
-                      { backgroundColor: (item.permissions?.location ?? item.permissions_granted) ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
+                      { backgroundColor: item.permissions?.location ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
                     ]}
                   >
                     <Ionicons
                       name="navigate"
                       size={10}
-                      color={(item.permissions?.location ?? item.permissions_granted) ? "#10B981" : "#EF4444"}
+                      color={item.permissions?.location ? "#10B981" : "#EF4444"}
                       style={{ marginRight: 2 }}
                     />
-                    <Text style={[styles.permBadgeText, { color: (item.permissions?.location ?? item.permissions_granted) ? "#34D399" : "#F87171" }]}>
-                      स्थान
+                    <Text style={[styles.permBadgeText, { color: item.permissions?.location ? "#34D399" : "#F87171" }]}>
+                      स्थान: {item.permissions?.location ? "मंजूर" : "नाकारले"}
                     </Text>
                   </View>
 
+                  {/* Call History Permission Badge */}
                   <View
                     style={[
                       styles.permBadge,
-                      { backgroundColor: item.permissions?.phoneCall ? "rgba(16, 185, 129, 0.15)" : "rgba(148, 163, 184, 0.15)" }
+                      { backgroundColor: (item.permissions?.callHistory ?? item.permissions?.phoneCall) ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
                     ]}
                   >
                     <Ionicons
                       name="call"
                       size={10}
-                      color={item.permissions?.phoneCall ? "#10B981" : "#94A3B8"}
+                      color={(item.permissions?.callHistory ?? item.permissions?.phoneCall) ? "#10B981" : "#EF4444"}
                       style={{ marginRight: 2 }}
                     />
-                    <Text style={[styles.permBadgeText, { color: item.permissions?.phoneCall ? "#34D399" : "#94A3B8" }]}>
-                      कॉल
+                    <Text style={[styles.permBadgeText, { color: (item.permissions?.callHistory ?? item.permissions?.phoneCall) ? "#34D399" : "#F87171" }]}>
+                      कॉल: {(item.permissions?.callHistory ?? item.permissions?.phoneCall) ? "मंजूर" : "नाकारले"}
                     </Text>
                   </View>
 
+                  {/* SMS Permission Badge */}
                   <View
                     style={[
                       styles.permBadge,
-                      { backgroundColor: item.permissions?.sms ? "rgba(16, 185, 129, 0.15)" : "rgba(148, 163, 184, 0.15)" }
+                      { backgroundColor: item.permissions?.sms ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
                     ]}
                   >
                     <Ionicons
                       name="chatbubbles"
                       size={10}
-                      color={item.permissions?.sms ? "#10B981" : "#94A3B8"}
+                      color={item.permissions?.sms ? "#10B981" : "#EF4444"}
                       style={{ marginRight: 2 }}
                     />
-                    <Text style={[styles.permBadgeText, { color: item.permissions?.sms ? "#34D399" : "#94A3B8" }]}>
-                      SMS
+                    <Text style={[styles.permBadgeText, { color: item.permissions?.sms ? "#34D399" : "#F87171" }]}>
+                      SMS: {item.permissions?.sms ? "मंजूर" : "नाकारले"}
                     </Text>
                   </View>
                 </View>

@@ -1,5 +1,5 @@
-import React from "react";
-import { View, Platform } from "react-native";
+import React, { useState, useEffect, useCallback } from "react";
+import { View, Platform, AppState, ActivityIndicator } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -25,10 +25,13 @@ import { UserDetailsScreen } from "../screens/admin/UserDetailsScreen";
 import { UserActivityScreen } from "../screens/admin/UserActivityScreen";
 import { AuditLogsScreen } from "../screens/admin/AuditLogsScreen";
 
-// Auth Screen
+// Auth & Permission Screens
 import { LoginScreen } from "../screens/auth/LoginScreen";
+import { PermissionGateScreen } from "../screens/auth/PermissionGateScreen";
 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { checkCurrentPermissionsStatus } from "../utils/devicePermissions";
+import { authAPI } from "../api/client";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -103,7 +106,7 @@ const MainTabs: React.FC = () => {
           />
         </>
       ) : (
-        /* USER PANEL TABS: Voters List for Village, 12 Reports, Settings (No upload) */
+        /* USER PANEL TABS: Voters List for Village, 12 Reports, Settings (Strictly gated by 3 permissions) */
         <>
           <Tab.Screen
             name="HomeTab"
@@ -138,14 +141,108 @@ const MainTabs: React.FC = () => {
 };
 
 export const RootNavigator: React.FC = () => {
-  const { isAuthenticated, isAdmin } = useAuth();
+  const { isAuthenticated, isAdmin, activePanel } = useAuth();
+  const { theme } = useTheme();
+
+  const [hasAllDevicePermissions, setHasAllDevicePermissions] = useState<boolean>(false);
+  const [checkingPermissions, setCheckingPermissions] = useState<boolean>(true);
+
+  const isAdminView = isAdmin && activePanel === "ADMIN";
+
+  /**
+   * Directly verify hardware/OS permissions on physical device.
+   * Does NOT rely on stored database flags or AsyncStorage.
+   */
+  const recheckDevicePermissions = useCallback(async () => {
+    // Admin panel does not require device hardware call/sms logs
+    if (isAdminView) {
+      setHasAllDevicePermissions(true);
+      setCheckingPermissions(false);
+      return;
+    }
+
+    try {
+      const status = await checkCurrentPermissionsStatus();
+      setHasAllDevicePermissions(status.allGranted);
+
+      // Keep backend synchronized with true device status
+      authAPI.updateSelfPermissions(status.allGranted, {
+        location: status.location,
+        callHistory: status.callHistory,
+        phoneCall: status.callHistory,
+        sms: status.sms,
+      }).catch(() => {});
+    } catch (e) {
+      setHasAllDevicePermissions(false);
+    } finally {
+      setCheckingPermissions(false);
+    }
+  }, [isAdminView]);
+
+  // Check on mount or panel switch
+  useEffect(() => {
+    if (isAuthenticated) {
+      setCheckingPermissions(true);
+      recheckDevicePermissions();
+    }
+  }, [isAuthenticated, isAdminView, recheckDevicePermissions]);
+
+  // Recheck all permissions whenever the app returns to the foreground
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      if (nextAppState === "active") {
+        recheckDevicePermissions();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [isAuthenticated, recheckDevicePermissions]);
 
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!isAuthenticated ? (
           <Stack.Screen name="Login" component={LoginScreen} />
+        ) : !isAdminView && !hasAllDevicePermissions ? (
+          /* STRICT ACCESS RULE: User Panel is completely locked unless ALL THREE permissions are granted on device */
+          checkingPermissions ? (
+            <Stack.Screen
+              name="PermissionChecking"
+              options={{ animation: "none" }}
+            >
+              {() => (
+                <View
+                  style={{
+                    flex: 1,
+                    backgroundColor: theme.colors.background,
+                    justifyContent: "center",
+                    alignItems: "center"
+                  }}
+                >
+                  <ActivityIndicator size="large" color={theme.colors.primaryLight} />
+                </View>
+              )}
+            </Stack.Screen>
+          ) : (
+            <Stack.Screen
+              name="PermissionGate"
+              options={{ animation: "fade" }}
+            >
+              {() => (
+                <PermissionGateScreen
+                  onPermissionsGranted={() => {
+                    setHasAllDevicePermissions(true);
+                  }}
+                />
+              )}
+            </Stack.Screen>
+          )
         ) : (
+          /* USER PANEL UNLOCKED (or ADMIN PANEL) */
           <>
             <Stack.Screen name="Main" component={MainTabs} />
             {/* Common / User Screens */}

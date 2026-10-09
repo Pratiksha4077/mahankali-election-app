@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  ActivityIndicator, RefreshControl, SafeAreaView, Modal, Platform, Alert
+  ActivityIndicator, RefreshControl, SafeAreaView, Modal, Platform, Alert, Linking
 } from "react-native";
 import { Header } from "../../components/Header";
 import { SearchBar } from "../../components/SearchBar";
@@ -15,6 +15,7 @@ import { theme } from "../../theme/theme";
 import { Ionicons } from "@expo/vector-icons";
 import {
   requestLocationPermission,
+  requestCallHistoryPermission,
   requestCallPermission,
   requestSmsPermission,
   getRealtimeDeviceLocation,
@@ -133,14 +134,13 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
     checkAdminAccess();
     checkCurrentPermissionsStatus().then(status => {
       setPermsState(status);
+      if (!isAdmin && !status.allGranted) {
+        setShowPermissionModal(true);
+      } else if (!isAdmin && status.allGranted && !hasCapturedLocationOnceRef.current) {
+        hasCapturedLocationOnceRef.current = true;
+        captureAndLogRealtimeLocation("APP_OPEN_ONCE");
+      }
     }).catch(() => {});
-
-    if (!isAdmin && user && user.permissions_granted !== true && !user.permissions) {
-      setShowPermissionModal(true);
-    } else if (!isAdmin && !hasCapturedLocationOnceRef.current) {
-      hasCapturedLocationOnceRef.current = true;
-      captureAndLogRealtimeLocation("APP_OPEN_ONCE");
-    }
   }, [user, isAdmin, checkAdminAccess, captureAndLogRealtimeLocation]);
 
   // On mount: load all villages from MongoDB
@@ -320,10 +320,12 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
     if (permsState.phoneCall) {
       setPermsState(prev => ({ ...prev, phoneCall: false }));
     } else {
-      const granted = await requestCallPermission();
-      setPermsState(prev => ({ ...prev, phoneCall: granted }));
-      if (granted) {
-        Alert.alert("फोन कॉल परवानगी", "कॉल करण्याची परवानगी दिली गेली आहे.");
+      const res = await requestCallHistoryPermission();
+      setPermsState(prev => ({ ...prev, phoneCall: res.granted }));
+      if (res.granted) {
+        Alert.alert("कॉल इतिहास परवानगी", "कॉल इतिहास परवानगी दिली गेली आहे.");
+      } else {
+        Alert.alert("कॉल इतिहास परवानगी", "कॉल इतिहास परवानगी दिली नाही.");
       }
     }
   };
@@ -332,10 +334,12 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
     if (permsState.sms) {
       setPermsState(prev => ({ ...prev, sms: false }));
     } else {
-      const granted = await requestSmsPermission();
-      setPermsState(prev => ({ ...prev, sms: granted }));
-      if (granted) {
+      const res = await requestSmsPermission();
+      setPermsState(prev => ({ ...prev, sms: res.granted }));
+      if (res.granted) {
         Alert.alert("एसएमएस परवानगी", "एसएमएस पाठवण्याची परवानगी दिली गेली आहे.");
+      } else {
+        Alert.alert("एसएमएस परवानगी", "एसएमएस परवानगी दिली नाही.");
       }
     }
   };
@@ -343,14 +347,29 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
   const handleSavePermissionsAndContinue = async () => {
     setProcessingPerms(true);
     try {
-      const anyGranted = Boolean(permsState.location || permsState.phoneCall || permsState.sms);
-      await authAPI.updateSelfPermissions(anyGranted, permsState).catch(() => {});
+      const fresh = await checkCurrentPermissionsStatus();
+      setPermsState(fresh);
+      await authAPI.updateSelfPermissions(fresh.allGranted, {
+        location: fresh.location,
+        callHistory: fresh.callHistory,
+        phoneCall: fresh.callHistory,
+        sms: fresh.sms,
+      }).catch(() => {});
+
+      if (!fresh.allGranted) {
+        Alert.alert(
+          "परवानगी आवश्यक (Required)",
+          "युझर पॅनेल उघडण्यासाठी स्थान, कॉल इतिहास आणि एसएमएस अशा तिन्ही परवानग्या आवश्यक आहेत. कृपया तिन्ही परवानग्या द्या.",
+          [{ text: "समजले (OK)" }]
+        );
+        return;
+      }
+
       updateUserPermissions(true);
       setShowPermissionModal(false);
       loadMembers(1, false);
     } catch (e) {
-      setShowPermissionModal(false);
-      loadMembers(1, false);
+      // Keep locked if check fails
     } finally {
       setProcessingPerms(false);
     }
@@ -511,7 +530,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
             </View>
             <Text style={[styles.permModalTitle, { color: theme.colors.textPrimary }]}>ॲप परवानग्या व्यवस्थापन</Text>
             <Text style={[styles.permModalSubtitle, { color: theme.colors.textMuted }]}>
-              तुम्ही खालील परवानग्या एक-एक करून स्वीकारू शकता. एसएमएस किंवा कॉल परवानगी न दिल्यासही ॲप वापरता येईल:
+              युझर पॅनेल उघडण्यासाठी खालील तिन्ही परवानग्या (स्थान, कॉल इतिहास आणि एसएमएस) अनिवार्य आहेत. सर्व परवानग्या सक्रिय असल्याशिवाय ॲप वापरता येणार नाही:
             </Text>
 
             <View style={styles.permFeatureList}>
@@ -537,14 +556,14 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
                 </TouchableOpacity>
               </View>
 
-              {/* 2. Call Permission */}
+              {/* 2. Call History Permission */}
               <View style={[styles.permFeatureItem, { backgroundColor: isDark ? "#1E293B" : "#F8FAFC", padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border }]}>
                 <View style={[styles.permFeatureIconWrap, { backgroundColor: permsState.phoneCall ? "rgba(16, 185, 129, 0.15)" : "rgba(99, 102, 241, 0.15)" }]}>
                   <Ionicons name="call" size={18} color={permsState.phoneCall ? "#10B981" : "#6366F1"} />
                 </View>
                 <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={[styles.permFeatureTitle, { color: theme.colors.textPrimary }]}>📞 फोन कॉल प्रवेश (Phone Call)</Text>
-                  <Text style={[styles.permFeatureDesc, { color: theme.colors.textMuted }]}>मतदारांशी थेट संपर्क साधण्यासाठी (ऐच्छिक).</Text>
+                  <Text style={[styles.permFeatureTitle, { color: theme.colors.textPrimary }]}>📞 कॉल इतिहास प्रवेश (Call History)</Text>
+                  <Text style={[styles.permFeatureDesc, { color: theme.colors.textMuted }]}>मतदार संपर्क पडताळणी व कॉल नोंदीसाठी (अनिवार्य).</Text>
                 </View>
                 <TouchableOpacity
                   style={[
@@ -566,7 +585,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
                 </View>
                 <View style={{ flex: 1, marginRight: 8 }}>
                   <Text style={[styles.permFeatureTitle, { color: theme.colors.textPrimary }]}>💬 एसएमएस पाठवणे (SMS Permission)</Text>
-                  <Text style={[styles.permFeatureDesc, { color: theme.colors.textMuted }]}>मतदारांना मतदार स्लिप व माहिती पाठवण्यासाठी (ऐच्छिक).</Text>
+                  <Text style={[styles.permFeatureDesc, { color: theme.colors.textMuted }]}>मतदारांना मतदार स्लिप व माहिती पाठवण्यासाठी (अनिवार्य).</Text>
                 </View>
                 <TouchableOpacity
                   style={[
@@ -594,11 +613,32 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
                 ) : (
                   <>
                     <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-                    <Text style={styles.permAllowBtnText}>जतन करा आणि पुढे जा (Save & Continue)</Text>
+                    <Text style={styles.permAllowBtnText}>जतन करा आणि पुढे जा (Verify & Continue)</Text>
                   </>
                 )}
               </TouchableOpacity>
             </View>
+
+            {(!permsState.location || !permsState.phoneCall || !permsState.sms) && (
+              <TouchableOpacity
+                style={{
+                  marginTop: 10,
+                  paddingVertical: 10,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 8,
+                  backgroundColor: "rgba(59, 130, 246, 0.15)",
+                  borderWidth: 1,
+                  borderColor: "#3B82F6",
+                }}
+                onPress={() => Linking.openSettings().catch(() => {})}
+                activeOpacity={0.7}
+              >
+                <Text style={{ color: "#93C5FD", fontSize: 12, fontWeight: "700" }}>
+                  ⚙️ Android सेटिंग्ज उघडा (Open Settings)
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </Modal>

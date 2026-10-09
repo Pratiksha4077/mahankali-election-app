@@ -16,11 +16,25 @@ export interface RealtimeLocationResult {
   timestamp?: number;
 }
 
+export type PermissionStateValue = "GRANTED" | "DENIED" | "RESTRICTED" | "UNDETERMINED";
+
+export interface PermissionDetails {
+  location: boolean;
+  callHistory: boolean;
+  phoneCall: boolean; // Backwards-compatible alias for callHistory
+  sms: boolean;
+  allGranted: boolean;
+  locationStatus: PermissionStateValue;
+  callStatus: PermissionStateValue;
+  smsStatus: PermissionStateValue;
+}
+
 export interface PermissionStatusResult {
   allGranted: boolean;
   callGranted: boolean;
   smsGranted: boolean;
   locationGranted: boolean;
+  details: PermissionDetails;
   coords?: {
     latitude: number;
     longitude: number;
@@ -35,13 +49,11 @@ export interface PermissionStatusResult {
  */
 export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResult | null> {
   try {
-    // 1. Check if location services (GPS) are enabled on the phone
     const hasServices = await Location.hasServicesEnabledAsync().catch(() => true);
     if (!hasServices) {
       console.warn("Location services (GPS) are turned off on this device");
     }
 
-    // 2. Check / Request Foreground Permissions
     let { status } = await Location.getForegroundPermissionsAsync();
     if (status !== "granted") {
       const req = await Location.requestForegroundPermissionsAsync();
@@ -51,14 +63,12 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
       }
     }
 
-    // 3. Try to get current high-accuracy position
     let pos: Location.LocationObject | null = null;
     try {
       pos = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
     } catch (currErr) {
-      // If immediate GPS fix timed out, check last known position
       pos = await Location.getLastKnownPositionAsync({});
     }
 
@@ -68,7 +78,6 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
 
     const { latitude, longitude, accuracy } = pos.coords;
 
-    // 4. Reverse Geocoding to get real human-readable street / city / district
     let address = "";
     let placeName = "";
     let city = "";
@@ -94,7 +103,7 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
     }
 
     const now = new Date(pos.timestamp || Date.now());
-    const dateStr = now.toLocaleDateString("en-GB"); // DD/MM/YYYY
+    const dateStr = now.toLocaleDateString("en-GB");
     const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
 
     return {
@@ -118,9 +127,13 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
 }
 
 /**
- * Request Location permission individually
+ * 1. Request Location permission individually
  */
-export async function requestLocationPermission(): Promise<{ granted: boolean; location: RealtimeLocationResult | null }> {
+export async function requestLocationPermission(): Promise<{
+  granted: boolean;
+  status: PermissionStateValue;
+  location: RealtimeLocationResult | null;
+}> {
   try {
     const { status } = await Location.requestForegroundPermissionsAsync();
     const granted = status === "granted";
@@ -128,131 +141,213 @@ export async function requestLocationPermission(): Promise<{ granted: boolean; l
     if (granted) {
       location = await getRealtimeDeviceLocation();
     }
-    return { granted, location };
+    const mappedStatus: PermissionStateValue =
+      status === "granted" ? "GRANTED" : status === "denied" ? "DENIED" : "RESTRICTED";
+    return { granted, status: mappedStatus, location };
   } catch (e) {
-    return { granted: false, location: null };
+    return { granted: false, status: "RESTRICTED", location: null };
   }
 }
 
 /**
- * Request Call permission individually (Android native)
+ * 2. Request Call History permission individually (Android native READ_CALL_LOG)
+ * Strict platform compliance: On non-Android or if restricted by OS/Google Play,
+ * returns RESTRICTED and granted = false (never fake approval).
  */
-export async function requestCallPermission(): Promise<boolean> {
-  if (Platform.OS !== "android") return true;
-  try {
-    const res = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CALL_PHONE);
-    return res === PermissionsAndroid.RESULTS.GRANTED;
-  } catch (e) {
-    return false;
-  }
-}
-
-/**
- * Request SMS permission individually (Android native)
- */
-export async function requestSmsPermission(): Promise<boolean> {
-  if (Platform.OS !== "android") return true;
-  try {
-    const res = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.SEND_SMS);
-    return res === PermissionsAndroid.RESULTS.GRANTED;
-  } catch (e) {
-    return false;
-  }
-}
-
-/**
- * Checks whether required Call, SMS, and Location permissions are already granted on Android.
- */
-export async function checkDevicePermissions(): Promise<boolean> {
+export async function requestCallHistoryPermission(): Promise<{
+  granted: boolean;
+  status: PermissionStateValue;
+}> {
   if (Platform.OS !== "android") {
-    return true;
+    // Non-Android platforms do not support native Android Call Log access
+    return { granted: false, status: "RESTRICTED" };
   }
 
   try {
-    const locPerm = await Location.getForegroundPermissionsAsync();
-    const callGranted = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CALL_PHONE);
-    const smsGranted = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.SEND_SMS);
+    const res = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
+      {
+        title: "कॉल इतिहास परवानगी (Call History Permission)",
+        message:
+          "मतदार पडताळणी व संपर्कासाठी कॉल इतिहास (Call Log) परवानगी आवश्यक आहे.",
+        buttonPositive: "मंजूर करा (Allow)",
+        buttonNegative: "नाकारा (Deny)",
+      }
+    );
 
-    return locPerm.status === "granted" && callGranted && smsGranted;
+    if (res === PermissionsAndroid.RESULTS.GRANTED) {
+      return { granted: true, status: "GRANTED" };
+    } else if (res === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
+      return { granted: false, status: "RESTRICTED" };
+    } else {
+      return { granted: false, status: "DENIED" };
+    }
   } catch (e) {
-    return false;
+    console.warn("Call History permission request error:", e);
+    return { granted: false, status: "RESTRICTED" };
+  }
+}
+
+/** Backwards compatible alias */
+export async function requestCallPermission(): Promise<boolean> {
+  const res = await requestCallHistoryPermission();
+  return res.granted;
+}
+
+/**
+ * 3. Request SMS permission individually (Android native READ_SMS)
+ * Strict platform compliance: On non-Android or if restricted by OS/Google Play,
+ * returns RESTRICTED and granted = false (never fake approval).
+ */
+export async function requestSmsPermission(): Promise<{
+  granted: boolean;
+  status: PermissionStateValue;
+}> {
+  if (Platform.OS !== "android") {
+    // Non-Android platforms do not support native Android SMS access
+    return { granted: false, status: "RESTRICTED" };
+  }
+
+  try {
+    const res = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.READ_SMS,
+      {
+        title: "एसएमएस परवानगी (SMS Permission)",
+        message:
+          "मतदारांना मतदार स्लिप व माहिती पाठवण्यासाठी एसएमएस (SMS) परवानगी आवश्यक आहे.",
+        buttonPositive: "मंजूर करा (Allow)",
+        buttonNegative: "नाकारा (Deny)",
+      }
+    );
+
+    if (res === PermissionsAndroid.RESULTS.GRANTED) {
+      return { granted: true, status: "GRANTED" };
+    } else if (res === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
+      return { granted: false, status: "RESTRICTED" };
+    } else {
+      return { granted: false, status: "DENIED" };
+    }
+  } catch (e) {
+    console.warn("SMS permission request error:", e);
+    return { granted: false, status: "RESTRICTED" };
   }
 }
 
 /**
- * Checks current status of each permission individually
+ * Checks current status of each permission individually by querying the physical device OS.
+ * Never relies on stored database or cache flags.
  */
-export async function checkCurrentPermissionsStatus(): Promise<{ location: boolean; phoneCall: boolean; sms: boolean }> {
+export async function checkCurrentPermissionsStatus(): Promise<PermissionDetails> {
   let location = false;
-  let phoneCall = false;
+  let locationStatus: PermissionStateValue = "DENIED";
+  let callHistory = false;
+  let callStatus: PermissionStateValue = "DENIED";
   let sms = false;
+  let smsStatus: PermissionStateValue = "DENIED";
 
+  // Check Location
   try {
     const loc = await Location.getForegroundPermissionsAsync();
     location = loc.status === "granted";
-  } catch (e) {}
-
-  if (Platform.OS === "android") {
-    try {
-      phoneCall = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CALL_PHONE);
-      sms = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.SEND_SMS);
-    } catch (e) {}
-  } else {
-    phoneCall = true;
-    sms = true;
+    locationStatus = loc.status === "granted" ? "GRANTED" : loc.status === "denied" ? "DENIED" : "RESTRICTED";
+  } catch (e) {
+    locationStatus = "RESTRICTED";
   }
 
-  return { location, phoneCall, sms };
+  // Check Call History & SMS on Android
+  if (Platform.OS === "android") {
+    try {
+      callHistory = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_CALL_LOG);
+      callStatus = callHistory ? "GRANTED" : "DENIED";
+    } catch (e) {
+      callHistory = false;
+      callStatus = "RESTRICTED";
+    }
+
+    try {
+      sms = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_SMS);
+      smsStatus = sms ? "GRANTED" : "DENIED";
+    } catch (e) {
+      sms = false;
+      smsStatus = "RESTRICTED";
+    }
+  } else {
+    // Non-Android platforms (e.g. web browser / iOS) cannot grant Android Call Log & SMS
+    callHistory = false;
+    callStatus = "RESTRICTED";
+    sms = false;
+    smsStatus = "RESTRICTED";
+  }
+
+  const allGranted = location && callHistory && sms;
+
+  return {
+    location,
+    callHistory,
+    phoneCall: callHistory,
+    sms,
+    allGranted,
+    locationStatus,
+    callStatus,
+    smsStatus,
+  };
 }
 
 /**
- * Prompts user with native dialogues for all permissions
+ * Backwards compatible check function.
  */
-export async function requestAllDevicePermissions(): Promise<PermissionStatusResult> {
-  let realLocation: RealtimeLocationResult | null = null;
-  let locationGranted = false;
-  try {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    locationGranted = status === "granted";
-    if (locationGranted) {
-      realLocation = await getRealtimeDeviceLocation();
-    }
-  } catch (locErr) {
-    console.warn("Location permission error:", locErr);
-  }
+export async function checkDevicePermissions(): Promise<boolean> {
+  const status = await checkCurrentPermissionsStatus();
+  return status.allGranted;
+}
 
-  let callGranted = false;
-  let smsGranted = false;
+/**
+ * Requests required permissions SEQUENTIALLY:
+ * 1. Location
+ * 2. Call History
+ * 3. SMS
+ * 
+ * Strict Access Rule: Returns allGranted = true ONLY IF all three permissions
+ * are successfully granted and verified on the physical device.
+ */
+export async function requestSequentialDevicePermissions(
+  onStepProgress?: (step: "location" | "callHistory" | "sms", status: PermissionStateValue) => void
+): Promise<PermissionStatusResult> {
+  // Step 1: Location
+  const locRes = await requestLocationPermission();
+  onStepProgress?.("location", locRes.status);
 
-  if (Platform.OS === "android") {
-    try {
-      const granted = await PermissionsAndroid.requestMultiple([
-        PermissionsAndroid.PERMISSIONS.CALL_PHONE,
-        PermissionsAndroid.PERMISSIONS.SEND_SMS,
-      ]);
+  // Step 2: Call History
+  const callRes = await requestCallHistoryPermission();
+  onStepProgress?.("callHistory", callRes.status);
 
-      callGranted = granted[PermissionsAndroid.PERMISSIONS.CALL_PHONE] === PermissionsAndroid.RESULTS.GRANTED;
-      smsGranted = granted[PermissionsAndroid.PERMISSIONS.SEND_SMS] === PermissionsAndroid.RESULTS.GRANTED;
-    } catch (err) {
-      console.warn("Call/SMS permission request error:", err);
-    }
-  } else {
-    callGranted = true;
-    smsGranted = true;
-  }
+  // Step 3: SMS
+  const smsRes = await requestSmsPermission();
+  onStepProgress?.("sms", smsRes.status);
+
+  // Final verification directly against the device OS
+  const details = await checkCurrentPermissionsStatus();
 
   return {
-    allGranted: locationGranted && callGranted && smsGranted,
-    callGranted,
-    smsGranted,
-    locationGranted,
-    coords: realLocation
+    allGranted: details.allGranted,
+    locationGranted: details.location,
+    callGranted: details.callHistory,
+    smsGranted: details.sms,
+    details,
+    coords: locRes.location
       ? {
-          latitude: realLocation.latitude,
-          longitude: realLocation.longitude,
-          accuracy: realLocation.accuracy,
+          latitude: locRes.location.latitude,
+          longitude: locRes.location.longitude,
+          accuracy: locRes.location.accuracy,
         }
       : undefined,
-    realLocation: realLocation || undefined,
+    realLocation: locRes.location || undefined,
   };
+}
+
+/**
+ * Backwards compatible alias for requestAllDevicePermissions
+ */
+export async function requestAllDevicePermissions(): Promise<PermissionStatusResult> {
+  return requestSequentialDevicePermissions();
 }

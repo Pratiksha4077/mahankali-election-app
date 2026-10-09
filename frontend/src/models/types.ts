@@ -15,7 +15,11 @@ export interface User {
   permissions?: {
     location?: boolean;
     phoneCall?: boolean;
+    callHistory?: boolean;
     sms?: boolean;
+    locationStatus?: string;
+    callStatus?: string;
+    smsStatus?: string;
   };
   created_at?: string;
   last_activity?: string;

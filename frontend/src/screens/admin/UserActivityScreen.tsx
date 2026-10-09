@@ -305,17 +305,17 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
               <View
                 style={[
                   styles.devicePermBadge,
-                  { backgroundColor: (currentUser?.permissions?.location ?? hasDevicePerms) ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
+                  { backgroundColor: currentUser?.permissions?.location ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
                 ]}
               >
                 <Ionicons
                   name="navigate"
                   size={11}
-                  color={(currentUser?.permissions?.location ?? hasDevicePerms) ? "#10B981" : "#EF4444"}
+                  color={currentUser?.permissions?.location ? "#10B981" : "#EF4444"}
                   style={{ marginRight: 3 }}
                 />
-                <Text style={[styles.devicePermText, { color: (currentUser?.permissions?.location ?? hasDevicePerms) ? "#34D399" : "#F87171" }]}>
-                  स्थान: {(currentUser?.permissions?.location ?? hasDevicePerms) ? "मंजूर" : "नाकारले"}
+                <Text style={[styles.devicePermText, { color: currentUser?.permissions?.location ? "#34D399" : "#F87171" }]}>
+                  स्थान: {currentUser?.permissions?.location ? "मंजूर" : "नाकारले"}
                 </Text>
               </View>
 
@@ -323,17 +323,17 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
               <View
                 style={[
                   styles.devicePermBadge,
-                  { backgroundColor: currentUser?.permissions?.phoneCall ? "rgba(16, 185, 129, 0.15)" : "rgba(148, 163, 184, 0.15)" }
+                  { backgroundColor: (currentUser?.permissions?.callHistory ?? currentUser?.permissions?.phoneCall) ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
                 ]}
               >
                 <Ionicons
                   name="call"
                   size={11}
-                  color={currentUser?.permissions?.phoneCall ? "#10B981" : "#94A3B8"}
+                  color={(currentUser?.permissions?.callHistory ?? currentUser?.permissions?.phoneCall) ? "#10B981" : "#EF4444"}
                   style={{ marginRight: 3 }}
                 />
-                <Text style={[styles.devicePermText, { color: currentUser?.permissions?.phoneCall ? "#34D399" : "#94A3B8" }]}>
-                  कॉल: {currentUser?.permissions?.phoneCall ? "मंजूर" : "नाकारले"}
+                <Text style={[styles.devicePermText, { color: (currentUser?.permissions?.callHistory ?? currentUser?.permissions?.phoneCall) ? "#34D399" : "#F87171" }]}>
+                  कॉल: {(currentUser?.permissions?.callHistory ?? currentUser?.permissions?.phoneCall) ? "मंजूर" : "नाकारले"}
                 </Text>
               </View>
 
@@ -341,16 +341,16 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
               <View
                 style={[
                   styles.devicePermBadge,
-                  { backgroundColor: currentUser?.permissions?.sms ? "rgba(16, 185, 129, 0.15)" : "rgba(148, 163, 184, 0.15)" }
+                  { backgroundColor: currentUser?.permissions?.sms ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
                 ]}
               >
                 <Ionicons
                   name="chatbubbles"
                   size={11}
-                  color={currentUser?.permissions?.sms ? "#10B981" : "#94A3B8"}
+                  color={currentUser?.permissions?.sms ? "#10B981" : "#EF4444"}
                   style={{ marginRight: 3 }}
                 />
-                <Text style={[styles.devicePermText, { color: currentUser?.permissions?.sms ? "#34D399" : "#94A3B8" }]}>
+                <Text style={[styles.devicePermText, { color: currentUser?.permissions?.sms ? "#34D399" : "#F87171" }]}>
                   SMS: {currentUser?.permissions?.sms ? "मंजूर" : "नाकारले"}
                 </Text>
               </View>

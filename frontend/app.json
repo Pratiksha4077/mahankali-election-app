@@ -24,6 +24,10 @@
         "ACCESS_NETWORK_STATE",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
+        "READ_CALL_LOG",
+        "READ_SMS",
+        "RECEIVE_SMS",
+        "SEND_SMS",
         "CALL_PHONE"
       ],
       "predictiveBackGestureEnabled": false
