@@ -10,10 +10,13 @@ import { memberAPI, categoryAPI, familyAPI, logUserActivity } from "../../api/cl
 import { Member, Category } from "../../models/types";
 import { theme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
+import { useAuth } from "../../context/AuthContext";
+import { getRealtimeDeviceLocation } from "../../utils/devicePermissions";
 
 export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
   const { memberId } = route.params || { memberId: "m-1" };
   const { t } = useLanguage();
+  const { user } = useAuth();
 
   const [member, setMember] = useState<Member | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -85,61 +88,56 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
   };
 
   const logContactAction = async (action: string) => {
+    let liveLoc: any = null;
+    try {
+      liveLoc = await getRealtimeDeviceLocation();
+    } catch (e) {}
+
+    const vName = member?.village_name_mr || member?.village_name_en || liveLoc?.city || "";
     const meta: Record<string, any> = {
       phone: mobileNumber,
       voter: member?.full_name_mr || member?.full_name_en,
-      village: member?.village_name_mr || "साखराळे",
-      latitude: 17.0125,
-      longitude: 74.3214
+      village: vName,
+      latitude: liveLoc?.latitude,
+      longitude: liveLoc?.longitude,
+      accuracy: liveLoc?.accuracy,
+      city: liveLoc?.city,
+      district: liveLoc?.district,
+      address: liveLoc?.address
     };
 
-    if (typeof window !== "undefined" && navigator?.geolocation) {
-      try {
-        await new Promise((resolve) => {
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              meta.latitude = pos.coords.latitude;
-              meta.longitude = pos.coords.longitude;
-              meta.accuracy = pos.coords.accuracy;
-              resolve(true);
-            },
-            () => resolve(false),
-            { timeout: 2000 }
-          );
-        });
-      } catch (e) {}
-    }
-
-    logUserActivity({
+    await logUserActivity({
       action,
+      userId: user?.id,
+      username: user?.username,
       targetMemberId: memberId,
       targetMemberName: member?.full_name_mr || member?.full_name_en,
       details: `${action === "CALL_INITIATED" ? "कॉल केला" : action === "SMS_INITIATED" ? "SMS पाठवला" : "व्हॉट्सॲप उघडले"}: ${member?.full_name_mr || memberId} (${mobileNumber})`,
       metadata: meta
-    });
+    }).catch(() => {});
   };
 
-  const handleCall = () => {
+  const handleCall = async () => {
     if (mobileNumber) {
-      logContactAction("CALL_INITIATED");
+      await logContactAction("CALL_INITIATED");
       Linking.openURL(`tel:${mobileNumber}`).catch(() => {});
     } else {
       Alert.alert("माहिती", "या मतदाराचा मोबाईल नंबर उपलब्ध नाही.");
     }
   };
 
-  const handleSMS = () => {
+  const handleSMS = async () => {
     if (mobileNumber) {
-      logContactAction("SMS_INITIATED");
+      await logContactAction("SMS_INITIATED");
       Linking.openURL(`sms:${mobileNumber}`).catch(() => {});
     } else {
       Alert.alert("माहिती", "या मतदाराचा मोबाईल नंबर उपलब्ध नाही.");
     }
   };
 
-  const handleWhatsApp = () => {
+  const handleWhatsApp = async () => {
     if (mobileNumber) {
-      logContactAction("WHATSAPP_OPENED");
+      await logContactAction("WHATSAPP_OPENED");
       const cleanNum = mobileNumber.replace(/[^0-9]/g, "");
       const phone = cleanNum.length === 10 ? `91${cleanNum}` : cleanNum;
       Linking.openURL(`https://wa.me/${phone}`).catch(() => {});

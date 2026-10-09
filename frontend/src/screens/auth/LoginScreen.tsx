@@ -15,7 +15,7 @@ import {
 } from "../../api/client";
 
 export const LoginScreen: React.FC = () => {
-  const { login, demoLogin } = useAuth();
+  const { login } = useAuth();
   const { language, toggleLanguage, t } = useLanguage();
 
   const [username, setUsername] = useState("");
@@ -55,7 +55,9 @@ export const LoginScreen: React.FC = () => {
         );
       }
     } catch (err: any) {
-      setErrorMessage(err?.message || "सर्व्हरशी संपर्क होऊ शकला नाही. कृपया बॅकएंड चालू असल्याची खात्री करा.");
+      setErrorMessage(
+        err?.message || (language === "mr" ? "सर्व्हरशी संपर्क होऊ शकला नाही. कृपया बॅकएंड चालू असल्याची खात्री करा." : "Could not connect to server. Please verify backend is running.")
+      );
     } finally {
       setLoading(false);
     }
@@ -77,7 +79,7 @@ export const LoginScreen: React.FC = () => {
     } catch (e: any) {
       setTestResult({
         success: false,
-        message: "जोडणी अयशस्वी. IP बरोबर आहे का आणि बॅकएंड चालू आहे का ते तपासा."
+        message: language === "mr" ? "जोडणी अयशस्वी. सर्व्हर चालू आहे का ते तपासा." : "Connection failed. Check server status."
       });
     } finally {
       setTestingConnection(false);
@@ -99,7 +101,9 @@ export const LoginScreen: React.FC = () => {
           <View style={styles.topBar}>
             <View style={styles.systemTag}>
               <Ionicons name="shield-checkmark" size={14} color="#10B981" style={{ marginRight: 4 }} />
-              <Text style={styles.systemTagText}>सुरक्षित प्रणाली २०२६</Text>
+              <Text style={styles.systemTagText}>
+                {language === "mr" ? "सुरक्षित प्रणाली २०२६" : "Secure System 2026"}
+              </Text>
             </View>
 
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -110,7 +114,9 @@ export const LoginScreen: React.FC = () => {
                 activeOpacity={0.7}
               >
                 <Ionicons name="server-outline" size={15} color="#93C5FD" style={{ marginRight: 4 }} />
-                <Text style={styles.serverSettingsText}>सर्व्हर</Text>
+                <Text style={styles.serverSettingsText}>
+                  {language === "mr" ? "सर्व्हर" : "Server"}
+                </Text>
               </TouchableOpacity>
 
               {/* Language Switcher */}
@@ -151,40 +157,29 @@ export const LoginScreen: React.FC = () => {
               </View>
 
               {errorMessage && (
-                <View style={styles.errorBox}>
-                  <Ionicons name="alert-circle" size={18} color="#EF4444" style={{ marginRight: 8, marginTop: 2 }} />
+                <View style={[styles.errorBox, errorMessage.includes("नाकारला") && { borderColor: "#EF4444", backgroundColor: "#3B1117" }]}>
+                  <Ionicons
+                    name={errorMessage.includes("नाकारला") ? "shield-half" : "alert-circle"}
+                    size={20}
+                    color="#EF4444"
+                    style={{ marginRight: 8, marginTop: 2 }}
+                  />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.errorText}>{errorMessage}</Text>
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8, alignItems: "center" }}>
-                      <TouchableOpacity
-                        onPress={handleOpenSettings}
-                        style={{ alignSelf: "flex-start", marginRight: 4 }}
-                      >
-                        <Text style={{ color: "#93C5FD", fontSize: 12, fontWeight: "700", textDecorationLine: "underline" }}>
-                          ⚙️ सर्व्हर IP बदला
-                        </Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={() => demoLogin("ADMIN")}
-                        style={{ backgroundColor: "#1E3A8A", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={{ color: "#BFDBFE", fontSize: 11, fontWeight: "700" }}>
-                          ⚡ डेमो ॲडमिन
-                        </Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={() => demoLogin("USER")}
-                        style={{ backgroundColor: "#064E3B", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={{ color: "#6EE7B7", fontSize: 11, fontWeight: "700" }}>
-                          ⚡ डेमो युझर (Permissions)
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
+                    <Text style={[styles.errorText, errorMessage.includes("नाकारला") && { fontWeight: "800", color: "#FCA5A5" }]}>
+                      {errorMessage}
+                    </Text>
+                    {!errorMessage.includes("नाकारला") && (
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8, alignItems: "center" }}>
+                        <TouchableOpacity
+                          onPress={handleOpenSettings}
+                          style={{ alignSelf: "flex-start", marginRight: 4 }}
+                        >
+                          <Text style={{ color: "#93C5FD", fontSize: 12, fontWeight: "700", textDecorationLine: "underline" }}>
+                            ⚙️ {language === "mr" ? "सर्व्हर तपासा" : "Check Server"}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </View>
                 </View>
               )}
@@ -294,7 +289,7 @@ export const LoginScreen: React.FC = () => {
                   setServerUrlInput(val);
                   setTestResult(null);
                 }}
-                placeholder="उदा. https://election-api.onrender.com/api"
+                placeholder="https://mahankali-election-app.onrender.com/api"
                 placeholderTextColor={theme.colors.textMuted}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -306,7 +301,7 @@ export const LoginScreen: React.FC = () => {
               <TouchableOpacity
                 style={styles.presetBtn}
                 onPress={() => {
-                  setServerUrlInput("https://election-api.onrender.com/api");
+                  setServerUrlInput("https://mahankali-election-app.onrender.com/api");
                   setTestResult(null);
                 }}
               >

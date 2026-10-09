@@ -53,8 +53,16 @@ async def login(payload: LoginPayload):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if user.get("accountStatus", "ACTIVE") != "ACTIVE":
-        raise HTTPException(status_code=400, detail="User account is disabled by administrator")
+    account_status = user.get("accountStatus", "ACTIVE")
+    is_active = user.get("is_active", True)
+    admin_access_allowed = user.get("admin_access_allowed", True)
+    admin_access_denied = user.get("admin_access_denied", False)
+
+    if account_status == "DISABLED" or is_active is False or admin_access_allowed is False or admin_access_denied is True:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="ॲडमिनने आपला प्रवेश नाकारला आहे. आपण युझर पॅनेलमध्ये लॉग इन करू शकत नाही. (Access Denied: The administrator has denied your access to the User Panel.)"
+        )
 
     # Update lastLogin
     user_id = str(user.get("_id", ""))

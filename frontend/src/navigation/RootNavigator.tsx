@@ -23,7 +23,6 @@ import { ImportJobsScreen } from "../screens/admin/ImportJobsScreen";
 import { UserManagementScreen } from "../screens/admin/UserManagementScreen";
 import { UserDetailsScreen } from "../screens/admin/UserDetailsScreen";
 import { UserActivityScreen } from "../screens/admin/UserActivityScreen";
-import { PdfToExcelScreen } from "../screens/admin/PdfToExcelScreen";
 import { AuditLogsScreen } from "../screens/admin/AuditLogsScreen";
 
 // Auth Screen
@@ -161,7 +160,6 @@ export const RootNavigator: React.FC = () => {
                 <Stack.Screen name="UserManagement" component={UserManagementScreen} />
                 <Stack.Screen name="UserDetails" component={UserDetailsScreen} />
                 <Stack.Screen name="UserActivity" component={UserActivityScreen} />
-                <Stack.Screen name="PdfToExcel" component={PdfToExcelScreen} />
                 <Stack.Screen name="AuditLogs" component={AuditLogsScreen} />
               </>
             )}

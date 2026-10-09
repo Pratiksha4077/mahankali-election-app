@@ -102,7 +102,15 @@ def seed_mongo_initial_data():
         res = db.villages.insert_many(villages)
         logger.info(f"Seeded {len(res.inserted_ids)} base villages into MongoDB.")
 
-    # 3. Admin & User Accounts
+    # 3. Clean up any demo or mock users from the database
+    try:
+        deleted_demo = db.users.delete_many({"username": {"$in": ["pratiksha", "user", "demo", "test_user"]}})
+        if deleted_demo.deleted_count > 0:
+            logger.info(f"Purged {deleted_demo.deleted_count} demo/mock users from MongoDB.")
+    except Exception as ex:
+        logger.warning(f"Note on cleaning demo users: {ex}")
+
+    # 4. Ensure System Admin Account exists
     admin_user = db.users.find_one({"username": "admin"})
     if not admin_user:
         admin_doc = {
@@ -120,7 +128,7 @@ def seed_mongo_initial_data():
             "createdBy": "system"
         }
         db.users.insert_one(admin_doc)
-        logger.info("Admin account (admin / admin123) verified in MongoDB.")
+        logger.info("Admin account (admin / admin123) initialized in MongoDB.")
     else:
         db.users.update_one(
             {"username": "admin"},
@@ -132,61 +140,4 @@ def seed_mongo_initial_data():
             }}
         )
 
-    # 4. Standard Field Worker / User Accounts
-    # User 'pratiksha'
-    pratiksha_user = db.users.find_one({"username": "pratiksha"})
-    if not pratiksha_user:
-        pratiksha_doc = {
-            "username": "pratiksha",
-            "fullName": "Pratiksha",
-            "mobileNumber": "9172474077",
-            "hashedPassword": get_password_hash("user123"),
-            "role": "USER",
-            "accountStatus": "ACTIVE",
-            "assignedVillages": [],
-            "permissions_granted": False,
-            "lastLogin": None,
-            "lastActivity": None,
-            "createdAt": datetime.utcnow(),
-            "createdBy": "system"
-        }
-        db.users.insert_one(pratiksha_doc)
-    else:
-        db.users.update_one(
-            {"username": "pratiksha"},
-            {"$set": {
-                "accountStatus": "ACTIVE",
-                "role": "USER",
-                "hashedPassword": get_password_hash("user123")
-            }}
-        )
-
-    # User 'user' (Generic field worker)
-    generic_user = db.users.find_one({"username": "user"})
-    if not generic_user:
-        user_doc = {
-            "username": "user",
-            "fullName": "Field Worker",
-            "mobileNumber": "9822000000",
-            "hashedPassword": get_password_hash("user123"),
-            "role": "USER",
-            "accountStatus": "ACTIVE",
-            "assignedVillages": [],
-            "permissions_granted": False,
-            "lastLogin": None,
-            "lastActivity": None,
-            "createdAt": datetime.utcnow(),
-            "createdBy": "system"
-        }
-        db.users.insert_one(user_doc)
-    else:
-        db.users.update_one(
-            {"username": "user"},
-            {"$set": {
-                "accountStatus": "ACTIVE",
-                "role": "USER",
-                "hashedPassword": get_password_hash("user123")
-            }}
-        )
-
-    logger.info("MongoDB initial setup complete: Admin and User accounts ready.")
+    logger.info("MongoDB initial setup complete: Only authorized Admin account is present. All other users are managed by Admin.")

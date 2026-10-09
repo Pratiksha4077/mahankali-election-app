@@ -9,7 +9,6 @@ interface AuthContextType {
   isAdmin: boolean;
   activePanel: "ADMIN" | "USER";
   login: (username: string, password: string) => Promise<boolean>;
-  demoLogin: (role: "ADMIN" | "USER") => Promise<void>;
   logout: () => void;
   switchPanel: (panel: "ADMIN" | "USER") => void;
   updateUserPermissions: (granted: boolean) => void;
@@ -56,33 +55,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const demoLogin = async (role: "ADMIN" | "USER") => {
-    const demoUser: User = role === "ADMIN" ? {
-      id: "u-admin",
-      username: "admin",
-      fullName: "System Administrator (प्रशासक)",
-      mobile: "9822011223",
-      role: "ADMIN",
-      is_active: true,
-      permissions_granted: true,
-      assignedVillages: []
-    } : {
-      id: "u-pratiksha",
-      username: "pratiksha",
-      fullName: "Pratiksha Patil (कार्यकर्ती)",
-      mobile: "9172474077",
-      role: "USER",
-      is_active: true,
-      permissions_granted: false, // Forces device permissions flow!
-      assignedVillages: []
-    };
-
-    setUser(demoUser);
-    setActivePanel(role);
-    await appStorage.setItem("election_user_info", JSON.stringify(demoUser));
-    await appStorage.setItem("election_active_panel", role);
-  };
-
   const logout = async () => {
     setUser(null);
     await setAuthToken(null);
@@ -112,7 +84,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAdmin: user?.role === "ADMIN",
         activePanel,
         login,
-        demoLogin,
         logout,
         switchPanel,
         updateUserPermissions

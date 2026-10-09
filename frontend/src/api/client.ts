@@ -1,24 +1,38 @@
+
 import axios from "axios";
-import { Member, Village, Category, User, DashboardStats, ImportJob } from "../models/types";
+import {
+  Member,
+  Village,
+  Category,
+  User,
+  DashboardStats,
+  ImportJob,
+} from "../models/types";
 import { Platform } from "react-native";
 import { appStorage } from "../utils/storage";
 
-// Environment variable or Default Production API URL
-// ⚠️ Deploy झाल्यावर EXPO_PUBLIC_API_URL हे .env मध्ये set करा
-export const DEFAULT_API_BASE_URL = process.env.EXPO_PUBLIC_API_URL
-  ? (process.env.EXPO_PUBLIC_API_URL.endsWith("/api")
-      ? process.env.EXPO_PUBLIC_API_URL
-      : `${process.env.EXPO_PUBLIC_API_URL.replace(/\/+$/, "")}/api`)
-  : (Platform.OS === "web" ? "http://localhost:8000/api" : "https://election-api.onrender.com/api");
+// Production API URL
+export const PRODUCTION_API_URL = "https://mahankali-election-app.onrender.com/api";
+
+// Environment variable or default production API URL
+export const DEFAULT_API_BASE_URL = Platform.OS === "android"
+  ? PRODUCTION_API_URL
+  : (process.env.EXPO_PUBLIC_API_URL
+      ? (
+        process.env.EXPO_PUBLIC_API_URL.endsWith("/api")
+          ? process.env.EXPO_PUBLIC_API_URL
+          : `${process.env.EXPO_PUBLIC_API_URL.replace(/\/+$/, "")}/api`
+      )
+      : (Platform.OS === "web" ? "http://localhost:8000/api" : PRODUCTION_API_URL));
 
 export let API_BASE_URL = DEFAULT_API_BASE_URL;
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 60000, // 60s to handle Render.com free-tier cold starts
   headers: {
     "Content-Type": "application/json",
-  }
+  },
 });
 
 let authToken: string | null = null;
@@ -27,17 +41,25 @@ let authToken: string | null = null;
 (async () => {
   try {
     const savedUrl = await appStorage.getItem("election_server_url");
-    if (savedUrl && savedUrl.trim()) {
+
+    if (Platform.OS === "android") {
+      // On Android system, always connect to the production FastAPI server
+      API_BASE_URL = PRODUCTION_API_URL;
+      apiClient.defaults.baseURL = PRODUCTION_API_URL;
+      await appStorage.setItem("election_server_url", PRODUCTION_API_URL);
+    } else if (savedUrl && savedUrl.trim()) {
       API_BASE_URL = savedUrl.trim();
       apiClient.defaults.baseURL = API_BASE_URL;
     }
+
     const token = await appStorage.getItem("election_auth_token");
+
     if (token) {
       authToken = token;
       apiClient.defaults.headers.common["Authorization"] = `Bearer ${token}`;
     }
-  } catch (e) {
-    console.warn("Storage init warning:", e);
+  } catch (error) {
+    console.log("Error loading API configuration:", error);
   }
 })();
 
@@ -61,9 +83,9 @@ export const testServerConnection = async (targetUrl?: string): Promise<{ succes
   try {
     const urlToTest = (targetUrl ? targetUrl.trim().replace(/\/+$/, "") : getServerBaseUrl());
     const healthUrl = urlToTest.endsWith("/api") ? `${urlToTest}/health` : `${urlToTest}/api/health`;
-    
+
     // First try the health endpoint
-    const res = await axios.get(healthUrl, { timeout: 4000 });
+    const res = await axios.get(healthUrl, { timeout: 60000 });
     if (res.status === 200) {
       return { success: true, message: "सर्व्हर जोडणी यशस्वी! (Connected)" };
     }
@@ -76,8 +98,8 @@ export const testServerConnection = async (targetUrl?: string): Promise<{ succes
       if (res2.status >= 200 && res2.status < 400) {
         return { success: true, message: "सर्व्हर जोडणी यशस्वी! (Connected)" };
       }
-    } catch (e2) {}
-    
+    } catch (e2) { }
+
     return {
       success: false,
       message: "सर्व्हरशी संपर्क होऊ शकला नाही. IP बरोबर आहे का आणि बॅकएंड चालू आहे का ते तपासा."
@@ -441,13 +463,28 @@ export const adminAPI = {
     return res.data;
   },
 
+  setUserPanelAccess: async (userId: string, access_allowed: boolean, reason?: string) => {
+    try {
+      const res = await apiClient.patch(`/admin/users/${userId}/access`, {
+        access_allowed,
+        reason: reason || (access_allowed ? "Admin allowed access" : "Admin denied access based on history")
+      });
+      return res.data;
+    } catch (e: any) {
+      // Fallback to status toggle
+      const status = access_allowed ? "ACTIVE" : "DISABLED";
+      const res = await apiClient.patch(`/admin/users/${userId}/status`, { status });
+      return res.data;
+    }
+  },
+
   getUserActivity: async (user_id?: string, username?: string) => {
     try {
       const res = await apiClient.get(`/admin/users/${user_id}/activity`);
       const payload = res.data?.data || res.data;
       if (payload) return payload;
-    } catch (e) {}
-    return { calls: [], timeline: [], sms: [], locations: [] };
+    } catch (e) { }
+    return { calls: [], sms: [], locations: [], call_count: 0, sms_count: 0, location_count: 0 };
   },
 
   getAuditLogs: async (action?: string) => {
@@ -483,11 +520,14 @@ export const logUserActivity = async (params: {
           currentUserId = currentUserId || u?.id || u?._id;
           currentUsername = currentUsername || u?.username;
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     const payload = {
       action: params.action,
+      userId: currentUserId,
+      user_id: currentUserId,
+      username: currentUsername,
       targetMemberId: params.targetMemberId,
       targetMemberName: params.targetMemberName,
       details: params.details || "",
