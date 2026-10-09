@@ -99,20 +99,13 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
   };
 
   const handleToggleStatus = async (user: User) => {
-    await adminAPI.toggleUserStatus(user.id, !user.is_active);
-    showToast(user.is_active ? "वापरकर्ता अक्षम (Disabled) केला!" : "वापरकर्ता सक्रिय केला!");
-    loadUsers();
-  };
-
-  const handleTogglePermission = async (user: User) => {
-    const current = user.permissions_granted ?? false;
-    const nextVal = !current;
+    const nextVal = !user.is_active;
     try {
-      await adminAPI.toggleUserPermission(user.id, nextVal);
-      showToast(nextVal ? "परवानगी सक्रिय केली (Permissions Allowed)!" : "परवानगी नाकारली (Permissions Revoked)!");
+      await adminAPI.setUserPanelAccess(user.id, nextVal);
+      showToast(nextVal ? "वापरकर्ता प्रवेश मंजूर केला (Access Allowed)!" : "वापरकर्ता प्रवेश नाकारला (Access Denied)!");
       loadUsers();
     } catch (e) {
-      showToast("परवानगी बदलताना त्रुटी आली.");
+      showToast("प्रवेश बदलताना त्रुटी आली.");
     }
   };
 
@@ -192,7 +185,7 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
                 </View>
                 <View style={[styles.statusBadge, !item.is_active && styles.disabledBadge]}>
                   <Text style={[styles.statusBadgeText, !item.is_active && styles.disabledBadgeText]}>
-                    {item.is_active ? "Active" : "Disabled"}
+                    {item.is_active ? "Active (मंजूर)" : "Denied (नाकारला)"}
                   </Text>
                 </View>
               </View>
@@ -202,21 +195,23 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
                   <Ionicons name="call-outline" size={14} color={theme.colors.textMuted} style={{ marginRight: 4 }} />
                   <Text style={styles.detailText}>{item.mobile || item.mobileNumber || "-"}</Text>
                 </View>
-                <TouchableOpacity
-                  style={[styles.permBadge, { backgroundColor: item.permissions_granted === true ? "#064E3B" : "#7F1D1D" }]}
-                  onPress={() => handleTogglePermission(item)}
-                  activeOpacity={0.7}
-                >
+                <View style={styles.permBadge}>
                   <Ionicons
-                    name={item.permissions_granted === true ? "shield-checkmark" : "shield-half"}
+                    name={item.permissions_granted === true ? "phone-portrait" : "alert-circle"}
                     size={11}
                     color={item.permissions_granted === true ? "#34D399" : "#F87171"}
                     style={{ marginRight: 3 }}
                   />
-                  <Text style={[styles.permBadgeText, { color: item.permissions_granted === true ? "#34D399" : "#F87171" }]}>
-                    {item.permissions_granted === true ? "Perms Allowed" : "No Perms"}
+                  <Text style={styles.permBadgeText}>
+                    {item.permissions_granted === true ? "Device Perms: OK" : "Device Perms: No"}
                   </Text>
-                </TouchableOpacity>
+                </View>
+                <View style={styles.locationCountBadge}>
+                  <Ionicons name="location-on" size={14} color={theme.colors.textMuted} style={{ marginRight: 4 }} />
+                  <Text style={styles.locationCountText}>
+                    {item.location_count || 0} Locations
+                  </Text>
+                </View>
               </View>
 
               <View style={styles.cardActionsRow}>
@@ -614,6 +609,21 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   permBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  locationCountBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#78350F",
+    backgroundColor: "rgba(120, 53, 15, 0.15)",
+  },
+  locationCountText: {
+    color: "#FBBF24",
     fontSize: 10,
     fontWeight: "700",
   },

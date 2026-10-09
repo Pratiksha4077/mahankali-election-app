@@ -12,10 +12,9 @@ echo.
 echo   [+] PRODUCTION API:   https://election-api.onrender.com/api
 echo   [+] (Render deploy झाल्यावर वरील URL APK मध्ये वापरा)
 echo.
-echo   [+] Default Logins:
+echo   [+] Initial Admin Setup:
 echo       1) Admin Login:  username: admin      password: admin123
-echo       2) User Login:   username: pratiksha  password: user123
-echo       3) User Login:   username: user       password: user123
+echo       2) Users:        Created and managed directly from Admin Panel (MongoDB)
 echo.
 echo   [!] IMPORTANT:
 echo       * Local backend फक्त development साठी वापरा.

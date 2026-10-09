@@ -13,6 +13,8 @@ export const UserDetailsScreen: React.FC<{ navigation: any; route: any }> = ({ n
 
   const [user, setUser] = useState<any>(null);
   const [activities, setActivities] = useState<any[]>([]);
+  const [locationHistory, setLocationHistory] = useState<any[]>([]);
+  const [locationTotal, setLocationTotal] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [updating, setUpdating] = useState<boolean>(false);
 
@@ -23,12 +25,17 @@ export const UserDetailsScreen: React.FC<{ navigation: any; route: any }> = ({ n
   const loadUserDetails = async () => {
     if (!userId) return;
     try {
-      const [userRes, actRes] = await Promise.all([
+      const [userRes, actRes, locRes] = await Promise.all([
         adminAPI.getUserById(userId),
-        adminAPI.getUserActivity(userId)
+        adminAPI.getUserActivity(userId),
+        adminAPI.getUserLocationHistory(userId)
       ]);
       setUser(userRes.data || userRes);
       setActivities(actRes.data || []);
+      setLocationHistory(locRes.data?.locations || []);
+      setLocationTotal(locRes.data?.pagination?.total || 0);
+    } catch (err) {
+      console.error("Failed to load user details:", err);
     } finally {
       setLoading(false);
     }
@@ -173,6 +180,39 @@ export const UserDetailsScreen: React.FC<{ navigation: any; route: any }> = ({ n
                 </View>
               );
             })
+          )}
+          {locationHistory.length > 0 && (
+            <View style={{ marginTop: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: theme.colors.border }}>
+              <Text style={styles.sectionHeading}>Location History ({locationHistory.length})</Text>
+              {locationHistory.map((loc, idx) => {
+                const lat = loc.metadata?.latitude ?? loc.latitude;
+                const lon = loc.metadata?.longitude ?? loc.longitude;
+                const hasCoords = lat !== undefined && lon !== undefined;
+                const locationName = loc.metadata?.address || 
+                  loc.metadata?.village || 
+                  loc.metadata?.city || 
+                  "Location";
+
+                return (
+                  <View key={loc.id || idx} style={styles.activityItem}>
+                    <View style={[styles.activityIconCircle, { backgroundColor: "#FBBF2420" }]}>
+                      <Ionicons name="location" size={18} color="#FBBF24" />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={styles.activityAction}>{locationName}</Text>
+                      {hasCoords && (
+                        <Text style={styles.activityDetails}>
+                          📍 {lat.toFixed(4)}, {lon.toFixed(4)}
+                        </Text>
+                      )}
+                      <Text style={styles.activityTime}>
+                        {loc.timestamp ? new Date(loc.timestamp).toLocaleString() : ""}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
           )}
         </ScrollView>
       )}
@@ -333,5 +373,11 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     fontSize: 13,
     marginTop: 8,
+  },
+  locationHistorySection: {
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
   },
 });

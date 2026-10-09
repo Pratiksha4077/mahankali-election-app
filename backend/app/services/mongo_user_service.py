@@ -16,6 +16,13 @@ def format_user_doc(doc: Dict[str, Any]) -> Dict[str, Any]:
         del d["_id"]
     if "hashedPassword" in d:
         del d["hashedPassword"]
+    account_status = d.get("accountStatus", "ACTIVE")
+    access_allowed = (account_status == "ACTIVE") and (d.get("admin_access_allowed", True) is not False) and (d.get("admin_access_denied", False) is not True)
+    d["is_active"] = access_allowed
+    d["accountStatus"] = "ACTIVE" if access_allowed else "DISABLED"
+    d["admin_access_allowed"] = access_allowed
+    d["admin_access_denied"] = not access_allowed
+    d["permissions_granted"] = d.get("permissions_granted", False)
     return d
 
 class MongoUserService:
@@ -127,9 +134,35 @@ class MongoUserService:
     async def set_user_status(user_id: str, status: str) -> Optional[Dict[str, Any]]:
         db = get_mongo_db()
         query = {"_id": ObjectId(user_id)} if ObjectId.is_valid(user_id) else {"_id": user_id}
+        is_active = (status.upper() == "ACTIVE")
         res = await db.users.find_one_and_update(
             query,
-            {"$set": {"accountStatus": status.upper(), "updatedAt": datetime.utcnow()}},
+            {"$set": {
+                "accountStatus": status.upper(),
+                "is_active": is_active,
+                "admin_access_allowed": is_active,
+                "admin_access_denied": not is_active,
+                "updatedAt": datetime.utcnow()
+            }},
+            return_document=True
+        )
+        return format_user_doc(res) if res else None
+
+    @staticmethod
+    async def set_user_access(user_id: str, access_allowed: bool) -> Optional[Dict[str, Any]]:
+        db = get_mongo_db()
+        query = {"_id": ObjectId(user_id)} if ObjectId.is_valid(user_id) else {"_id": user_id}
+        status = "ACTIVE" if access_allowed else "DISABLED"
+        res = await db.users.find_one_and_update(
+            query,
+            {"$set": {
+                "accountStatus": status,
+                "is_active": access_allowed,
+                "admin_access_allowed": access_allowed,
+                "admin_access_denied": not access_allowed,
+                "accessUpdatedAt": datetime.utcnow(),
+                "updatedAt": datetime.utcnow()
+            }},
             return_document=True
         )
         return format_user_doc(res) if res else None
@@ -188,10 +221,10 @@ class MongoUserService:
         return activity
 
     @staticmethod
-    async def get_user_activity(user_id: str, limit: int = 200) -> Dict[str, Any]:
+    async def get_user_activity(user_id: str, limit: int = 300) -> Dict[str, Any]:
         """
-        Retrieves in-app user activity timeline, categorized into Call History, SMS History,
-        Location History, and general application activity.
+        Retrieves in-app user activity categorized strictly into Call History, SMS History,
+        and Location History. No timeline section.
         """
         db = get_mongo_db()
         user_doc = None
@@ -201,23 +234,33 @@ class MongoUserService:
             user_doc = await db.users.find_one({"$or": [{"_id": user_id}, {"username": user_id}]})
 
         possible_ids = [str(user_id)]
+        if ObjectId.is_valid(user_id):
+            possible_ids.append(ObjectId(user_id))
         possible_usernames = [str(user_id)]
+
         if user_doc:
-            possible_ids.append(str(user_doc.get("_id", "")))
+            doc_id_str = str(user_doc.get("_id", ""))
+            if doc_id_str not in possible_ids:
+                possible_ids.append(doc_id_str)
+            if ObjectId.is_valid(doc_id_str) and ObjectId(doc_id_str) not in possible_ids:
+                possible_ids.append(ObjectId(doc_id_str))
             if "username" in user_doc:
                 possible_usernames.append(str(user_doc["username"]))
+            if "mobileNumber" in user_doc:
+                possible_usernames.append(str(user_doc["mobileNumber"]))
 
         match_q = {
             "$or": [
                 {"userId": {"$in": possible_ids}},
+                {"user_id": {"$in": possible_ids}},
                 {"username": {"$in": possible_usernames}},
                 {"metadata.user_id": {"$in": possible_ids}},
+                {"metadata.userId": {"$in": possible_ids}},
                 {"metadata.username": {"$in": possible_usernames}}
             ]
         }
         cursor = db.app_activities.find(match_q).sort("timestamp", -1).limit(limit)
 
-        timeline = []
         calls = []
         sms = []
         locations = []
@@ -226,7 +269,6 @@ class MongoUserService:
             doc["id"] = str(doc.get("_id", ""))
             if "_id" in doc:
                 del doc["_id"]
-            timeline.append(doc)
 
             act = doc.get("action", "").upper()
             if "CALL" in act:
@@ -237,11 +279,11 @@ class MongoUserService:
                 locations.append(doc)
 
         return {
-            "timeline": timeline,
             "calls": calls,
             "sms": sms,
             "locations": locations,
             "call_count": len(calls),
             "sms_count": len(sms),
-            "location_count": len(locations)
+            "location_count": len(locations),
+            "user": format_user_doc(user_doc) if user_doc else None
         }

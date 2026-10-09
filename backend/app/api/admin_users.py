@@ -150,6 +150,36 @@ async def delete_user(
     )
     return {"success": True, "message": "User deleted successfully"}
 
+class UserAccessRequest(BaseModel):
+    access_allowed: bool
+    reason: Optional[str] = None
+
+@router.patch("/{user_id}/access")
+async def set_user_access_route(
+    user_id: str,
+    payload: UserAccessRequest,
+    admin: AuthUser = Depends(require_admin)
+):
+    """Admin grants or denies/revokes user panel access for a user based on real-time history."""
+    res = await MongoUserService.set_user_access(user_id, payload.access_allowed)
+    if not res:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    action = "ADMIN_ALLOWED_USER_ACCESS" if payload.access_allowed else "ADMIN_DENIED_USER_ACCESS"
+    log_activity(
+        user_id=admin.id,
+        action=action,
+        entity_type="USER",
+        entity_id=user_id,
+        details=f"Admin {'allowed' if payload.access_allowed else 'denied'} User Panel access for {user_id}. Reason: {payload.reason or 'Admin discretion'}",
+        username=admin.username
+    )
+    return {
+        "success": True,
+        "message": f"User panel access {'allowed' if payload.access_allowed else 'denied'}",
+        "data": res
+    }
+
 @router.patch("/{user_id}/permissions")
 async def set_user_permissions_route(
     user_id: str,
@@ -190,6 +220,9 @@ async def set_self_permissions(
 
 class LogActivityRequest(BaseModel):
     action: str
+    userId: Optional[str] = None
+    user_id: Optional[str] = None
+    username: Optional[str] = None
     targetMemberId: Optional[str] = None
     targetMemberName: Optional[str] = None
     details: Optional[str] = ""
@@ -202,11 +235,11 @@ async def log_activity_route(
 ):
     """
     Log an in-app user action (CALL_INITIATED, SMS_INITIATED, LOCATION_CHECKIN, etc.).
-    Uses Authorization Bearer token, X-User-ID/X-Username headers, or metadata for identification.
+    Uses explicit payload IDs, Authorization Bearer token, X-User-ID/X-Username headers, or metadata.
     """
     meta = payload.metadata or {}
-    user_id = meta.get("user_id", "u-unknown")
-    username = meta.get("username", "field_worker")
+    user_id = payload.userId or payload.user_id or meta.get("user_id") or "u-unknown"
+    username = payload.username or meta.get("username") or "field_worker"
 
     if request:
         auth_header = request.headers.get("Authorization")
@@ -216,14 +249,17 @@ async def log_activity_route(
                 from app.config.config import settings
                 token = auth_header.split(" ")[1]
                 tdata = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
-                user_id = str(tdata.get("user_id") or meta.get("user_id") or tdata.get("sub") or user_id)
-                username = str(tdata.get("sub") or tdata.get("username") or meta.get("username") or username)
+                user_id = str(tdata.get("user_id") or user_id)
+                username = str(tdata.get("sub") or tdata.get("username") or username)
             except Exception:
                 pass
         if request.headers.get("X-User-ID"):
             user_id = request.headers.get("X-User-ID")
         if request.headers.get("X-Username"):
             username = request.headers.get("X-Username")
+
+    meta["user_id"] = user_id
+    meta["username"] = username
 
     act = await MongoUserService.log_activity(
         user_id=user_id,

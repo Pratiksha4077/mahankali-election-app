@@ -74,7 +74,7 @@ export const ImportJobsScreen: React.FC<{ navigation: any; route: any }> = ({ na
   const handleDownloadExcel = (job: ImportJobItem) => {
     if (job.excelDownloadUrl) {
       if (Platform.OS === "web") {
-        window.open(`http://localhost:8000${job.excelDownloadUrl}`, "_blank");
+        window.open(`https://mahankali-election-app.onrender.com${job.excelDownloadUrl}`, "_blank");
       } else {
         Alert.alert("Download Excel", `Excel file is ready: ${job.excelDownloadUrl}`);
       }

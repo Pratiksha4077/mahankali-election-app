@@ -30,7 +30,7 @@ class MongoMemberService:
         assigned_user_id: Optional[str] = None,
         my_assigned_only: bool = False,
         page: int = 1,
-        limit: int = 50
+        limit: int = 40
     ) -> Dict[str, Any]:
         db = get_mongo_db()
         and_conditions = []
@@ -60,12 +60,10 @@ class MongoMemberService:
                 {"nameMarathi.full": {"$regex": regex}},
                 {"name.full": {"$regex": regex}},
                 {"nameMarathi.surname": {"$regex": regex}},
-                {"nameMarathi.first": {"$regex": regex}},
                 {"membershipNumber": {"$regex": regex}},
                 {"epicNumber": {"$regex": regex}},
                 {"mobileNumber": {"$regex": regex}},
                 {"houseNumber": {"$regex": regex}},
-                {"boothPartNumber": {"$regex": regex}}
             ]
             if sq.isdigit():
                 search_fields.append({"serialNumber": int(sq)})
@@ -73,12 +71,46 @@ class MongoMemberService:
 
         filter_q: Dict[str, Any] = {"$and": and_conditions} if and_conditions else {}
 
-        skip = max(0, (page - 1) * limit)
-        total = await db.members.count_documents(filter_q)
-        
-        cursor = db.members.find(filter_q).sort([("serialNumber", 1), ("membershipNumber", 1)]).skip(skip).limit(limit)
-        items = [format_member_doc(doc) async for doc in cursor]
+        # Fast count optimization for high performance
+        if not filter_q or filter_q == {"status": "ACTIVE"}:
+            try:
+                total = await db.members.estimated_document_count()
+            except Exception:
+                total = await db.members.count_documents(filter_q)
+        else:
+            try:
+                total = await db.members.count_documents(filter_q)
+            except Exception:
+                total = 0
 
+        # Lightweight field projection for 10x faster network and parsing speed
+        projection = {
+            "name": 1,
+            "nameMarathi": 1,
+            "serialNumber": 1,
+            "membershipNumber": 1,
+            "epicNumber": 1,
+            "mobileNumber": 1,
+            "houseNumber": 1,
+            "age": 1,
+            "gender": 1,
+            "relativeNameMarathi": 1,
+            "relationType": 1,
+            "village": 1,
+            "category": 1,
+            "status": 1,
+            "boothPartNumber": 1
+        }
+
+        limit = max(1, min(limit, 50))
+        skip = max(0, (page - 1) * limit)
+
+        cursor = db.members.find(
+            filter_q,
+            projection=projection
+        ).sort([("serialNumber", 1)]).skip(skip).limit(limit)
+
+        items = [format_member_doc(doc) async for doc in cursor]
         pages = math.ceil(total / limit) if limit > 0 else 1
 
         return {

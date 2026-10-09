@@ -94,9 +94,12 @@ async def init_mongo_indexes():
         logger.warning(f"Note on text index: {ex}")
 
     # Single and compound indexes for members
+    await db.members.create_index([("serialNumber", 1)])
+    await db.members.create_index([("status", 1), ("serialNumber", 1)])
     await db.members.create_index([("village.id", 1), ("status", 1), ("serialNumber", 1)])
     await db.members.create_index([("village.id", 1), ("membershipNumber", 1)])
     await db.members.create_index([("epicNumber", 1)], sparse=True)
+    await db.members.create_index([("mobileNumber", 1)])
     await db.members.create_index([("village.id", 1), ("category.id", 1)])
     await db.members.create_index([("familyId", 1)])
     await db.members.create_index([("assignedUserId", 1), ("village.id", 1)])

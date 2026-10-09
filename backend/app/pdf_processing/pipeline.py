@@ -7,6 +7,7 @@ from bson import ObjectId
 
 from app.config.config import settings
 from app.database.mongodb import get_sync_mongo_db
+from pymongo import UpdateOne, InsertOne
 from app.pdf_processing.detector import detect_pdf_type, inspect_pdf_metadata
 from app.pdf_processing.extractor import extract_table_from_pdf
 from app.pdf_processing.ocr import extract_using_ocr
@@ -480,21 +481,18 @@ def commit_mongo_job_records(job_id: str, duplicate_strategy: str = "SKIP") -> i
 
         epic = member_doc.get("epicNumber")
         if duplicate_strategy == "UPDATE" and epic:
-            # Upsert — update existing record or insert new one by EPIC
-            db.members.update_one(
-                {"epicNumber": epic},
-                {"$set": member_doc},
-                upsert=True
-            )
-            imported_count += 1
+            records_to_commit.append(UpdateOne({"epicNumber": epic}, {"$set": member_doc}, upsert=True))
         elif is_dup and duplicate_strategy == "SKIP":
             pass  # skip duplicate
         else:
-            records_to_commit.append(member_doc)
+            records_to_commit.append(InsertOne(member_doc))
 
     if records_to_commit:
-        db.members.insert_many(records_to_commit)
-        imported_count += len(records_to_commit)
+        BATCH_SIZE = 500
+        for i in range(0, len(records_to_commit), BATCH_SIZE):
+            chunk = records_to_commit[i:i + BATCH_SIZE]
+            db.members.bulk_write(chunk, ordered=False)
+            imported_count += len(chunk)
 
     # Recalculate village metrics
     total_v = db.members.count_documents({"village.id": v_ref["id"]})

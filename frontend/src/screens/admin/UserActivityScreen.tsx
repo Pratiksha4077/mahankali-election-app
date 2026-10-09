@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  SafeAreaView, ActivityIndicator, RefreshControl
+  SafeAreaView, ActivityIndicator, RefreshControl, Alert
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
@@ -10,74 +10,96 @@ import { theme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
 
 export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
-  const { user } = route.params || {
-    user: { id: "u-2", username: "rupesh_sir", mobile: "9172474077", role: "USER" }
-  };
+  const user = route.params?.user;
   const { t } = useLanguage();
 
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
-  const [expandedSection, setExpandedSection] = useState<"calls" | "sms" | "locations" | "timeline" | null>("calls");
+  const [updatingAccess, setUpdatingAccess] = useState<boolean>(false);
+  const [expandedSection, setExpandedSection] = useState<"calls" | "sms" | "locations" | null>("calls");
+
+  // User state synchronized with live database
+  const [currentUser, setCurrentUser] = useState<any>(user || null);
+  const [isAccessAllowed, setIsAccessAllowed] = useState<boolean>(
+    user ? (user.is_active !== false && user.accountStatus !== "DISABLED") : true
+  );
+  const [hasDevicePerms, setHasDevicePerms] = useState<boolean>(
+    user ? user.permissions_granted === true : false
+  );
+
   const [activityData, setActivityData] = useState<{
     calls: any[];
     sms: any[];
     locations: any[];
-    timeline: any[];
     call_count: number;
     sms_count: number;
     location_count: number;
-    timeline_count: number;
   }>({
     calls: [],
     sms: [],
     locations: [],
-    timeline: [],
     call_count: 0,
     sms_count: 0,
     location_count: 0,
-    timeline_count: 0
   });
 
   const loadUserActivities = useCallback(async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
     try {
-      const res = await adminAPI.getUserActivity(user.id || user._id, user.username);
-      const data = res?.data || res;
-      if (data && (data.timeline || data.calls)) {
-        const timeline: any[] = data.timeline || [];
-        const calls = data.calls?.length
-          ? data.calls
-          : timeline.filter((d: any) => d.action?.includes("CALL"));
-        const sms = data.sms?.length
-          ? data.sms
-          : timeline.filter((d: any) => d.action?.includes("SMS") || d.action?.includes("WHATSAPP"));
-        const locations = data.locations?.length
-          ? data.locations
-          : timeline.filter((d: any) => d.action?.includes("LOCATION") || d.action?.includes("VILLAGE") || d.action?.includes("CHECKIN"));
+      const uid = String(user.id || user._id || "");
+
+      // 1. Fetch live user details to synchronize real-time access and permission status
+      try {
+        const freshUser = await adminAPI.getUserById(uid);
+        if (freshUser) {
+          const uData = freshUser.data || freshUser;
+          setCurrentUser(uData);
+          const allowed = (uData.accountStatus !== "DISABLED") && (uData.is_active !== false) && (uData.admin_access_allowed !== false);
+          setIsAccessAllowed(allowed);
+          setHasDevicePerms(Boolean(uData.permissions_granted));
+        }
+      } catch (ue) {}
+
+      // 2. Fetch recorded user real-time activities (Calls, SMS, Locations) using new endpoints
+      try {
+        const [locRes, actRes] = await Promise.all([
+          adminAPI.getUserLocationHistory(uid, user.username),
+          adminAPI.getUserDeviceActivity(uid, user.username)
+        ]);
+
+        const locations = Array.isArray(locRes.locations) ? locRes.locations : [];
+        const activities = Array.isArray(actRes.activities) ? actRes.activities : [];
 
         setActivityData({
-          calls,
-          sms,
+          calls: activities.filter((a: any) => /CALL/i.test(a.action || "")),
+          sms: activities.filter((a: any) => /SMS|WHATSAPP/i.test(a.action || "")),
           locations,
-          timeline,
-          call_count: data.call_count ?? calls.length,
-          sms_count: data.sms_count ?? sms.length,
-          location_count: data.location_count ?? locations.length,
-          timeline_count: timeline.length,
+          call_count: locRes.call_count ?? activities.filter((a: any) => /CALL/i.test(a.action || "")).length,
+          sms_count: locRes.sms_count ?? activities.filter((a: any) => /SMS|WHATSAPP/i.test(a.action || "")).length,
+          location_count: locRes.location_count ?? locations.length,
         });
-      } else if (Array.isArray(data)) {
-        const calls = data.filter((d: any) => d.action?.includes("CALL"));
-        const sms = data.filter((d: any) => d.action?.includes("SMS") || d.action?.includes("WHATSAPP"));
-        const locations = data.filter((d: any) => d.action?.includes("LOCATION") || d.action?.includes("VILLAGE") || d.action?.includes("CHECKIN"));
-        setActivityData({
-          calls,
-          sms,
-          locations,
-          timeline: data,
-          call_count: calls.length,
-          sms_count: sms.length,
-          location_count: locations.length,
-          timeline_count: data.length
-        });
+      } catch (ae) {
+        // Fallback to old endpoint
+        const res = await adminAPI.getUserActivity(uid, user.username);
+        const data = res?.data || res;
+        if (data) {
+          const calls = Array.isArray(data.calls) ? data.calls : [];
+          const sms = Array.isArray(data.sms) ? data.sms : [];
+          const locations = Array.isArray(data.locations) ? data.locations : [];
+
+          setActivityData({
+            calls,
+            sms,
+            locations,
+            call_count: data.call_count ?? calls.length,
+            sms_count: data.sms_count ?? sms.length,
+            location_count: data.location_count ?? locations.length,
+          });
+        }
       }
     } catch (err) {
       console.error("Failed to load user activity:", err);
@@ -85,7 +107,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user.id, user._id, user.username]);
+  }, [user]);
 
   useEffect(() => {
     loadUserActivities();
@@ -96,29 +118,91 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
     loadUserActivities();
   };
 
-  const toggleSection = (section: "calls" | "sms" | "locations" | "timeline") => {
+  const toggleSection = (section: "calls" | "sms" | "locations") => {
     setExpandedSection(expandedSection === section ? null : section);
   };
 
-  const [currentPerm, setCurrentPerm] = useState<boolean>(user.permissions_granted === true);
+  // Admin denies or restores User Panel access based on real-time history
+  const handleToggleUserAccess = async () => {
+    if (!currentUser) return;
+    const uid = String(currentUser.id || currentUser._id || user?.id || user?._id || "");
+    const willDeny = isAccessAllowed;
 
-  const handleTogglePermAsAdmin = async () => {
-    const nextVal = !currentPerm;
-    try {
-      await adminAPI.toggleUserPermission(user.id || user._id, nextVal);
-      setCurrentPerm(nextVal);
-      if (nextVal) {
-        loadUserActivities();
-      }
-    } catch (e) {
-      console.error("Toggle perm error:", e);
+    if (willDeny) {
+      Alert.alert(
+        "प्रवेश नाकारायचा आहे का? (Deny Access)",
+        `तुम्हाला '${currentUser.fullName || currentUser.username}' चा युझर पॅनेल प्रवेश नाकारायचा आहे का?\n\nप्रवेश नाकारल्यानंतर हा वापरकर्ता ॲपमध्ये लॉगिन करू शकणार नाही.`,
+        [
+          { text: "रद्द करा (Cancel)", style: "cancel" },
+          {
+            text: "प्रवेश नाकारा (Deny Access)",
+            style: "destructive",
+            onPress: async () => {
+              setUpdatingAccess(true);
+              try {
+                await adminAPI.setUserPanelAccess(uid, false, "Admin denied access based on real-time history");
+                setIsAccessAllowed(false);
+                Alert.alert("प्रवेश नाकारला", "वापरकर्त्याचा प्रवेश यशस्वीरित्या नाकारला गेला आहे. हा वापरकर्ता आता युझर पॅनेलमध्ये लॉगिन करू शकणार नाही.");
+                loadUserActivities();
+              } catch (e) {
+                Alert.alert("त्रुटी", "प्रवेश स्थिती बदलताना त्रुटी आली.");
+              } finally {
+                setUpdatingAccess(false);
+              }
+            }
+          }
+        ]
+      );
+    } else {
+      Alert.alert(
+        "प्रवेश मंजूर करायचा आहे का? (Restore Access)",
+        `तुम्हाला '${currentUser.fullName || currentUser.username}' चा युझर पॅनेल प्रवेश पुन्हा सुरू करायचा आहे का?`,
+        [
+          { text: "रद्द करा (Cancel)", style: "cancel" },
+          {
+            text: "प्रवेश मंजूर करा (Allow Access)",
+            onPress: async () => {
+              setUpdatingAccess(true);
+              try {
+                await adminAPI.setUserPanelAccess(uid, true, "Admin restored panel access");
+                setIsAccessAllowed(true);
+                Alert.alert("प्रवेश मंजूर", "वापरकर्त्याचा प्रवेश पूर्ववत केला आहे. आता वापरकर्ता लॉगिन करू शकतो.");
+                loadUserActivities();
+              } catch (e) {
+                Alert.alert("त्रुटी", "प्रवेश स्थिती बदलताना त्रुटी आली.");
+              } finally {
+                setUpdatingAccess(false);
+              }
+            }
+          }
+        ]
+      );
     }
   };
+
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <Header title="User Activity" showBack onBack={() => navigation.goBack()} />
+        <View style={styles.centerContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color={theme.colors.error} />
+          <Text style={styles.emptyTitle}>कोणताही वापरकर्ता निवडलेला नाही</Text>
+          <Text style={styles.emptySubText}>कृपया वापरकर्ता यादीमधून वापरकर्ता निवडा.</Text>
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+            <Text style={styles.backBtnText}>मागे जा (Go Back)</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const displayName = currentUser?.fullName || currentUser?.username || user.fullName || user.username;
+  const displayMobile = currentUser?.mobileNumber || currentUser?.mobile || user.mobileNumber || user.mobile || "-";
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <Header
-        title={user.fullName || user.username}
+        title={displayName}
         showBack
         onBack={() => navigation.goBack()}
       />
@@ -133,77 +217,132 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
             <Ionicons name="person" size={26} color="#FFFFFF" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.userName}>{user.fullName || user.username}</Text>
-            <Text style={styles.userMobile}>मोबाईल: {user.mobileNumber || user.mobile || "-"}</Text>
-            <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4, gap: 6 }}>
-              <TouchableOpacity
-                onPress={handleTogglePermAsAdmin}
-                activeOpacity={0.7}
-                style={[styles.permBadge, { backgroundColor: currentPerm ? "#064E3B" : "#7F1D1D" }]}
+            <Text style={styles.userName}>{displayName}</Text>
+            <Text style={styles.userMobile}>मोबाईल: {displayMobile}</Text>
+
+            {/* Device Permissions Indicator (Controlled strictly by user on phone) */}
+            <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6 }}>
+              <View
+                style={[
+                  styles.devicePermBadge,
+                  { backgroundColor: hasDevicePerms ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
+                ]}
               >
                 <Ionicons
-                  name={currentPerm ? "shield-checkmark" : "shield-half"}
+                  name={hasDevicePerms ? "phone-portrait" : "alert-circle"}
                   size={12}
-                  color={currentPerm ? "#34D399" : "#F87171"}
+                  color={hasDevicePerms ? "#10B981" : "#EF4444"}
                   style={{ marginRight: 4 }}
                 />
-                <Text style={[styles.permBadgeText, { color: currentPerm ? "#34D399" : "#F87171" }]}>
-                  {currentPerm ? "Permissions Allowed" : "Permissions Denied"}
+                <Text style={[styles.devicePermText, { color: hasDevicePerms ? "#34D399" : "#F87171" }]}>
+                  {hasDevicePerms ? "मोबाईल परवानग्या: मंजूर (Perms Allowed)" : "मोबाईल परवानग्या: नाकारल्या (No Perms)"}
                 </Text>
-              </TouchableOpacity>
+              </View>
             </View>
           </View>
           <View style={styles.roleBadge}>
-            <Text style={styles.roleBadgeText}>{user.role}</Text>
+            <Text style={styles.roleBadgeText}>{currentUser?.role || user.role}</Text>
           </View>
+        </View>
+
+        {/* Note on Device Permissions */}
+        <View style={styles.permissionInfoBox}>
+          <Ionicons name="information-circle-outline" size={16} color="#93C5FD" style={{ marginRight: 6 }} />
+          <Text style={styles.permissionInfoText}>
+            मोबाईलमधील कॉल, एसएमएस व लोकेशन परवानग्या फक्त वापरकर्ता त्याच्या स्वतःच्या मोबाईलमधून देऊ शकतो. ॲडमिन केवळ रिअल-टाईम इतिहास पाहून प्रवेश मंजूर अथवा नाकारू शकतो.
+          </Text>
+        </View>
+
+        {/* Admin Access Control Card (Deny or Allow User Panel Access) */}
+        <View style={[styles.accessControlCard, !isAccessAllowed && styles.accessDeniedCard]}>
+          <View style={styles.accessControlHeader}>
+            <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+              <Ionicons
+                name={isAccessAllowed ? "shield-checkmark" : "ban"}
+                size={22}
+                color={isAccessAllowed ? "#10B981" : "#EF4444"}
+                style={{ marginRight: 8 }}
+              />
+              <View>
+                <Text style={styles.accessControlTitle}>ॲडमिन प्रवेश नियंत्रण (Admin Access Control)</Text>
+                <Text style={[styles.accessStatusText, { color: isAccessAllowed ? "#34D399" : "#F87171" }]}>
+                  {isAccessAllowed ? "● युझर पॅनेल प्रवेश मंजूर (Access Allowed)" : "● प्रवेश ॲडमिनने नाकारला आहे (Access Denied by Admin)"}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <Text style={styles.accessDescription}>
+            {isAccessAllowed
+              ? "या वापरकर्त्यास युझर पॅनेलमध्ये प्रवेश करण्याची परवानगी आहे. खालील रिअल-टाईम इतिहास तपासून गरज असल्यास प्रवेश नाकारा."
+              : "या वापरकर्त्याचा युझर पॅनेल प्रवेश ॲडमिनने नाकारला आहे. हा वापरकर्ता ॲपमध्ये लॉगिन करू शकत नाही."}
+          </Text>
+
+          <TouchableOpacity
+            style={[
+              styles.accessActionBtn,
+              isAccessAllowed ? styles.denyBtn : styles.allowBtn
+            ]}
+            onPress={handleToggleUserAccess}
+            disabled={updatingAccess}
+            activeOpacity={0.8}
+          >
+            {updatingAccess ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <>
+                <Ionicons
+                  name={isAccessAllowed ? "ban-outline" : "checkmark-circle-outline"}
+                  size={18}
+                  color="#FFFFFF"
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={styles.accessActionBtnText}>
+                  {isAccessAllowed ? "युझर पॅनेल प्रवेश नाकारा (Deny Access)" : "युझर पॅनेल प्रवेश पुन्हा सुरू करा (Restore Access)"}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* Section Heading */}
         <Text style={styles.sectionHeading}>रिअल-टाईम वापरकर्ता इतिहास (Real-Time History):</Text>
 
-        {!currentPerm ? (
-          <View style={styles.noPermCard}>
-            <Ionicons name="lock-closed" size={36} color="#F87171" />
-            <Text style={styles.noPermTitle}>परवानगी नाकारली (Permission Denied)</Text>
-            <Text style={styles.noPermText}>
-              या वापरकर्त्याने अॅपला फोन कॉल, SMS आणि स्थान माहिती वापरण्याची परवानगी दिली नाही.
-              म्हणून रिअल-टाईम इतिहास उपलब्ध नाही.
-            </Text>
-            <TouchableOpacity
-              style={styles.grantAccessBtn}
-              onPress={handleTogglePermAsAdmin}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="shield-checkmark" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-              <Text style={styles.grantAccessBtnText}>परवानगी सक्रिय करा (Allow Access)</Text>
-            </TouchableOpacity>
-          </View>
-        ) : loading ? (
+        {loading ? (
           <ActivityIndicator size="large" color={theme.colors.primaryLight} style={{ marginVertical: 30 }} />
         ) : (
           <>
-            {/* Summary Stats Row */}
+            {/* Summary Stats Row (Strictly 3 categories - No Timeline) */}
             <View style={styles.statsRow}>
-              <View style={[styles.statPill, { borderColor: "#34D399" }]}>
+              <TouchableOpacity
+                style={[styles.statPill, { borderColor: "#34D399" }, expandedSection === "calls" && styles.activePill]}
+                onPress={() => toggleSection("calls")}
+                activeOpacity={0.7}
+              >
                 <Ionicons name="call" size={16} color="#34D399" />
                 <Text style={[styles.statNum, { color: "#34D399" }]}>{activityData.call_count}</Text>
                 <Text style={styles.statLbl}>Calls</Text>
-              </View>
-              <View style={[styles.statPill, { borderColor: "#60A5FA" }]}>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.statPill, { borderColor: "#60A5FA" }, expandedSection === "sms" && styles.activePill]}
+                onPress={() => toggleSection("sms")}
+                activeOpacity={0.7}
+              >
                 <Ionicons name="chatbubble" size={16} color="#60A5FA" />
                 <Text style={[styles.statNum, { color: "#60A5FA" }]}>{activityData.sms_count}</Text>
-                <Text style={styles.statLbl}>SMS</Text>
-              </View>
-              <View style={[styles.statPill, { borderColor: "#FBBF24" }]}>
+                <Text style={styles.statLbl}>SMS/WA</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.statPill, { borderColor: "#FBBF24" }, expandedSection === "locations" && styles.activePill]}
+                onPress={() => toggleSection("locations")}
+                activeOpacity={0.7}
+              >
                 <Ionicons name="location" size={16} color="#FBBF24" />
                 <Text style={[styles.statNum, { color: "#FBBF24" }]}>{activityData.location_count}</Text>
                 <Text style={styles.statLbl}>Locations</Text>
-              </View>
-              <View style={[styles.statPill, { borderColor: "#A78BFA" }]}>
-                <Ionicons name="time" size={16} color="#A78BFA" />
-                <Text style={[styles.statNum, { color: "#A78BFA" }]}>{activityData.timeline_count}</Text>
-                <Text style={styles.statLbl}>Timeline</Text>
-              </View>
+              </TouchableOpacity>
             </View>
 
             {/* Card 1: Call History */}
@@ -224,8 +363,8 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 </View>
                 <Text style={styles.cardSubtitle}>
                   {activityData.call_count > 0
-                    ? `${activityData.call_count} कॉल्स नोंदवले गेले`
-                    : "कोणताही कॉल नोंदवलेला नाही"}
+                    ? `एकूण ${activityData.call_count} प्रत्यक्ष कॉल नोंदवले`
+                    : "कोणताही कॉल इतिहास नोंदवला नाही"}
                 </Text>
               </View>
               <Ionicons
@@ -237,22 +376,27 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
             {expandedSection === "calls" && (
               <View style={styles.subListCard}>
-                <Text style={styles.subListTitle}>कॉल रेकॉर्ड्स ({activityData.calls.length}):</Text>
+                <Text style={styles.subListTitle}>कॉल केलेल्या मतदारांची यादी ({activityData.calls.length}):</Text>
                 {activityData.calls.length === 0 ? (
                   <View style={styles.emptyDataBox}>
                     <Ionicons name="call-outline" size={28} color={theme.colors.textMuted} />
-                    <Text style={styles.emptySubText}>कोणताही कॉल इतिहास उपलब्ध नाही</Text>
+                    <Text style={styles.emptySubText}>वापरकर्त्याने अद्याप कोणत्याही मतदाराला कॉल केलेला नाही</Text>
                   </View>
                 ) : (
-                  activityData.calls.map((c, idx) => (
-                    <View key={c.id || idx} style={styles.subListItem}>
-                      <View style={styles.itemIconWrap}>
+                  activityData.calls.map((call, idx) => (
+                    <View key={call.id || idx} style={styles.subListItem}>
+                      <View style={[styles.itemIconWrap, { backgroundColor: "#064E3B" }]}>
                         <Ionicons name="call" size={16} color="#34D399" />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.itemTitle}>{c.targetMemberName || c.metadata?.voter || "मतदार कॉल"}</Text>
-                        <Text style={styles.itemDetail}>{c.details || `फोन: ${c.metadata?.phone || "-"}`}</Text>
-                        <Text style={styles.itemTime}>{c.timestamp ? new Date(c.timestamp).toLocaleString("mr-IN") : "अलीकडे"}</Text>
+                        <Text style={styles.itemTitle}>{call.targetMemberName || call.metadata?.voter || "मतदार"}</Text>
+                        <Text style={styles.itemDetail}>
+                          {call.metadata?.phone || call.details || "फोन नंबर उपलब्ध नाही"}
+                          {call.metadata?.village ? ` • गाव: ${call.metadata.village}` : ""}
+                        </Text>
+                        <Text style={styles.itemTime}>
+                          {call.timestamp ? new Date(call.timestamp).toLocaleString("mr-IN") : "अलीकडे"}
+                        </Text>
                       </View>
                     </View>
                   ))
@@ -260,26 +404,26 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
               </View>
             )}
 
-            {/* Card 2: SMS History */}
+            {/* Card 2: SMS & WhatsApp History */}
             <TouchableOpacity
               style={[styles.activityCard, expandedSection === "sms" && styles.activeCardBorder]}
               onPress={() => toggleSection("sms")}
               activeOpacity={0.7}
             >
               <View style={[styles.iconCircle, { backgroundColor: "#1E3A8A" }]}>
-                <Ionicons name="chatbubble" size={22} color="#60A5FA" />
+                <Ionicons name="chatbubbles" size={22} color="#60A5FA" />
               </View>
               <View style={{ flex: 1 }}>
                 <View style={styles.cardTitleRow}>
-                  <Text style={styles.cardTitle}>SMS इतिहास (SMS History)</Text>
+                  <Text style={styles.cardTitle}>एसएमएस व व्हॉट्सॲप इतिहास (SMS History)</Text>
                   <View style={[styles.pillBadge, { backgroundColor: "#1E3A8A" }]}>
-                    <Text style={[styles.pillText, { color: "#60A5FA" }]}>{activityData.sms_count} SMS</Text>
+                    <Text style={[styles.pillText, { color: "#60A5FA" }]}>{activityData.sms_count} Messages</Text>
                   </View>
                 </View>
                 <Text style={styles.cardSubtitle}>
                   {activityData.sms_count > 0
-                    ? `${activityData.sms_count} संदेश नोंदवले गेले`
-                    : "कोणताही SMS नोंदवलेला नाही"}
+                    ? `एकूण ${activityData.sms_count} संदेश/व्हॉट्सॲप पाठवले`
+                    : "कोणताही संदेश इतिहास नोंदवला नाही"}
                 </Text>
               </View>
               <Ionicons
@@ -291,22 +435,30 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
             {expandedSection === "sms" && (
               <View style={styles.subListCard}>
-                <Text style={styles.subListTitle}>SMS व संदेश रेकॉर्ड्स ({activityData.sms.length}):</Text>
+                <Text style={styles.subListTitle}>पाठवलेले एसएमएस व संदेश ({activityData.sms.length}):</Text>
                 {activityData.sms.length === 0 ? (
                   <View style={styles.emptyDataBox}>
                     <Ionicons name="chatbubble-outline" size={28} color={theme.colors.textMuted} />
-                    <Text style={styles.emptySubText}>कोणताही SMS इतिहास उपलब्ध नाही</Text>
+                    <Text style={styles.emptySubText}>वापरकर्त्याने अद्याप कोणत्याही मतदाराला एसएमएस पाठवलेला नाही</Text>
                   </View>
                 ) : (
-                  activityData.sms.map((s, idx) => (
-                    <View key={s.id || idx} style={styles.subListItem}>
-                      <View style={styles.itemIconWrap}>
-                        <Ionicons name="chatbubble" size={16} color="#60A5FA" />
+                  activityData.sms.map((msg, idx) => (
+                    <View key={msg.id || idx} style={styles.subListItem}>
+                      <View style={[styles.itemIconWrap, { backgroundColor: "#1E3A8A" }]}>
+                        <Ionicons
+                          name={msg.action?.includes("WHATSAPP") ? "logo-whatsapp" : "chatbubble"}
+                          size={16}
+                          color={msg.action?.includes("WHATSAPP") ? "#22C55E" : "#60A5FA"}
+                        />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.itemTitle}>{s.targetMemberName || s.metadata?.voter || "SMS संदेश"}</Text>
-                        <Text style={styles.itemDetail}>{s.details || `फोन: ${s.metadata?.phone || "-"}`}</Text>
-                        <Text style={styles.itemTime}>{s.timestamp ? new Date(s.timestamp).toLocaleString("mr-IN") : "अलीकडे"}</Text>
+                        <Text style={styles.itemTitle}>{msg.targetMemberName || msg.metadata?.voter || "मतदार संदेश"}</Text>
+                        <Text style={styles.itemDetail}>
+                          {msg.details || (msg.metadata?.phone ? `मोबाईल: ${msg.metadata.phone}` : "संदेश पाठवला")}
+                        </Text>
+                        <Text style={styles.itemTime}>
+                          {msg.timestamp ? new Date(msg.timestamp).toLocaleString("mr-IN") : "अलीकडे"}
+                        </Text>
                       </View>
                     </View>
                   ))
@@ -325,15 +477,15 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
               </View>
               <View style={{ flex: 1 }}>
                 <View style={styles.cardTitleRow}>
-                  <Text style={styles.cardTitle}>स्थान इतिहास (Location History)</Text>
+                  <Text style={styles.cardTitle}>स्थान / लोकेशन इतिहास (Location History)</Text>
                   <View style={[styles.pillBadge, { backgroundColor: "#78350F" }]}>
-                    <Text style={[styles.pillText, { color: "#FBBF24" }]}>{activityData.location_count} Loc</Text>
+                    <Text style={[styles.pillText, { color: "#FBBF24" }]}>{activityData.location_count} Check-ins</Text>
                   </View>
                 </View>
                 <Text style={styles.cardSubtitle}>
                   {activityData.location_count > 0
-                    ? `${activityData.location_count} गाव/बूथ भेटी नोंदवल्या`
-                    : "कोणतेही स्थान नोंदवलेले नाही"}
+                    ? `एकूण ${activityData.location_count} रिअल-टाईम स्थान नोंदी`
+                    : "कोणतीही लोकेशन नोंद उपलब्ध नाही"}
                 </Text>
               </View>
               <Ionicons
@@ -345,91 +497,61 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
             {expandedSection === "locations" && (
               <View style={styles.subListCard}>
-                <Text style={styles.subListTitle}>गाव व बूथ उपस्थिती ({activityData.locations.length}):</Text>
+                <Text style={styles.subListTitle}>नोंदवलेली रिअल-टाईम स्थाने ({activityData.locations.length}):</Text>
                 {activityData.locations.length === 0 ? (
                   <View style={styles.emptyDataBox}>
                     <Ionicons name="location-outline" size={28} color={theme.colors.textMuted} />
-                    <Text style={styles.emptySubText}>कोणतेही स्थान रेकॉर्ड उपलब्ध नाही</Text>
+                    <Text style={styles.emptySubText}>वापरकर्त्याची कोणतीही रिअल-टाईम लोकेशन नोंद उपलब्ध नाही</Text>
                   </View>
                 ) : (
-                  activityData.locations.map((loc, idx) => (
-                    <View key={loc.id || idx} style={styles.subListItem}>
-                      <View style={styles.itemIconWrap}>
-                        <Ionicons name="location" size={16} color="#FBBF24" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.itemTitle}>{loc.metadata?.village || loc.details?.split(":")[1]?.trim() || "गाव भेट"}</Text>
-                        <Text style={styles.itemDetail}>{loc.details || `तालुका: ${loc.metadata?.taluka || "वाळवा"}`}</Text>
-                        <Text style={styles.itemTime}>{loc.timestamp ? new Date(loc.timestamp).toLocaleString("mr-IN") : "अलीकडे"}</Text>
-                      </View>
-                    </View>
-                  ))
-                )}
-              </View>
-            )}
+                  activityData.locations.map((loc: any, idx: number) => {
+                    const lat = loc.metadata?.latitude ?? loc.latitude;
+                    const lon = loc.metadata?.longitude ?? loc.longitude;
+                    const hasCoords = lat !== undefined && lon !== undefined;
 
-            {/* Card 4: All Timeline / Audit Trail */}
-            <TouchableOpacity
-              style={[styles.activityCard, expandedSection === "timeline" && styles.activeCardBorder]}
-              onPress={() => toggleSection("timeline")}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: "#312E81" }]}>
-                <Ionicons name="time" size={22} color="#A78BFA" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <View style={styles.cardTitleRow}>
-                  <Text style={styles.cardTitle}>सर्व कृती इतिहास (Activity Timeline)</Text>
-                  <View style={[styles.pillBadge, { backgroundColor: "#312E81" }]}>
-                    <Text style={[styles.pillText, { color: "#A78BFA" }]}>{activityData.timeline_count} Events</Text>
-                  </View>
-                </View>
-                <Text style={styles.cardSubtitle}>
-                  {activityData.timeline_count > 0
-                    ? `एकूण ${activityData.timeline_count} क्रिया/लॉग नोंदवले`
-                    : "कोणतीही कृती नोंदवलेली नाही"}
-                </Text>
-              </View>
-              <Ionicons
-                name={expandedSection === "timeline" ? "chevron-down" : "chevron-forward"}
-                size={20}
-                color={theme.colors.textMuted}
-              />
-            </TouchableOpacity>
-
-            {expandedSection === "timeline" && (
-              <View style={styles.subListCard}>
-                <Text style={styles.subListTitle}>सर्व कृती लॉग ({activityData.timeline.length}):</Text>
-                {activityData.timeline.length === 0 ? (
-                  <View style={styles.emptyDataBox}>
-                    <Ionicons name="time-outline" size={28} color={theme.colors.textMuted} />
-                    <Text style={styles.emptySubText}>कोणताही कृती इतिहास उपलब्ध नाही</Text>
-                  </View>
-                ) : (
-                  activityData.timeline.map((act, idx) => {
-                    const isCall = act.action?.includes("CALL");
-                    const isSms = act.action?.includes("SMS") || act.action?.includes("WHATSAPP");
-                    const isLoc = act.action?.includes("LOCATION") || act.action?.includes("CHECKIN");
-                    const isEdit = act.action?.includes("UPDATE");
-                    const isView = act.action?.includes("VIEW");
-                    const isLogin = act.action?.includes("LOGIN");
-
-                    const iconName = isCall ? "call" : isSms ? "chatbubble" : isLoc ? "location" : isEdit ? "create" : isView ? "eye" : isLogin ? "log-in" : "flash";
-                    const iconColor = isCall ? "#34D399" : isSms ? "#60A5FA" : isLoc ? "#FBBF24" : isEdit ? "#F59E0B" : isView ? "#38BDF8" : isLogin ? "#A78BFA" : "#9CA3AF";
+                    // Build readable location name
+                    const locationName = loc.metadata?.address || 
+                      loc.metadata?.village || 
+                      loc.metadata?.city || 
+                      loc.details?.includes(":") ? loc.details.split(":")[1]?.trim() : loc.details || "स्थान नोंद";
 
                     return (
-                      <View key={act.id || idx} style={styles.subListItem}>
-                        <View style={[styles.itemIconWrap, { backgroundColor: `${iconColor}22` }]}>
-                          <Ionicons name={iconName as any} size={16} color={iconColor} />
+                      <View key={loc.id || idx} style={styles.subListItem}>
+                        <View style={[styles.itemIconWrap, { backgroundColor: "#78350F" }]}>
+                          <Ionicons name="navigate" size={16} color="#FBBF24" />
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.itemTitle}>{act.details || act.action}</Text>
-                          {act.targetMemberName ? (
-                            <Text style={styles.itemDetail}>मतदार: {act.targetMemberName}</Text>
-                          ) : null}
-                          <Text style={styles.itemTime}>
-                            {act.timestamp ? new Date(act.timestamp).toLocaleString("mr-IN") : "अलीकडे"}
+                          <Text style={styles.itemTitle}>
+                            {locationName}
                           </Text>
+                          {hasCoords ? (
+                            <View style={styles.coordRow}>
+                              <Text style={styles.coordsText}>
+                                📍 अक्षांश: {typeof lat === "number" ? lat.toFixed(5) : lat}
+                              </Text>
+                              <Text style={styles.coordsText}>
+                                📍 रेखांश: {typeof lon === "number" ? lon.toFixed(5) : lon}
+                              </Text>
+                              {loc.metadata?.accuracy ? (
+                                <Text style={styles.coordsText}>
+                                  (अचूकता: ±{Math.round(loc.metadata.acuracy || 10)} मी.)
+                                </Text>
+                              ) : null}
+                            </View>
+                          ) : null}
+                          <Text style={styles.itemDetail}>
+                            {loc.details || (loc.metadata?.city ? `${loc.metadata.city}${loc.metadata.district ? `, ${loc.metadata.district}` : ""}` : "रिअल-टाईम थेट उपस्थिती")}
+                          </Text>
+                          <Text style={styles.itemTime}>
+                            {loc.timestamp ? new Date(loc.timestamp).toLocaleString("mr-IN") : "अलीकडे"}
+                          </Text>
+                          {hasCoords && (
+                            <TouchableOpacity style={{ marginTop: 6 }}>
+                              <Text style={{ color: "#FBBF24", fontSize: 11, fontWeight: "600" }}>
+                                🗺️ Map link
+                              </Text>
+                            </TouchableOpacity>
+                          )}
                         </View>
                       </View>
                     );
@@ -453,13 +575,42 @@ const styles = StyleSheet.create({
     padding: theme.spacing.lg,
     paddingBottom: 40,
   },
+  centerContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  emptyTitle: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
+    marginTop: 12,
+  },
+  emptySubText: {
+    color: theme.colors.textMuted,
+    fontSize: 13,
+    textAlign: "center",
+    marginTop: 6,
+  },
+  backBtn: {
+    marginTop: 20,
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  backBtnText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+  },
   userBadgeCard: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#1E3A8A",
     borderRadius: theme.borderRadius.lg,
     padding: 16,
-    marginBottom: 20,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: "#3B82F6",
   },
@@ -482,14 +633,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
-  permBadge: {
+  devicePermBadge: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
-  permBadgeText: {
+  devicePermText: {
     fontSize: 10,
     fontWeight: "700",
   },
@@ -504,6 +655,74 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
   },
+  permissionInfoBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "rgba(30, 58, 138, 0.3)",
+    padding: 12,
+    borderRadius: theme.borderRadius.md,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "rgba(59, 130, 246, 0.3)",
+  },
+  permissionInfoText: {
+    flex: 1,
+    color: "#BFDBFE",
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  accessControlCard: {
+    backgroundColor: "#0F172A",
+    borderRadius: theme.borderRadius.lg,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1.5,
+    borderColor: "#10B981",
+  },
+  accessDeniedCard: {
+    borderColor: "#EF4444",
+    backgroundColor: "#1C1117",
+  },
+  accessControlHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  accessControlTitle: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  accessStatusText: {
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 2,
+  },
+  accessDescription: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  accessActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: theme.borderRadius.md,
+  },
+  denyBtn: {
+    backgroundColor: "#DC2626",
+  },
+  allowBtn: {
+    backgroundColor: "#059669",
+  },
+  accessActionBtnText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
   sectionHeading: {
     color: theme.colors.textPrimary,
     fontSize: 14,
@@ -512,63 +731,44 @@ const styles = StyleSheet.create({
   },
   statsRow: {
     flexDirection: "row",
-    gap: 8,
+    gap: 10,
     marginBottom: 16,
   },
   statPill: {
     flex: 1,
-    flexDirection: "column",
-    alignItems: "center",
-    backgroundColor: theme.colors.card,
-    borderRadius: theme.borderRadius.md,
-    padding: 12,
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    gap: 4,
+    borderRadius: theme.borderRadius.md,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activePill: {
+    backgroundColor: "#1E293B",
   },
   statNum: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: "800",
+    marginTop: 4,
   },
   statLbl: {
     color: theme.colors.textMuted,
     fontSize: 10,
     fontWeight: "600",
-  },
-  noPermCard: {
-    backgroundColor: "rgba(127, 29, 29, 0.2)",
-    borderRadius: theme.borderRadius.lg,
-    padding: 24,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#7F1D1D",
-    marginTop: 8,
-  },
-  noPermTitle: {
-    color: "#F87171",
-    fontSize: 16,
-    fontWeight: "800",
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  noPermText: {
-    color: theme.colors.textSecondary,
-    fontSize: 12,
-    textAlign: "center",
-    lineHeight: 18,
+    marginTop: 2,
   },
   activityCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: theme.colors.card,
+    backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.lg,
     padding: 16,
-    marginBottom: 8,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
   activeCardBorder: {
-    borderColor: "#3B82F6",
-    backgroundColor: "rgba(30, 58, 138, 0.25)",
+    borderColor: theme.colors.primaryLight,
   },
   iconCircle: {
     width: 44,
@@ -581,97 +781,84 @@ const styles = StyleSheet.create({
   cardTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    flexWrap: "wrap",
+    justifyContent: "space-between",
+    marginBottom: 4,
+    marginRight: 6,
   },
   cardTitle: {
     color: theme.colors.textPrimary,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "700",
+    flex: 1,
+  },
+  cardSubtitle: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
   },
   pillBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 4,
+    borderRadius: 12,
   },
   pillText: {
     fontSize: 11,
-    fontWeight: "800",
-  },
-  cardSubtitle: {
-    color: theme.colors.textMuted,
-    fontSize: 11,
-    marginTop: 3,
+    fontWeight: "700",
   },
   subListCard: {
-    backgroundColor: theme.colors.card,
+    backgroundColor: "#0B1120",
     borderRadius: theme.borderRadius.md,
     padding: 14,
-    marginBottom: 10,
+    marginBottom: 14,
+    marginTop: -4,
     borderWidth: 1,
-    borderColor: "rgba(59, 130, 246, 0.35)",
+    borderColor: theme.colors.border,
   },
   subListTitle: {
-    color: "#93C5FD",
+    color: theme.colors.textPrimary,
     fontSize: 12,
     fontWeight: "700",
     marginBottom: 10,
-  },
-  emptyDataBox: {
-    alignItems: "center",
-    paddingVertical: 16,
-    gap: 6,
-  },
-  emptySubText: {
-    color: theme.colors.textMuted,
-    fontSize: 12,
-    fontStyle: "italic",
   },
   subListItem: {
     flexDirection: "row",
     alignItems: "flex-start",
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: "#1E293B",
   },
   itemIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: theme.colors.surface,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 10,
     marginTop: 2,
   },
   itemTitle: {
-    color: theme.colors.textPrimary,
+    color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "700",
   },
   itemDetail: {
-    color: "#E2E8F0",
+    color: theme.colors.textMuted,
     fontSize: 11,
     marginTop: 2,
   },
-  itemTime: {
-    color: theme.colors.textMuted,
-    fontSize: 10,
+  coordsText: {
+    color: "#FBBF24",
+    fontSize: 11,
+    fontWeight: "600",
     marginTop: 2,
   },
-  grantAccessBtn: {
-    flexDirection: "row",
+  itemTime: {
+    color: "#64748B",
+    fontSize: 10,
+    marginTop: 4,
+  },
+  emptyDataBox: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#059669",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginTop: 14,
-  },
-  grantAccessBtnText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "700",
+    paddingVertical: 24,
   },
 });

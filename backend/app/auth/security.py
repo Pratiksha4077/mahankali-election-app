@@ -156,10 +156,11 @@ async def get_current_user(
         raise credentials_exception
 
     user = AuthUser(user_doc)
-    if not user.is_active:
+    account_status = user_doc.get("accountStatus", "ACTIVE")
+    if not user.is_active or account_status == "DISABLED" or user_doc.get("admin_access_allowed") is False or user_doc.get("admin_access_denied") is True:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive or disabled user account"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="ॲडमिनने आपला प्रवेश नाकारला आहे. आपण युझर पॅनेलमध्ये प्रवेश करू शकत नाही. (Access Denied: The administrator has denied your access to the User Panel.)"
         )
 
     # Update lastActivity (non-blocking)

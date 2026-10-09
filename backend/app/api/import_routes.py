@@ -104,11 +104,10 @@ async def upload_and_process_pdf(
     Admin uploads one or multiple PDF electoral rolls bound to a pre-selected village.
     Returns job_id immediately and starts 8-stage processing in background.
     """
-    if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported by this endpoint")
-
-    if clear_previous:
-        await _clear_all_voters_internal(db, admin.username)
+    raise HTTPException(
+        status_code=400,
+        detail="PDF upload is disabled. Please upload voter data using Excel (.xlsx, .xls) or CSV (.csv) files."
+    )
 
     # Resolve Village
     v_query = {"_id": ObjectId(village_id)} if ObjectId.is_valid(village_id) else {"_id": village_id}

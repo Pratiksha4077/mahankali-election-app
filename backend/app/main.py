@@ -12,7 +12,7 @@ from app.database.seed_mongo import seed_mongo_initial_data
 
 from app.api import (
     auth, admin_users, admin_dashboard, members, villages, categories,
-    family_routes, reports, import_routes, export_routes, sync, audit, users
+    family_routes, reports, import_routes, export_routes, sync, audit, users, activity
 )
 
 logger = logging.getLogger("election_app")
@@ -72,7 +72,7 @@ app.include_router(reports.router, prefix=settings.API_V1_STR)
 app.include_router(import_routes.router, prefix=settings.API_V1_STR)
 app.include_router(export_routes.router, prefix=settings.API_V1_STR)
 app.include_router(sync.router, prefix=settings.API_V1_STR)
-app.include_router(audit.router, prefix=settings.API_V1_STR)
+app.include_router(activity.router, prefix=settings.API_V1_STR)
 app.include_router(users.router, prefix=settings.API_V1_STR)
 
 from app.api.admin_users import LogActivityRequest

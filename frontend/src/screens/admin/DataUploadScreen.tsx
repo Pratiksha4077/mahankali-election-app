@@ -4,6 +4,7 @@ import {
   SafeAreaView, ActivityIndicator, Alert, Platform, Modal
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as DocumentPicker from "expo-document-picker";
 import { Header } from "../../components/Header";
 import { villageAPI, adminAPI } from "../../api/client";
 import { Village, ImportJob } from "../../models/types";
@@ -14,7 +15,7 @@ interface QueuedFile {
   id: string;
   name: string;
   size: number;
-  type: "PDF" | "EXCEL";
+  type: "EXCEL" | "CSV";
   fileObj?: any;
   uri?: string;
 }
@@ -123,20 +124,28 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
     }
   };
 
-  // Strict file validation: Only .pdf, .xlsx, .xls, .csv are allowed
+  // Strict file validation: Only .xlsx, .xls, .csv are allowed. PDF is rejected.
   const validateAndAddFile = (fileName: string, fileSize: number, fileObj?: any, uri?: string): boolean => {
     const ext = fileName.slice(fileName.lastIndexOf(".")).toLowerCase();
-    const validExtensions = [".pdf", ".xlsx", ".xls", ".csv"];
 
-    if (!validExtensions.includes(ext)) {
+    if (ext === ".pdf") {
       Alert.alert(
-        t("invalid_file_type"),
-        `'${fileName}' हा अयोग्य फाईल प्रकार आहे. ${t("invalid_file_desc")}`
+        "पीडीएफ समर्थित नाही (PDF Not Allowed)",
+        `'${fileName}' ही पीडीएफ फाईल आहे. कृपया मतदार यादी एक्सेल (.xlsx, .xls) किंवा सीएसव्ही (.csv) फाईल स्वरूपात निवडा.`
       );
       return false;
     }
 
-    const fileType: "PDF" | "EXCEL" = ext === ".pdf" ? "PDF" : "EXCEL";
+    const validExtensions = [".xlsx", ".xls", ".csv"];
+    if (!validExtensions.includes(ext)) {
+      Alert.alert(
+        t("invalid_file_type") || "अयोग्य फाईल प्रकार",
+        `'${fileName}' हा अयोग्य फाईल प्रकार आहे. फक्त .xlsx, .xls आणि .csv फाईल्स निवडा.`
+      );
+      return false;
+    }
+
+    const fileType: "EXCEL" | "CSV" = ext === ".csv" ? "CSV" : "EXCEL";
     const newFile: QueuedFile = {
       id: `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
       name: fileName,
@@ -158,19 +167,50 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
     return true;
   };
 
-  const handlePickFiles = () => {
-    if (Platform.OS === "web") {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.multiple = true;
-      input.accept = ".pdf,.xlsx,.xls,.csv";
-      input.onchange = (e: any) => {
-        const files: FileList = e.target.files;
-        if (files && files.length > 0) {
+  const handlePickFiles = async () => {
+    try {
+      if (Platform.OS === "web") {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.multiple = true;
+        input.accept = ".xlsx,.xls,.csv";
+        input.onchange = (e: any) => {
+          const files: FileList = e.target.files;
+          if (files && files.length > 0) {
+            let addedCount = 0;
+            for (let i = 0; i < files.length; i++) {
+              const file = files[i];
+              if (validateAndAddFile(file.name, file.size, file)) {
+                addedCount++;
+              }
+            }
+            if (addedCount > 0) {
+              Alert.alert("यशस्वी", `${addedCount} फाईल्स यादीत जोडल्या गेल्या.`);
+            }
+          }
+        };
+        input.click();
+      } else {
+        // Native device document picker (Android & iOS)
+        const result = await DocumentPicker.getDocumentAsync({
+          type: [
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-excel",
+            "text/csv",
+            "text/comma-separated-values",
+            "application/csv"
+          ],
+          multiple: true,
+          copyToCacheDirectory: true
+        });
+
+        if (result.canceled) return;
+
+        if (result.assets && result.assets.length > 0) {
           let addedCount = 0;
-          for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            if (validateAndAddFile(file.name, file.size, file)) {
+          for (const asset of result.assets) {
+            const fileObj = (asset as any).file || null;
+            if (validateAndAddFile(asset.name, asset.size || 0, fileObj, asset.uri)) {
               addedCount++;
             }
           }
@@ -178,32 +218,10 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
             Alert.alert("यशस्वी", `${addedCount} फाईल्स यादीत जोडल्या गेल्या.`);
           }
         }
-      };
-      input.click();
-    } else {
-      // In native environment: present multi-file picker options
-      Alert.alert(
-        "कागदपत्र निवडा (Select Files)",
-        "कृपया मतदार यादी PDF किंवा एक्सेल फाईल निवडा:",
-        [
-          {
-            text: "Sakharele_Booth61.pdf",
-            onPress: () => validateAndAddFile("Sakharele_Booth61.pdf", 3482100, null, "file:///mock/Sakharele_Booth61.pdf")
-          },
-          {
-            text: "Sakharele_Booth62.pdf",
-            onPress: () => validateAndAddFile("Sakharele_Booth62.pdf", 3215400, null, "file:///mock/Sakharele_Booth62.pdf")
-          },
-          {
-            text: "Sakharele_Voters_2026.xlsx",
-            onPress: () => validateAndAddFile("Sakharele_Voters_2026.xlsx", 1845200, null, "file:///mock/Sakharele_Voters_2026.xlsx")
-          },
-          {
-            text: "रद्द करा",
-            style: "cancel"
-          }
-        ]
-      );
+      }
+    } catch (err: any) {
+      console.error("Document picker error:", err);
+      Alert.alert("त्रुटी", "फाईल निवडताना अडचण आली: " + (err?.message || ""));
     }
   };
 
@@ -251,18 +269,16 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
           formData.append("file", item.fileObj);
         } else {
           formData.append("file", {
-            uri: item.uri || "file:///path",
+            uri: item.uri || "",
             name: item.name,
-            type: item.type === "PDF" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            type: item.name.toLowerCase().endsWith(".csv")
+              ? "text/csv"
+              : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           } as any);
         }
 
         try {
-          if (item.type === "PDF") {
-            await adminAPI.uploadPdf(formData);
-          } else {
-            await adminAPI.uploadExcel(formData);
-          }
+          await adminAPI.uploadExcel(formData);
           successCount++;
         } catch (err: any) {
           errors.push(item.name);
@@ -305,9 +321,9 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
         <View style={styles.bannerCard}>
           <Ionicons name="cloud-upload" size={24} color="#60A5FA" />
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={styles.bannerTitle}>Admin Multi-File Upload Studio</Text>
+            <Text style={styles.bannerTitle}>Admin Excel/CSV Upload Studio</Text>
             <Text style={styles.bannerText}>
-              प्रथम गाव निवडा, त्यानंतर त्या गावाच्या एकाधिक (Multiple) PDF व एक्सेल फाईल्स एकत्र जोडून अपलोड करा.
+              प्रथम गाव निवडा, त्यानंतर त्या गावाच्या एक्सेल किंवा सीएसव्ही फाईल्स (.xlsx, .xls, .csv) जोडून अपलोड करा.
             </Text>
           </View>
         </View>
@@ -321,7 +337,7 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
             <View style={{ flex: 1, marginLeft: 10 }}>
               <Text style={styles.dangerTitle}>डेटाबेस साफ करा (Clear All Voter Data)</Text>
               <Text style={styles.dangerSubtitle}>
-                नवीन PDF/Excel अपलोड करण्यापूर्वी जुना मतदार डेटा साफ करा जेणेकरून ॲपमध्ये फक्त नवीन रिअल-टाईम डेटा राहील.
+                नवीन Excel/CSV अपलोड करण्यापूर्वी जुना मतदार डेटा साफ करा जेणेकरून ॲपमध्ये फक्त नवीन रिअल-टाईम डेटा राहील.
               </Text>
             </View>
           </View>
@@ -390,10 +406,10 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
             <Ionicons name="folder-open-outline" size={36} color={theme.colors.primaryLight} />
           </View>
           <Text style={styles.dropzoneTitle}>
-            PDF किंवा एक्सेल फाईल्स निवडा
+            एक्सेल किंवा सीएसव्ही फाईल्स निवडा
           </Text>
           <Text style={styles.dropzoneSub}>
-            फक्त मतदार यादी .pdf किंवा .xlsx/.csv फाईल्स स्वीकारल्या जातात (एकाधिक फाईल्स समर्थित)
+            फक्त मतदार यादी .xlsx, .xls किंवा .csv फाईल्स स्वीकारल्या जातात (पीडीएफ फाईल्स समर्थित नाहीत)
           </Text>
           <View style={styles.browseBtn}>
             <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
@@ -415,7 +431,7 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
 
             {fileQueue.map((file) => (
               <View key={file.id} style={styles.fileItemCard}>
-                <View style={[styles.fileTypeBadge, { backgroundColor: file.type === "PDF" ? "#EF4444" : "#10B981" }]}>
+                <View style={[styles.fileTypeBadge, { backgroundColor: file.type === "CSV" ? "#3B82F6" : "#10B981" }]}>
                   <Text style={styles.fileTypeBadgeText}>{file.type}</Text>
                 </View>
 
