@@ -94,12 +94,21 @@ class MongoMemberService:
             "houseNumber": 1,
             "age": 1,
             "gender": 1,
+            "relative": 1,
             "relativeNameMarathi": 1,
             "relationType": 1,
             "village": 1,
             "category": 1,
+            "color_tag": 1,
+            "color": 1,
             "status": 1,
-            "boothPartNumber": 1
+            "boothPartNumber": 1,
+            "religion": 1,
+            "caste": 1,
+            "designation": 1,
+            "profession": 1,
+            "familyId": 1,
+            "address": 1
         }
 
         limit = max(1, min(limit, 50))
@@ -230,7 +239,14 @@ class MongoMemberService:
         elif update_fields.get("is_deceased") is False or update_fields.get("status") == "ACTIVE":
             set_data["status"] = "ACTIVE"
 
-        # 6. Miscellaneous Info
+        # 6. Miscellaneous Info & Father Name
+        father = update_fields.get("father_name") or update_fields.get("fatherName") or update_fields.get("relative_name_mr")
+        if father is not None:
+            f_clean = str(father).strip()
+            set_data["nameMarathi.fatherName"] = f_clean
+            set_data["relative.nameMarathi"] = f_clean
+            set_data["father_name"] = f_clean
+
         for extra in ["religion", "caste", "designation", "profession"]:
             if extra in update_fields and update_fields[extra] is not None:
                 set_data[extra] = str(update_fields[extra]).strip()

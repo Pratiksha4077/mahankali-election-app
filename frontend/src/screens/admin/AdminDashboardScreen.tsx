@@ -423,9 +423,13 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
                         <Text style={styles.deceasedPillText}>मयत</Text>
                       </View>
                     )}
-                    {!!item.category_id && (
-                      <View style={[styles.catColorDot, { backgroundColor: getCategoryColor(item.category_id, categoryData) }]} />
-                    )}
+                    {(() => {
+                      const dotColor = item.category_color || (item as any).color_tag || item.category?.color || getCategoryColor(item.category_id, categoryData);
+                      if (dotColor && dotColor !== "#6B7280" && dotColor !== "") {
+                        return <View style={[styles.catColorDot, { backgroundColor: dotColor }]} />;
+                      }
+                      return <View style={styles.catColorUnassigned} />;
+                    })()}
                     <Ionicons name="chevron-forward" size={14} color={theme.colors.textMuted} />
                   </View>
                 </TouchableOpacity>
@@ -461,20 +465,42 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
 };
 
 // Helper to get category color
-function getCategoryColor(categoryId: string, categories: any[]): string {
-  const colorMap: Record<string, string> = {
-    "c-1": "#10B981",
-    "c-2": "#84CC16",
-    "c-3": "#F59E0B",
-    "c-4": "#F97316",
-    "c-5": "#EF4444",
-  };
-  if (colorMap[categoryId]) return colorMap[categoryId];
-  const cat = categories.find(c => c.category_id === categoryId);
-  return cat?.color || "#6B7280";
+function getCategoryColor(categoryId?: string, categories?: any[]): string {
+  if (!categoryId) return "";
+  const upper = String(categoryId).toUpperCase();
+  if (upper.includes("GREEN") || upper === "CAT_GREEN" || upper === "C-1" || upper.includes("10B981")) return "#10B981";
+  if (upper.includes("LIGHT_GREEN") || upper === "C-2" || upper.includes("84CC16")) return "#84CC16";
+  if (upper.includes("YELLOW") || upper === "CAT_YELLOW" || upper === "C-3" || upper.includes("F59E0B")) return "#F59E0B";
+  if (upper.includes("ORANGE") || upper === "CAT_ORANGE" || upper === "C-4" || upper.includes("F97316")) return "#F97316";
+  if (upper.includes("RED") || upper === "CAT_RED" || upper === "C-5" || upper.includes("EF4444")) return "#EF4444";
+  if (categories && Array.isArray(categories)) {
+    const cat = categories.find(c => c.category_id === categoryId || c.id === categoryId || c.code === categoryId || c.color === categoryId);
+    if (cat?.color || cat?.color_hex) return cat.color || cat.color_hex;
+  }
+  return "";
 }
 
 const styles = StyleSheet.create({
+  catColorDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    borderColor: "rgba(255, 255, 255, 0.6)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  catColorUnassigned: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#4B5563",
+    backgroundColor: "transparent",
+  },
   safeArea: {
     flex: 1,
     backgroundColor: theme.colors.background,
@@ -822,10 +848,5 @@ const styles = StyleSheet.create({
     color: "#F87171",
     fontSize: 9,
     fontWeight: "700",
-  },
-  catColorDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
   },
 });

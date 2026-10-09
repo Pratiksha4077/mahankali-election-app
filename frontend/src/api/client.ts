@@ -262,15 +262,15 @@ export const reportAPI = {
       const res = await apiClient.get(`/reports/${type}`, { params: { village_id } });
       const data = res.data;
       if (Array.isArray(data)) return data;
-      if (data && Array.isArray(data.items)) return data.items;
-      if (data && Array.isArray(data.data)) return data.data;
       if (data && Array.isArray(data.families)) {
         return data.families.map((f: any) => ({
           name: f.name || `${f.familyName || "कुटुंब"} - ${f.headName || ""}`,
-          count: f.totalMembers || (f.members ? f.members.length : 1),
-          key: f.key || f.headName || f.familyName
+          count: f.count || f.totalMembers || (f.members ? f.members.length : 1),
+          key: f.key || f.familyId || f.headName || f.familyName
         }));
       }
+      if (data && Array.isArray(data.items)) return data.items;
+      if (data && Array.isArray(data.data)) return data.data;
       return [];
     } catch (e) {
       return [];
@@ -485,6 +485,25 @@ export const adminAPI = {
       if (payload) return payload;
     } catch (e) { }
     return { calls: [], sms: [], locations: [], call_count: 0, sms_count: 0, location_count: 0 };
+  },
+
+  deleteSingleActivity: async (userId: string, activityId: string) => {
+    const res = await apiClient.delete(`/admin/users/${userId}/activity/${activityId}`);
+    return res.data;
+  },
+
+  deleteBatchActivities: async (userId: string, activityIds: string[]) => {
+    const res = await apiClient.delete(`/admin/users/${userId}/activity`, {
+      data: { activity_ids: activityIds }
+    });
+    return res.data;
+  },
+
+  clearUserActivities: async (userId: string, actionType?: string) => {
+    const res = await apiClient.delete(`/admin/users/${userId}/activity`, {
+      params: { delete_all: true, action_type: actionType }
+    });
+    return res.data;
   },
 
   getAuditLogs: async (action?: string) => {

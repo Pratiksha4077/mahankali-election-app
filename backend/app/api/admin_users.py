@@ -284,3 +284,43 @@ async def get_user_activity(
     """
     data = await MongoUserService.get_user_activity(user_id, limit=limit)
     return {"success": True, "data": data}
+
+class BatchDeleteActivitiesRequest(BaseModel):
+    activity_ids: Optional[List[str]] = None
+    action_type: Optional[str] = None
+    delete_all: Optional[bool] = False
+
+@router.delete("/{user_id}/activity/{activity_id}")
+async def delete_single_activity(
+    user_id: str,
+    activity_id: str,
+    admin: AuthUser = Depends(require_admin)
+):
+    """Admin deletes a single user activity record (Call, SMS, or Location check-in)."""
+    success = await MongoUserService.delete_activity(activity_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Activity record not found")
+    return {"success": True, "message": "Activity record deleted successfully"}
+
+@router.delete("/{user_id}/activity")
+async def delete_activities_batch(
+    user_id: str,
+    payload: Optional[BatchDeleteActivitiesRequest] = None,
+    action_type: Optional[str] = Query(None),
+    delete_all: Optional[bool] = Query(False),
+    admin: AuthUser = Depends(require_admin)
+):
+    """Admin deletes multiple activity records by IDs, or clears all activity for a user."""
+    p_ids = payload.activity_ids if payload and payload.activity_ids else []
+    p_all = (payload and payload.delete_all) or delete_all
+    p_type = (payload and payload.action_type) or action_type
+
+    if p_ids:
+        count = await MongoUserService.delete_activities(p_ids)
+        return {"success": True, "message": f"{count} activities deleted", "deleted_count": count}
+    elif p_all or p_type:
+        count = await MongoUserService.clear_user_activities(user_id, action_type=p_type)
+        return {"success": True, "message": f"{count} activities cleared", "deleted_count": count}
+    else:
+        raise HTTPException(status_code=400, detail="Provide activity_ids or delete_all=true")
+

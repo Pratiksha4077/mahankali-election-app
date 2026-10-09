@@ -23,11 +23,19 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
 
-  // Editable form fields (only mobile & address - removed religion/caste/designation/profession)
+  // Editable form fields
   const [mobileNumber, setMobileNumber] = useState("");
   const [address, setAddress] = useState("");
   const [isDeceased, setIsDeceased] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(undefined);
+
+  // Social & Professional Demographics
+  const [fatherName, setFatherName] = useState("");
+  const [religion, setReligion] = useState("");
+  const [caste, setCaste] = useState("");
+  const [designation, setDesignation] = useState("");
+  const [profession, setProfession] = useState("");
+  const [savingSocial, setSavingSocial] = useState(false);
 
   // Comprehensive Voter Details Edit Modal State
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -69,7 +77,13 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
         setMobileNumber(m.mobile_number || m.mobileNumber || "");
         setAddress(m.address || "");
         setIsDeceased(m.status === "DECEASED" || m.is_deceased === true);
-        setSelectedCategoryId(m.category_id || m.category?.id);
+        const hasCat = (m.category_id && m.category_id !== "") || (m.category?.id && m.category?.id !== "") || (m.category_color && m.category_color !== "");
+        setSelectedCategoryId(hasCat ? (m.category_id || m.category?.id) : undefined);
+        setFatherName(m.father_name || m.relative_name_mr || m.relative?.nameMarathi || m.nameMarathi?.fatherName || "");
+        setReligion(m.religion || "");
+        setCaste(m.caste || "");
+        setDesignation(m.designation || "");
+        setProfession(m.profession || "");
       }
     } catch (err) {
       console.error("Failed to load member detail:", err);
@@ -252,27 +266,61 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
   };
 
   const handleSelectCategory = async (catId: string) => {
-    setSelectedCategoryId(catId);
+    const isCurrentlySelected = selectedCategoryId === catId || (member?.category_id === catId && !selectedCategoryId);
+    const newCatId = isCurrentlySelected ? "" : catId;
+    setSelectedCategoryId(newCatId);
     if (member) {
       try {
-        const res = await memberAPI.updateCategory(member.id, catId);
-        const catObj = effectiveCategories.find(c => c.id === catId);
+        const res = await memberAPI.updateCategory(member.id, newCatId);
+        const catObj = effectiveCategories.find(c => c.id === newCatId);
         setMember(prev => prev ? {
           ...prev,
           ...(res || {}),
-          category_id: catId,
-          category_color: catObj?.color_hex || (catObj as any)?.color || prev.category_color,
-          category_label: catObj?.label_mr || (catObj as any)?.nameMarathi || prev.category_label,
-          category: {
-            id: catId,
-            color: catObj?.color_hex || (catObj as any)?.color,
-            nameMarathi: catObj?.label_mr || (catObj as any)?.nameMarathi
-          }
+          category_id: newCatId,
+          category_color: catObj ? (catObj.color_hex || (catObj as any).color) : "",
+          category_label: catObj ? (catObj.label_mr || (catObj as any).nameMarathi) : "",
+          category: catObj ? {
+            id: newCatId,
+            color: catObj.color_hex || (catObj as any).color,
+            nameMarathi: catObj.label_mr || (catObj as any).nameMarathi
+          } : undefined
         } : prev);
-        showToast("रंग श्रेणी यशस्वीरित्या बदलली!");
+        showToast(newCatId ? "रंग श्रेणी यशस्वीरित्या बदलली!" : "रंग श्रेणी काढली!");
       } catch (e: any) {
         Alert.alert("त्रुटी", "रंग श्रेणी बदलता आली नाही.");
       }
+    }
+  };
+
+  const handleSaveSocialDetails = async () => {
+    if (!member) return;
+    setSavingSocial(true);
+    try {
+      const payload: any = {
+        father_name: fatherName.trim(),
+        fatherName: fatherName.trim(),
+        relative_name_mr: fatherName.trim(),
+        religion: religion.trim(),
+        caste: caste.trim(),
+        designation: designation.trim(),
+        profession: profession.trim(),
+      };
+      const res = await memberAPI.updateMember(member.id, payload);
+      setMember(prev => prev ? {
+        ...prev,
+        ...(res || {}),
+        father_name: fatherName.trim(),
+        relative_name_mr: fatherName.trim(),
+        religion: religion.trim(),
+        caste: caste.trim(),
+        designation: designation.trim(),
+        profession: profession.trim(),
+      } : prev);
+      showToast("सामाजिक व व्यावसायिक माहिती अद्यतनित झाली!");
+    } catch (e: any) {
+      Alert.alert("त्रुटी", e?.message || "माहिती अद्यतनित करताना अडचण आली.");
+    } finally {
+      setSavingSocial(false);
     }
   };
 
@@ -337,9 +385,12 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
   const effectiveCategories = categories && categories.length > 0 ? categories : defaultCategoriesList;
 
   const isSelectedCategory = (cp: any) => {
-    if (selectedCategoryId && selectedCategoryId === cp.id) return true;
-    if (member?.category_id && member.category_id === cp.id) return true;
-    if (member?.category?.id && member.category.id === cp.id) return true;
+    if (selectedCategoryId !== undefined) {
+      if (!selectedCategoryId) return false;
+      return selectedCategoryId === cp.id;
+    }
+    if (member?.category_id) return member.category_id === cp.id;
+    if (member?.category?.id) return member.category.id === cp.id;
     const catColor = (cp.color_hex || cp.color || "").toLowerCase();
     const memColor = (member?.category_color || member?.category?.color || "").toLowerCase();
     if (catColor && memColor && catColor === memColor) return true;
@@ -347,20 +398,27 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
   };
 
   const getSelectedCatLabel = () => {
+    if (selectedCategoryId === "") return "कोणतीही श्रेणी निवडलेली नाही";
     const found = effectiveCategories.find(c => isSelectedCategory(c));
     if (found) return found.label_mr || (found as any).nameMarathi || (found as any).name;
-    if (member?.category_label) return member.category_label;
-    if (member?.category?.nameMarathi) return member.category.nameMarathi;
-    return "हिरवा";
+    if (member?.category_label && member.category_label !== "Uncategorized") return member.category_label;
+    if (member?.category?.nameMarathi && member?.category?.nameMarathi !== "Uncategorized") return member.category.nameMarathi;
+    return "कोणतीही श्रेणी निवडलेली नाही";
   };
 
   // Helper: get exact voter data fields to display
   const getVoterFields = () => {
     if (!member) return [];
+    const fName = fatherName || member.father_name || member.relative_name_mr || (member as any).relative?.nameMarathi || (member as any).nameMarathi?.fatherName || "-";
     return [
       { label: "मतदार क्रमांक (Voter No.)", value: member.voter_number || member.serial_number || "-", icon: "keypad-outline" },
       { label: "अनुक्रमांक (Serial No.)", value: member.serial_number || member.membership_number || "-", icon: "list-outline" },
       { label: "महाक्रमांक (Epic No.)", value: member.epic_number || "-", icon: "card-outline" },
+      { label: "वडिलांचे/पतीचे नाव (Father/Husband Name)", value: fName, icon: "person-outline" },
+      { label: "धर्म (Religion)", value: religion || member.religion || "-", icon: "shield-outline" },
+      { label: "जात (Caste)", value: caste || member.caste || "-", icon: "people-outline" },
+      { label: "पद / हुद्दा (Designation)", value: designation || member.designation || "-", icon: "ribbon-outline" },
+      { label: "व्यवसाय (Profession)", value: profession || member.profession || "-", icon: "briefcase-outline" },
       { label: "लिंग (Gender)", value: member.gender === "M" || member.gender === "Male" ? "पुरुष (Male)" : member.gender === "F" || member.gender === "Female" ? "महिला (Female)" : (member.gender || "-"), icon: "person-outline" },
       { label: "वय (Age)", value: member.age ? `${member.age} वर्षे` : "-", icon: "time-outline" },
       { label: "जन्म दिनांक (DOB)", value: member.date_of_birth || member.dob || "-", icon: "calendar-outline" },
@@ -431,16 +489,6 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 </View>
               )}
             </View>
-
-            {/* Edit Voter Details Action Button */}
-            <TouchableOpacity
-              style={styles.editVoterMainBtn}
-              onPress={handleOpenEditModal}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="create-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-              <Text style={styles.editVoterMainBtnText}>मतदार माहिती संपादित करा (Edit Voter Details)</Text>
-            </TouchableOpacity>
 
             {/* All Voter Data Fields */}
             {getVoterFields().map((field, idx) => (
@@ -531,6 +579,83 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 <Text style={styles.saveBtnText}>सेव्ह</Text>
               </TouchableOpacity>
             </View>
+          </View>
+
+          {/* Social & Professional Demographics - Editable by User & Admin */}
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionTitle}>सामाजिक व व्यावसायिक माहिती (Social & Details)</Text>
+
+            <View style={{ marginBottom: 10 }}>
+              <Text style={styles.inputLabel}>वडिलांचे / पतीचे नाव (Father / Husband Name)</Text>
+              <TextInput
+                style={styles.fieldInput}
+                value={fatherName}
+                onChangeText={setFatherName}
+                placeholder="वडिलांचे किंवा पतीचे नाव प्रविष्ट करा..."
+                placeholderTextColor={theme.colors.textMuted}
+              />
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>धर्म (Religion)</Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={religion}
+                  onChangeText={setReligion}
+                  placeholder="उदा. हिंदू, मुस्लिम..."
+                  placeholderTextColor={theme.colors.textMuted}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>जात (Caste)</Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={caste}
+                  onChangeText={setCaste}
+                  placeholder="उदा. मराठा, बौद्ध..."
+                  placeholderTextColor={theme.colors.textMuted}
+                />
+              </View>
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>पद / हुद्दा (Designation)</Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={designation}
+                  onChangeText={setDesignation}
+                  placeholder="उदा. ग्रामपंचायत सदस्य..."
+                  placeholderTextColor={theme.colors.textMuted}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>व्यवसाय (Profession)</Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={profession}
+                  onChangeText={setProfession}
+                  placeholder="उदा. शेती, नोकरी..."
+                  placeholderTextColor={theme.colors.textMuted}
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.saveBtn, { alignSelf: "flex-end", paddingVertical: 10, paddingHorizontal: 16 }]}
+              onPress={handleSaveSocialDetails}
+              disabled={savingSocial}
+            >
+              {savingSocial ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  <Text style={styles.saveBtnText}>माहिती जतन करा (Save)</Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
 
           {/* Connected Family Members - Manual Add Only (no auto-display of preset data) */}

@@ -287,3 +287,66 @@ class MongoUserService:
             "location_count": len(locations),
             "user": format_user_doc(user_doc) if user_doc else None
         }
+
+    @staticmethod
+    async def delete_activity(activity_id: str) -> bool:
+        db = get_mongo_db()
+        q = {"_id": ObjectId(activity_id)} if ObjectId.is_valid(activity_id) else {"_id": activity_id}
+        res = await db.app_activities.delete_one(q)
+        return res.deleted_count > 0
+
+    @staticmethod
+    async def delete_activities(activity_ids: List[str]) -> int:
+        db = get_mongo_db()
+        id_objs = []
+        for aid in activity_ids:
+            if ObjectId.is_valid(aid):
+                id_objs.append(ObjectId(aid))
+            id_objs.append(aid)
+        res = await db.app_activities.delete_many({"_id": {"$in": id_objs}})
+        return res.deleted_count
+
+    @staticmethod
+    async def clear_user_activities(user_id: str, action_type: Optional[str] = None) -> int:
+        db = get_mongo_db()
+        user_doc = None
+        if ObjectId.is_valid(user_id):
+            user_doc = await db.users.find_one({"_id": ObjectId(user_id)})
+        if not user_doc:
+            user_doc = await db.users.find_one({"$or": [{"_id": user_id}, {"username": user_id}]})
+
+        possible_ids = [str(user_id)]
+        if ObjectId.is_valid(user_id):
+            possible_ids.append(ObjectId(user_id))
+        possible_usernames = [str(user_id)]
+        if user_doc:
+            doc_id_str = str(user_doc.get("_id", ""))
+            if doc_id_str not in possible_ids:
+                possible_ids.append(doc_id_str)
+            if ObjectId.is_valid(doc_id_str) and ObjectId(doc_id_str) not in possible_ids:
+                possible_ids.append(ObjectId(doc_id_str))
+            if "username" in user_doc:
+                possible_usernames.append(str(user_doc["username"]))
+
+        match_q: Dict[str, Any] = {
+            "$or": [
+                {"userId": {"$in": possible_ids}},
+                {"user_id": {"$in": possible_ids}},
+                {"username": {"$in": possible_usernames}},
+                {"metadata.user_id": {"$in": possible_ids}},
+                {"metadata.userId": {"$in": possible_ids}},
+                {"metadata.username": {"$in": possible_usernames}}
+            ]
+        }
+
+        if action_type:
+            at = action_type.upper()
+            if at == "CALLS":
+                match_q["action"] = {"$regex": "CALL", "$options": "i"}
+            elif at == "SMS":
+                match_q["action"] = {"$regex": "SMS|WHATSAPP", "$options": "i"}
+            elif at == "LOCATIONS":
+                match_q["action"] = {"$regex": "LOCATION|VILLAGE|CHECKIN|BOOTH", "$options": "i"}
+
+        res = await db.app_activities.delete_many(match_q)
+        return res.deleted_count

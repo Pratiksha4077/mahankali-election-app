@@ -131,6 +131,9 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
     try {
       const vList = await villageAPI.getVillages();
       setVillages(vList || []);
+      if (vList && vList.length > 0) {
+        setSelectedVillageId(prev => prev || vList[0].id);
+      }
     } catch (e) {
       console.error("Failed to load villages:", e);
     }
@@ -138,12 +141,6 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
 
   // High performance voter loading with pagination & field projection
   const loadMembers = useCallback(async (pageToLoad: number = 1, append: boolean = false) => {
-    if (!isAdmin && user && user.permissions_granted === false) {
-      setMembers([]);
-      setTotalCount(0);
-      setLoading(false);
-      return;
-    }
 
     if (pageToLoad === 1) {
       setLoading(true);
@@ -340,144 +337,66 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
     return item.id ? `${item.id}_${index}` : `${index}`;
   }, []);
 
+  const currentVillage = villages.find(v => v.id === selectedVillageId) || villages[0];
+  const villageDisplayName = currentVillage ? (currentVillage.name_mr || currentVillage.name_en) : "गाव";
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <Header title={villages.find(v => v.id === selectedVillageId)?.name_mr || "मतदार यादी २०२६"} />
+      <Header title={villageDisplayName} />
 
       <View style={styles.container}>
-        {!isAdmin && user && user.permissions_granted !== true ? (
-          <View style={styles.deniedContainer}>
-            <View style={styles.deniedIconCircle}>
-              <Ionicons name="lock-closed" size={48} color="#EF4444" />
-            </View>
-            <Text style={styles.deniedTitle}>प्रवेश नाकारला (Access Denied)</Text>
-            <Text style={styles.deniedDesc}>
-              हे अॅप वापरण्यासाठी आणि मतदारांची माहिती पाहण्यासाठी खालील ३ परवानग्या देणे बंधनकारक आहे:
-              {"\n\n"}📞 १. फोन कॉल प्रवेश (Phone Call Access)
-              {"\n"}💬 २. SMS व संदेश इतिहास (SMS History Access)
-              {"\n"}📍 ३. रिअल-टाईम स्थान ट्रॅकिंग (Live Location Tracking)
-              {"\n\n"}तुम्ही या सर्व परवानग्या दिल्याशिवाय ॲप वापरता येणार नाही.
+        {/* Top Interactive Toolbar */}
+        <View style={styles.toolbarRow}>
+          <View style={styles.titleCol}>
+            <Text style={styles.listTitle}>
+              {villageDisplayName}
             </Text>
-            <TouchableOpacity
-              style={styles.grantAccessBtn}
-              onPress={() => setShowPermissionModal(true)}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="shield-checkmark" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-              <Text style={styles.grantAccessBtnText}>परवानग्या द्या (Grant Permissions)</Text>
-            </TouchableOpacity>
+            <Text style={styles.listSub}>
+              {isAdminPanel ? "प्रशासक पॅनेल (Admin)" : "वापरकर्ता पॅनेल (User)"}
+            </Text>
           </View>
-        ) : (
-          <>
-            {/* Top Interactive Toolbar */}
-            <View style={styles.toolbarRow}>
-              <View style={styles.titleCol}>
-                <Text style={styles.listTitle}>
-                  {villages.find(v => v.id === selectedVillageId)?.name_mr ||
-                   villages.find(v => v.id === selectedVillageId)?.name_en ||
-                   "सर्व मतदार यादी"}
-                </Text>
-                <Text style={styles.listSub}>
-                  {isAdminPanel ? "ॲडमिन दृष्टीक्षेप" : "कार्यकर्ते पॅनेल"}
-                </Text>
-              </View>
 
-              {/* Real-time Location Check-in Button */}
-              <TouchableOpacity
-                style={styles.locationCheckinBtn}
-                onPress={handleCheckinLocation}
-                disabled={checkingInLocation}
-                activeOpacity={0.7}
-              >
-                {checkingInLocation ? (
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 4 }} />
-                    <Text style={styles.locationCheckinBtnText}>स्थान शोधत आहे...</Text>
-                  </View>
-                ) : (
-                  <>
-                    <Ionicons name="navigate-circle" size={18} color="#34D399" style={{ marginRight: 5 }} />
-                    <Text style={styles.locationCheckinBtnText}>स्थान नोंदवा</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+          <View style={styles.countBadge}>
+            <Text style={styles.countBadgeText}>{totalCount}</Text>
+            <Text style={styles.countBadgeLabel}>मतदार</Text>
+          </View>
+        </View>
 
-              <View style={styles.countBadge}>
-                <Text style={styles.countBadgeText}>{totalCount}</Text>
-                <Text style={styles.countBadgeLabel}>मतदार</Text>
-              </View>
-            </View>
+        {/* Village Selector Horizontal Chips (ONLY actual villages, NO 'सर्व गावे') */}
+        {villages.length > 1 && (
+          <View style={styles.villageChipsContainer}>
+            <FlatList
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              data={villages}
+              keyExtractor={(v) => v.id}
+              contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, gap: 8 }}
+              renderItem={({ item: v }) => {
+                const isActive = (selectedVillageId || villages[0]?.id) === v.id;
+                return (
+                  <TouchableOpacity
+                    style={[styles.villageChip, isActive && styles.villageChipActive]}
+                    onPress={() => setSelectedVillageId(v.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.villageChipText, isActive && styles.villageChipTextActive]}>
+                      {v.name_mr || v.name_en}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </View>
+        )}
 
-            {/* Village Selector Horizontal Chips (when villages exist) */}
-            {villages.length > 0 && (
-              <View style={styles.villageChipsContainer}>
-                <FlatList
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  data={[{ id: "", name_mr: "सर्व गावे", name_en: "All Villages" } as Village, ...villages]}
-                  keyExtractor={(v) => v.id || "all"}
-                  contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, gap: 8 }}
-                  renderItem={({ item: v }) => {
-                    const isActive = selectedVillageId === v.id;
-                    return (
-                      <TouchableOpacity
-                        style={[styles.villageChip, isActive && styles.villageChipActive]}
-                        onPress={() => setSelectedVillageId(v.id)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[styles.villageChipText, isActive && styles.villageChipTextActive]}>
-                          {v.name_mr || v.name_en}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  }}
-                />
-              </View>
-            )}
-
-            {/* Interactive Quick Filter Pills */}
-            <View style={styles.filterPillsRow}>
-              <TouchableOpacity
-                style={[styles.filterPill, filterMode === "all" && styles.filterPillActive]}
-                onPress={() => setFilterMode("all")}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name="people"
-                  size={13}
-                  color={filterMode === "all" ? "#FFFFFF" : theme.colors.textMuted}
-                  style={{ marginRight: 4 }}
-                />
-                <Text style={[styles.filterPillText, filterMode === "all" && styles.filterPillTextActive]}>
-                  सर्व मतदार ({totalCount})
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.filterPill, filterMode === "mobile" && styles.filterPillActive]}
-                onPress={() => setFilterMode("mobile")}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name="call"
-                  size={13}
-                  color={filterMode === "mobile" ? "#FFFFFF" : theme.colors.textMuted}
-                  style={{ marginRight: 4 }}
-                />
-                <Text style={[styles.filterPillText, filterMode === "mobile" && styles.filterPillTextActive]}>
-                  📱 मोबाईल असलेले
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Search Bar */}
-            <View style={styles.searchWrapper}>
-              <SearchBar
-                value={searchQuery}
-                onChangeText={(txt) => setSearchQuery(txt)}
-                placeholder="मतदार शोधा (नाव, क्रमांक, मोबाईल...)"
-              />
-            </View>
+        {/* Search Bar */}
+        <View style={styles.searchWrapper}>
+          <SearchBar
+            value={searchQuery}
+            onChangeText={(txt) => setSearchQuery(txt)}
+            placeholder="मतदार शोधा (नाव, क्रमांक, मोबाईल...)"
+          />
+        </View>
 
             {/* Count Summary */}
             <View style={styles.summaryBar}>
@@ -551,8 +470,6 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
                 }
               />
             )}
-          </>
-        )}
       </View>
 
       {/* Mandatory Permission Request Modal */}

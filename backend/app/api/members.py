@@ -33,16 +33,33 @@ def enrich_member_document(doc: Dict[str, Any]) -> Dict[str, Any]:
         res["village_name_en"] = v.get("name", "")
         res["village_id"] = v.get("id", "")
 
-    c = res.get("category") or {}
-    if isinstance(c, dict):
-        res["category_color"] = c.get("color", "#6B7280")
-        res["category_label"] = c.get("nameMarathi", c.get("name", "Uncategorized"))
-        res["category_id"] = c.get("id", "")
-
     rel = res.get("relative") or {}
     if isinstance(rel, dict):
         res["relative_name_mr"] = rel.get("nameMarathi", "")
         res["relation_type"] = rel.get("relationType", "Father")
+    else:
+        res["relative_name_mr"] = res.get("relativeNameMarathi", "")
+        res["relation_type"] = res.get("relationType", "Father")
+
+    if not res.get("father_name"):
+        res["father_name"] = res.get("relative_name_mr", "")
+
+    c = res.get("category") or {}
+    if isinstance(c, dict) and c.get("color"):
+        res["category_color"] = c.get("color", "")
+        res["category_label"] = c.get("nameMarathi", c.get("name", "Uncategorized"))
+        res["category_id"] = str(c.get("id", ""))
+    else:
+        color = res.get("color_tag") or res.get("color") or ""
+        res["category_color"] = color
+        res["category_label"] = ""
+        res["category_id"] = str(res.get("category_id") or "")
+
+    res["religion"] = res.get("religion", "")
+    res["caste"] = res.get("caste", "")
+    res["designation"] = res.get("designation", "")
+    res["profession"] = res.get("profession", "")
+    res["family_id"] = str(res.get("familyId") or "")
 
     res["mobile_number"] = res.get("mobileNumber", "")
     res["serial_number"] = res.get("serialNumber")
@@ -65,6 +82,9 @@ class MemberUpdatePayload(BaseModel):
     caste: Optional[str] = None
     designation: Optional[str] = None
     profession: Optional[str] = None
+    father_name: Optional[str] = None
+    fatherName: Optional[str] = None
+    relative_name_mr: Optional[str] = None
     houseNumber: Optional[str] = None
     house_number: Optional[str] = None
     age: Optional[Any] = None

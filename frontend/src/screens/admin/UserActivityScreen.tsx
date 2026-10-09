@@ -18,6 +18,11 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
   const [updatingAccess, setUpdatingAccess] = useState<boolean>(false);
   const [expandedSection, setExpandedSection] = useState<"calls" | "sms" | "locations" | null>("calls");
 
+  // Selection & Deletion State
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectionMode, setSelectionMode] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+
   // User state synchronized with live database
   const [currentUser, setCurrentUser] = useState<any>(user || null);
   const [isAccessAllowed, setIsAccessAllowed] = useState<boolean>(
@@ -160,6 +165,98 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
     }
   };
 
+  const toggleSelectItem = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleDeleteSingle = (activityId: string, itemTitle: string) => {
+    Alert.alert(
+      "नोंद हटवा (Delete)",
+      `'${itemTitle}' ही नोंद कायमची हटवायची आहे का?`,
+      [
+        { text: "रद्द करा", style: "cancel" },
+        {
+          text: "हटवा",
+          style: "destructive",
+          onPress: async () => {
+            const uid = String(currentUser?.id || user?.id || "");
+            setIsDeleting(true);
+            try {
+              await adminAPI.deleteSingleActivity(uid, activityId);
+              loadUserActivities();
+            } catch (e) {
+              Alert.alert("त्रुटी", "नोंद हटवताना अडचण आली.");
+            } finally {
+              setIsDeleting(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedIds.size === 0) return;
+    Alert.alert(
+      "निवडलेल्या नोंदी हटवा (Delete Selected)",
+      `तुम्ही निवडलेल्या ${selectedIds.size} नोंदी कायमच्या हटवायच्या आहेत का?`,
+      [
+        { text: "रद्द करा", style: "cancel" },
+        {
+          text: "हटवा",
+          style: "destructive",
+          onPress: async () => {
+            const uid = String(currentUser?.id || user?.id || "");
+            setIsDeleting(true);
+            try {
+              await adminAPI.deleteBatchActivities(uid, Array.from(selectedIds));
+              setSelectedIds(new Set());
+              setSelectionMode(false);
+              loadUserActivities();
+            } catch (e) {
+              Alert.alert("त्रुटी", "नोंदी हटवताना अडचण आली.");
+            } finally {
+              setIsDeleting(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleClearSection = (section: "calls" | "sms" | "locations") => {
+    const secName = section === "calls" ? "कॉल इतिहास" : section === "sms" ? "एसएमएस इतिहास" : "लोकेशन इतिहास";
+    Alert.alert(
+      `${secName} पूर्ण साफ करा (Clear All)`,
+      `या विभागातील सर्व नोंदी कायमच्या हटवल्या जातील. खात्री करा?`,
+      [
+        { text: "रद्द करा", style: "cancel" },
+        {
+          text: "सर्व हटवा",
+          style: "destructive",
+          onPress: async () => {
+            const uid = String(currentUser?.id || user?.id || "");
+            setIsDeleting(true);
+            try {
+              await adminAPI.clearUserActivities(uid, section.toUpperCase());
+              setSelectedIds(new Set());
+              loadUserActivities();
+            } catch (e) {
+              Alert.alert("त्रुटी", "इतिहास हटवताना अडचण आली.");
+            } finally {
+              setIsDeleting(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   if (!user) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -225,14 +322,6 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
           </View>
         </View>
 
-        {/* Note on Device Permissions */}
-        <View style={styles.permissionInfoBox}>
-          <Ionicons name="information-circle-outline" size={16} color="#93C5FD" style={{ marginRight: 6 }} />
-          <Text style={styles.permissionInfoText}>
-            मोबाईलमधील कॉल, एसएमएस व लोकेशन परवानग्या फक्त वापरकर्ता त्याच्या स्वतःच्या मोबाईलमधून देऊ शकतो. ॲडमिन केवळ रिअल-टाईम इतिहास पाहून प्रवेश मंजूर अथवा नाकारू शकतो.
-          </Text>
-        </View>
-
         {/* Admin Access Control Card (Deny or Allow User Panel Access) */}
         <View style={[styles.accessControlCard, !isAccessAllowed && styles.accessDeniedCard]}>
           <View style={styles.accessControlHeader}>
@@ -243,20 +332,14 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 color={isAccessAllowed ? "#10B981" : "#EF4444"}
                 style={{ marginRight: 8 }}
               />
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.accessControlTitle}>ॲडमिन प्रवेश नियंत्रण (Admin Access Control)</Text>
                 <Text style={[styles.accessStatusText, { color: isAccessAllowed ? "#34D399" : "#F87171" }]}>
-                  {isAccessAllowed ? "● युझर पॅनेल प्रवेश मंजूर (Access Allowed)" : "● प्रवेश ॲडमिनने नाकारला आहे (Access Denied by Admin)"}
+                  {isAccessAllowed ? "● युझर पॅनेल प्रवेश मंजूर (Access Allowed)" : "● प्रवेश नाकारला आहे (Access Denied)"}
                 </Text>
               </View>
             </View>
           </View>
-
-          <Text style={styles.accessDescription}>
-            {isAccessAllowed
-              ? "या वापरकर्त्यास युझर पॅनेलमध्ये प्रवेश करण्याची परवानगी आहे. खालील रिअल-टाईम इतिहास तपासून गरज असल्यास प्रवेश नाकारा."
-              : "या वापरकर्त्याचा युझर पॅनेल प्रवेश ॲडमिनने नाकारला आहे. हा वापरकर्ता ॲपमध्ये लॉगिन करू शकत नाही."}
-          </Text>
 
           <TouchableOpacity
             style={[
@@ -285,6 +368,37 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
           </TouchableOpacity>
         </View>
 
+        {/* Global Multi-select / Batch Actions Bar */}
+        {selectedIds.size > 0 && (
+          <View style={styles.bulkActionBar}>
+            <Text style={styles.bulkActionText}>
+              {selectedIds.size} नोंदी निवडल्या
+            </Text>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <TouchableOpacity
+                style={styles.bulkCancelBtn}
+                onPress={() => setSelectedIds(new Set())}
+              >
+                <Text style={styles.bulkCancelBtnText}>रद्द करा</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.bulkDeleteBtn}
+                onPress={handleDeleteSelected}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons name="trash" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                    <Text style={styles.bulkDeleteBtnText}>हटवा ({selectedIds.size})</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* Section Heading */}
         <Text style={styles.sectionHeading}>रिअल-टाईम वापरकर्ता इतिहास (Real-Time History):</Text>
 
@@ -292,7 +406,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
           <ActivityIndicator size="large" color={theme.colors.primaryLight} style={{ marginVertical: 30 }} />
         ) : (
           <>
-            {/* Summary Stats Row (Strictly 3 categories - No Timeline) */}
+            {/* Summary Stats Row */}
             <View style={styles.statsRow}>
               <TouchableOpacity
                 style={[styles.statPill, { borderColor: "#34D399" }, expandedSection === "calls" && styles.activePill]}
@@ -356,30 +470,83 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
             {expandedSection === "calls" && (
               <View style={styles.subListCard}>
-                <Text style={styles.subListTitle}>कॉल केलेल्या मतदारांची यादी ({activityData.calls.length}):</Text>
+                <View style={styles.subListHeaderRow}>
+                  <Text style={styles.subListTitle}>कॉल इतिहास ({activityData.calls.length}):</Text>
+                  {activityData.calls.length > 0 && (
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <TouchableOpacity
+                        style={styles.sectionActionBtn}
+                        onPress={() => {
+                          const ids = activityData.calls.map(c => c.id).filter(Boolean);
+                          const allSelected = ids.every(id => selectedIds.has(id));
+                          setSelectedIds(prev => {
+                            const next = new Set(prev);
+                            ids.forEach(id => (allSelected ? next.delete(id) : next.add(id)));
+                            return next;
+                          });
+                        }}
+                      >
+                        <Ionicons name="checkbox-outline" size={14} color="#60A5FA" />
+                        <Text style={styles.sectionActionBtnText}>सर्व निवडा</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.sectionActionBtn, { borderColor: "#EF4444" }]}
+                        onPress={() => handleClearSection("calls")}
+                      >
+                        <Ionicons name="trash-outline" size={14} color="#EF4444" />
+                        <Text style={[styles.sectionActionBtnText, { color: "#EF4444" }]}>सर्व हटवा</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+
                 {activityData.calls.length === 0 ? (
                   <View style={styles.emptyDataBox}>
                     <Ionicons name="call-outline" size={28} color={theme.colors.textMuted} />
-                    <Text style={styles.emptySubText}>वापरकर्त्याने अद्याप कोणत्याही मतदाराला कॉल केलेला नाही</Text>
+                    <Text style={styles.emptySubText}>कोणताही कॉल इतिहास उपलब्ध नाही</Text>
                   </View>
                 ) : (
-                  activityData.calls.map((call, idx) => (
-                    <View key={call.id || idx} style={styles.subListItem}>
-                      <View style={[styles.itemIconWrap, { backgroundColor: "#064E3B" }]}>
-                        <Ionicons name="call" size={16} color="#34D399" />
+                  activityData.calls.map((call, idx) => {
+                    const cid = call.id || `call_${idx}`;
+                    const isSelected = selectedIds.has(cid);
+                    const callTitle = call.targetMemberName || call.metadata?.voter || "मतदार कॉल";
+
+                    return (
+                      <View key={cid} style={[styles.subListItem, isSelected && styles.subListItemSelected]}>
+                        <TouchableOpacity
+                          style={styles.checkboxTouch}
+                          onPress={() => toggleSelectItem(cid)}
+                        >
+                          <Ionicons
+                            name={isSelected ? "checkbox" : "square-outline"}
+                            size={20}
+                            color={isSelected ? "#60A5FA" : theme.colors.textMuted}
+                          />
+                        </TouchableOpacity>
+
+                        <View style={[styles.itemIconWrap, { backgroundColor: "#064E3B" }]}>
+                          <Ionicons name="call" size={16} color="#34D399" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.itemTitle}>{callTitle}</Text>
+                          <Text style={styles.itemDetail}>
+                            {call.metadata?.phone || call.details || "फोन नंबर उपलब्ध नाही"}
+                            {call.metadata?.village ? ` • गाव: ${call.metadata.village}` : ""}
+                          </Text>
+                          <Text style={styles.itemTime}>
+                            {call.timestamp ? new Date(call.timestamp).toLocaleString("mr-IN") : "अलीकडे"}
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          style={styles.deleteSingleBtn}
+                          onPress={() => handleDeleteSingle(cid, callTitle)}
+                        >
+                          <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                        </TouchableOpacity>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.itemTitle}>{call.targetMemberName || call.metadata?.voter || "मतदार"}</Text>
-                        <Text style={styles.itemDetail}>
-                          {call.metadata?.phone || call.details || "फोन नंबर उपलब्ध नाही"}
-                          {call.metadata?.village ? ` • गाव: ${call.metadata.village}` : ""}
-                        </Text>
-                        <Text style={styles.itemTime}>
-                          {call.timestamp ? new Date(call.timestamp).toLocaleString("mr-IN") : "अलीकडे"}
-                        </Text>
-                      </View>
-                    </View>
-                  ))
+                    );
+                  })
                 )}
               </View>
             )}
@@ -415,33 +582,86 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
             {expandedSection === "sms" && (
               <View style={styles.subListCard}>
-                <Text style={styles.subListTitle}>पाठवलेले एसएमएस व संदेश ({activityData.sms.length}):</Text>
+                <View style={styles.subListHeaderRow}>
+                  <Text style={styles.subListTitle}>एसएमएस व व्हॉट्सॲप ({activityData.sms.length}):</Text>
+                  {activityData.sms.length > 0 && (
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <TouchableOpacity
+                        style={styles.sectionActionBtn}
+                        onPress={() => {
+                          const ids = activityData.sms.map(s => s.id).filter(Boolean);
+                          const allSelected = ids.every(id => selectedIds.has(id));
+                          setSelectedIds(prev => {
+                            const next = new Set(prev);
+                            ids.forEach(id => (allSelected ? next.delete(id) : next.add(id)));
+                            return next;
+                          });
+                        }}
+                      >
+                        <Ionicons name="checkbox-outline" size={14} color="#60A5FA" />
+                        <Text style={styles.sectionActionBtnText}>सर्व निवडा</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.sectionActionBtn, { borderColor: "#EF4444" }]}
+                        onPress={() => handleClearSection("sms")}
+                      >
+                        <Ionicons name="trash-outline" size={14} color="#EF4444" />
+                        <Text style={[styles.sectionActionBtnText, { color: "#EF4444" }]}>सर्व हटवा</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+
                 {activityData.sms.length === 0 ? (
                   <View style={styles.emptyDataBox}>
                     <Ionicons name="chatbubble-outline" size={28} color={theme.colors.textMuted} />
-                    <Text style={styles.emptySubText}>वापरकर्त्याने अद्याप कोणत्याही मतदाराला एसएमएस पाठवलेला नाही</Text>
+                    <Text style={styles.emptySubText}>कोणताही संदेश इतिहास उपलब्ध नाही</Text>
                   </View>
                 ) : (
-                  activityData.sms.map((msg, idx) => (
-                    <View key={msg.id || idx} style={styles.subListItem}>
-                      <View style={[styles.itemIconWrap, { backgroundColor: "#1E3A8A" }]}>
-                        <Ionicons
-                          name={msg.action?.includes("WHATSAPP") ? "logo-whatsapp" : "chatbubble"}
-                          size={16}
-                          color={msg.action?.includes("WHATSAPP") ? "#22C55E" : "#60A5FA"}
-                        />
+                  activityData.sms.map((msg, idx) => {
+                    const mid = msg.id || `sms_${idx}`;
+                    const isSelected = selectedIds.has(mid);
+                    const msgTitle = msg.targetMemberName || msg.metadata?.voter || "मतदार संदेश";
+
+                    return (
+                      <View key={mid} style={[styles.subListItem, isSelected && styles.subListItemSelected]}>
+                        <TouchableOpacity
+                          style={styles.checkboxTouch}
+                          onPress={() => toggleSelectItem(mid)}
+                        >
+                          <Ionicons
+                            name={isSelected ? "checkbox" : "square-outline"}
+                            size={20}
+                            color={isSelected ? "#60A5FA" : theme.colors.textMuted}
+                          />
+                        </TouchableOpacity>
+
+                        <View style={[styles.itemIconWrap, { backgroundColor: "#1E3A8A" }]}>
+                          <Ionicons
+                            name={msg.action?.includes("WHATSAPP") ? "logo-whatsapp" : "chatbubble"}
+                            size={16}
+                            color={msg.action?.includes("WHATSAPP") ? "#22C55E" : "#60A5FA"}
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.itemTitle}>{msgTitle}</Text>
+                          <Text style={styles.itemDetail}>
+                            {msg.details || (msg.metadata?.phone ? `मोबाईल: ${msg.metadata.phone}` : "संदेश पाठवला")}
+                          </Text>
+                          <Text style={styles.itemTime}>
+                            {msg.timestamp ? new Date(msg.timestamp).toLocaleString("mr-IN") : "अलीकडे"}
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          style={styles.deleteSingleBtn}
+                          onPress={() => handleDeleteSingle(mid, msgTitle)}
+                        >
+                          <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                        </TouchableOpacity>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.itemTitle}>{msg.targetMemberName || msg.metadata?.voter || "मतदार संदेश"}</Text>
-                        <Text style={styles.itemDetail}>
-                          {msg.details || (msg.metadata?.phone ? `मोबाईल: ${msg.metadata.phone}` : "संदेश पाठवला")}
-                        </Text>
-                        <Text style={styles.itemTime}>
-                          {msg.timestamp ? new Date(msg.timestamp).toLocaleString("mr-IN") : "अलीकडे"}
-                        </Text>
-                      </View>
-                    </View>
-                  ))
+                    );
+                  })
                 )}
               </View>
             )}
@@ -477,27 +697,68 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
             {expandedSection === "locations" && (
               <View style={styles.subListCard}>
-                <Text style={styles.subListTitle}>नोंदवलेली रिअल-टाईम स्थाने ({activityData.locations.length}):</Text>
+                <View style={styles.subListHeaderRow}>
+                  <Text style={styles.subListTitle}>लोकेशन इतिहास ({activityData.locations.length}):</Text>
+                  {activityData.locations.length > 0 && (
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <TouchableOpacity
+                        style={styles.sectionActionBtn}
+                        onPress={() => {
+                          const ids = activityData.locations.map(l => l.id).filter(Boolean);
+                          const allSelected = ids.every(id => selectedIds.has(id));
+                          setSelectedIds(prev => {
+                            const next = new Set(prev);
+                            ids.forEach(id => (allSelected ? next.delete(id) : next.add(id)));
+                            return next;
+                          });
+                        }}
+                      >
+                        <Ionicons name="checkbox-outline" size={14} color="#60A5FA" />
+                        <Text style={styles.sectionActionBtnText}>सर्व निवडा</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.sectionActionBtn, { borderColor: "#EF4444" }]}
+                        onPress={() => handleClearSection("locations")}
+                      >
+                        <Ionicons name="trash-outline" size={14} color="#EF4444" />
+                        <Text style={[styles.sectionActionBtnText, { color: "#EF4444" }]}>सर्व हटवा</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+
                 {activityData.locations.length === 0 ? (
                   <View style={styles.emptyDataBox}>
                     <Ionicons name="location-outline" size={28} color={theme.colors.textMuted} />
-                    <Text style={styles.emptySubText}>वापरकर्त्याची कोणतीही रिअल-टाईम लोकेशन नोंद उपलब्ध नाही</Text>
+                    <Text style={styles.emptySubText}>कोणतीही लोकेशन नोंद उपलब्ध नाही</Text>
                   </View>
                 ) : (
                   activityData.locations.map((loc, idx) => {
+                    const lid = loc.id || `loc_${idx}`;
+                    const isSelected = selectedIds.has(lid);
                     const lat = loc.metadata?.latitude ?? loc.latitude;
                     const lon = loc.metadata?.longitude ?? loc.longitude;
                     const hasCoords = lat !== undefined && lon !== undefined;
+                    const locTitle = loc.metadata?.address || loc.metadata?.village || loc.metadata?.city || (loc.details?.includes(":") ? loc.details.split(":")[1]?.trim() : loc.details) || "स्थान नोंद";
 
                     return (
-                      <View key={loc.id || idx} style={styles.subListItem}>
+                      <View key={lid} style={[styles.subListItem, isSelected && styles.subListItemSelected]}>
+                        <TouchableOpacity
+                          style={styles.checkboxTouch}
+                          onPress={() => toggleSelectItem(lid)}
+                        >
+                          <Ionicons
+                            name={isSelected ? "checkbox" : "square-outline"}
+                            size={20}
+                            color={isSelected ? "#60A5FA" : theme.colors.textMuted}
+                          />
+                        </TouchableOpacity>
+
                         <View style={[styles.itemIconWrap, { backgroundColor: "#78350F" }]}>
                           <Ionicons name="navigate" size={16} color="#FBBF24" />
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.itemTitle}>
-                            {loc.metadata?.address || loc.metadata?.village || loc.metadata?.city || (loc.details?.includes(":") ? loc.details.split(":")[1]?.trim() : loc.details) || "स्थान नोंद"}
-                          </Text>
+                          <Text style={styles.itemTitle}>{locTitle}</Text>
                           {hasCoords ? (
                             <Text style={styles.coordsText}>
                               📍 अक्षांश: {typeof lat === "number" ? lat.toFixed(5) : lat}, रेखांश: {typeof lon === "number" ? lon.toFixed(5) : lon}
@@ -511,6 +772,13 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                             {loc.timestamp ? new Date(loc.timestamp).toLocaleString("mr-IN") : "अलीकडे"}
                           </Text>
                         </View>
+
+                        <TouchableOpacity
+                          style={styles.deleteSingleBtn}
+                          onPress={() => handleDeleteSingle(lid, locTitle)}
+                        >
+                          <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                        </TouchableOpacity>
                       </View>
                     );
                   })
@@ -819,4 +1087,81 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: 24,
   },
+  bulkActionBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#1E293B",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#3B82F6",
+  },
+  bulkActionText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  bulkCancelBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: "#334155",
+  },
+  bulkCancelBtnText: {
+    color: "#CBD5E1",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  bulkDeleteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: "#EF4444",
+  },
+  bulkDeleteBtnText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  subListHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  sectionActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#3B82F6",
+    gap: 4,
+  },
+  sectionActionBtnText: {
+    color: "#60A5FA",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  checkboxTouch: {
+    paddingRight: 8,
+    paddingTop: 4,
+  },
+  subListItemSelected: {
+    backgroundColor: "rgba(59, 130, 246, 0.08)",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+  },
+  deleteSingleBtn: {
+    padding: 6,
+    marginLeft: 6,
+    alignSelf: "center",
+  },
 });
+

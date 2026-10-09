@@ -8,31 +8,6 @@ import { useAuth } from "../../context/AuthContext";
 
 export const ReportsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { t } = useLanguage();
-  const { user, isAdmin } = useAuth();
-
-  if (!isAdmin && user && user.permissions_granted !== true) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <Header title={t("reports_title")} />
-        <View style={styles.deniedContainer}>
-          <View style={styles.deniedIconCircle}>
-            <Ionicons name="lock-closed" size={44} color="#EF4444" />
-          </View>
-          <Text style={styles.deniedTitle}>परवानग्या आवश्यक (Permissions Required)</Text>
-          <Text style={styles.deniedDesc}>
-            अहवाल व मतदार माहिती पाहण्यासाठी कृपया आधी फोन, SMS आणि रिअल-टाईम स्थान परवानग्या द्या.
-          </Text>
-          <TouchableOpacity
-            style={styles.grantAccessBtn}
-            onPress={() => navigation.navigate("HomeTab")}
-          >
-            <Ionicons name="home" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
-            <Text style={styles.grantAccessBtnText}>मुख्यपृष्ठावर जा (Go to Home)</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   const reportItems = [
     { id: "alphabetical", titleKey: "rep_alphabetical", icon: "text", color: "#6366F1" },
