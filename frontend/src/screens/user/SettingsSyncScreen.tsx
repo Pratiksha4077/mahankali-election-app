@@ -12,7 +12,7 @@ import { theme } from "../../theme/theme";
 
 export const SettingsSyncScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { user, isAdmin, activePanel, logout, switchPanel } = useAuth();
-  const { theme, isDark, setThemeMode } = useTheme();
+  const { theme, isDark } = useTheme();
 
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
@@ -193,46 +193,6 @@ export const SettingsSyncScreen: React.FC<{ navigation: any }> = ({ navigation }
             </TouchableOpacity>
           </>
         )}
-
-        {/* App Theme (Dark & White Mode) */}
-        <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>ॲप्लिकेशन थीम (App Theme)</Text>
-        <View style={[styles.themeCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-          <TouchableOpacity
-            style={[
-              styles.themeOptionBtn,
-              isDark && styles.themeOptionActive,
-              { borderColor: isDark ? "#6366F1" : theme.colors.border, backgroundColor: isDark ? "rgba(99, 102, 241, 0.15)" : "transparent" }
-            ]}
-            onPress={() => setThemeMode("dark")}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="moon" size={20} color={isDark ? "#A78BFA" : theme.colors.textMuted} />
-            <Text style={[styles.themeOptionText, { color: isDark ? (theme.isDark ? "#FFFFFF" : "#0F172A") : theme.colors.textMuted, fontWeight: isDark ? "800" : "600" }]}>
-              डार्क मोड (Dark Mode)
-            </Text>
-            {isDark && (
-              <Ionicons name="checkmark-circle" size={18} color="#34D399" style={{ marginLeft: "auto" }} />
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.themeOptionBtn,
-              !isDark && styles.themeOptionActive,
-              { borderColor: !isDark ? "#F59E0B" : theme.colors.border, backgroundColor: !isDark ? "rgba(245, 158, 11, 0.15)" : "transparent" }
-            ]}
-            onPress={() => setThemeMode("light")}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="sunny" size={20} color={!isDark ? "#F59E0B" : theme.colors.textMuted} />
-            <Text style={[styles.themeOptionText, { color: !isDark ? theme.colors.textPrimary : theme.colors.textMuted, fontWeight: !isDark ? "800" : "600" }]}>
-              व्हाईट मोड (White / Light Mode)
-            </Text>
-            {!isDark && (
-              <Ionicons name="checkmark-circle" size={18} color="#34D399" style={{ marginLeft: "auto" }} />
-            )}
-          </TouchableOpacity>
-        </View>
 
         {/* Logout Button */}
         <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>खाते (Account)</Text>

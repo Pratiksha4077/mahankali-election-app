@@ -41,6 +41,9 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
     call_count: number;
     sms_count: number;
     location_count: number;
+    call_status?: string;
+    sms_status?: string;
+    last_telephony_sync?: string | null;
   }>({
     calls: [],
     sms: [],
@@ -48,6 +51,9 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
     call_count: 0,
     sms_count: 0,
     location_count: 0,
+    call_status: "UNKNOWN",
+    sms_status: "UNKNOWN",
+    last_telephony_sync: null,
   });
 
   const loadUserActivities = useCallback(async () => {
@@ -60,10 +66,12 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
       const uid = String(user.id || user._id || "");
 
       // 1. Fetch live user details to synchronize real-time access and permission status
+      let freshUserData: any = null;
       try {
         const freshUser = await adminAPI.getUserById(uid);
         if (freshUser) {
           const uData = freshUser.data || freshUser;
+          freshUserData = uData;
           setCurrentUser(uData);
           const allowed = (uData.accountStatus !== "DISABLED") && (uData.is_active !== false) && (uData.admin_access_allowed !== false);
           setIsAccessAllowed(allowed);
@@ -79,6 +87,9 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
         const sms = Array.isArray(data.sms) ? data.sms : [];
         const locations = Array.isArray(data.locations) ? data.locations : [];
 
+        const cStatus = data.call_status || (freshUserData?.permissions?.callHistory ? "GRANTED" : "DENIED");
+        const sStatus = data.sms_status || (freshUserData?.permissions?.sms ? "GRANTED" : "DENIED");
+
         setActivityData({
           calls,
           sms,
@@ -86,6 +97,9 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
           call_count: data.call_count ?? calls.length,
           sms_count: data.sms_count ?? sms.length,
           location_count: data.location_count ?? locations.length,
+          call_status: cStatus,
+          sms_status: sStatus,
+          last_telephony_sync: data.last_telephony_sync || null,
         });
       }
     } catch (err) {
@@ -438,8 +452,18 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
           </View>
         )}
 
-        {/* Section Heading */}
-        <Text style={styles.sectionHeading}>रिअल-टाईम वापरकर्ता इतिहास (Real-Time History):</Text>
+        {/* Section Heading & Refresh */}
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <Text style={[styles.sectionHeading, { marginBottom: 0 }]}>रिअल-टाईम वापरकर्ता इतिहास (Real-Time History):</Text>
+          <TouchableOpacity
+            onPress={handleRefresh}
+            style={{ flexDirection: "row", alignItems: "center", backgroundColor: "rgba(96, 165, 250, 0.12)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: "rgba(96, 165, 250, 0.3)" }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="sync-outline" size={13} color="#60A5FA" style={{ marginRight: 4 }} />
+            <Text style={{ fontSize: 11, color: "#60A5FA", fontWeight: "600" }}>ताजे करा</Text>
+          </TouchableOpacity>
+        </View>
 
         {loading ? (
           <ActivityIndicator size="large" color={theme.colors.primaryLight} style={{ marginVertical: 30 }} />
@@ -497,7 +521,13 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 <Text style={styles.cardSubtitle}>
                   {activityData.call_count > 0
                     ? `एकूण ${activityData.call_count} प्रत्यक्ष कॉल नोंदवले`
-                    : "कोणताही कॉल इतिहास नोंदवला नाही"}
+                    : activityData.call_status === "RESTRICTED"
+                    ? "डिव्हाइस ॲक्सेस प्रतिबंधित (Restricted by Policy)"
+                    : activityData.call_status === "DENIED"
+                    ? "कॉल इतिहास परवानगी नाकारली (Permission Denied)"
+                    : activityData.call_status === "UNAVAILABLE"
+                    ? "कॉल मॉड्यूल उपलब्ध नाही (Module Unavailable)"
+                    : "डिव्हाइसवर कॉल इतिहास आढळला नाही (0 Calls)"}
                 </Text>
               </View>
               <Ionicons
@@ -541,14 +571,44 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
                 {activityData.calls.length === 0 ? (
                   <View style={styles.emptyDataBox}>
-                    <Ionicons name="call-outline" size={28} color={theme.colors.textMuted} />
-                    <Text style={styles.emptySubText}>कोणताही कॉल इतिहास उपलब्ध नाही</Text>
+                    <Ionicons
+                      name={
+                        activityData.call_status === "RESTRICTED"
+                          ? "shield-outline"
+                          : activityData.call_status === "DENIED"
+                          ? "close-circle-outline"
+                          : "call-outline"
+                      }
+                      size={28}
+                      color={
+                        activityData.call_status === "RESTRICTED"
+                          ? "#F59E0B"
+                          : activityData.call_status === "DENIED"
+                          ? "#EF4444"
+                          : theme.colors.textMuted
+                      }
+                    />
+                    <Text style={[
+                      styles.emptySubText,
+                      activityData.call_status === "RESTRICTED" && { color: "#FBBF24" },
+                      activityData.call_status === "DENIED" && { color: "#F87171" }
+                    ]}>
+                      {activityData.call_status === "RESTRICTED"
+                        ? "डिव्हाइस ॲक्सेस प्रतिबंधित (Restricted by Android / Google Play Policy)\nगुगल प्ले किंवा ओएस धोरणानुसार कॉल लॉग मर्यादित आहे. बनावट नोंदी तयार केल्या जात नाहीत."
+                        : activityData.call_status === "DENIED"
+                        ? "परवानगी नाकारली (Permission Denied on Device)\nवापरकर्त्याने डिव्हाइसवर कॉल लॉग वाचण्याची परवानगी नाकारली आहे."
+                        : activityData.call_status === "UNAVAILABLE"
+                        ? "कॉल मॉड्यूल उपलब्ध नाही (Native Module Unavailable)\nडिव्हाइस बिल्डमध्ये कॉल लॉग इंटिग्रेशन उपलब्ध नाही."
+                        : "डिव्हाइसवर कॉल इतिहास आढळला नाही (0 Calls)\nपरवानगी मंजूर आहे, परंतु फोनवर कॉल नोंदी उपलब्ध नाहीत."}
+                    </Text>
                   </View>
                 ) : (
                   activityData.calls.map((call, idx) => {
                     const cid = call.id || `call_${idx}`;
                     const isSelected = selectedIds.has(cid);
-                    const callTitle = call.targetMemberName || call.metadata?.voter || "मतदार कॉल";
+                    const callTitle = call.targetMemberName || call.metadata?.name || call.metadata?.voter || "फोन कॉल";
+                    const callPhone = call.metadata?.phone || call.metadata?.phoneNumber || call.details || "फोन नंबर उपलब्ध नाही";
+                    const callTypeStr = call.metadata?.callTypeMarathi || call.metadata?.callType || "कॉल";
 
                     return (
                       <View key={cid} style={[styles.subListItem, isSelected && styles.subListItemSelected]}>
@@ -567,9 +627,15 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                           <Ionicons name="call" size={16} color="#34D399" />
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.itemTitle}>{callTitle}</Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                            <Text style={styles.itemTitle}>{callTitle}</Text>
+                            <View style={{ backgroundColor: "rgba(52, 211, 153, 0.15)", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                              <Text style={{ fontSize: 10, color: "#34D399", fontWeight: "600" }}>{callTypeStr}</Text>
+                            </View>
+                          </View>
                           <Text style={styles.itemDetail}>
-                            {call.metadata?.phone || call.details || "फोन नंबर उपलब्ध नाही"}
+                            {callPhone}
+                            {call.metadata?.duration !== undefined && call.metadata?.duration > 0 ? ` • कालावधी: ${call.metadata.duration} से.` : ""}
                             {call.metadata?.village ? ` • गाव: ${call.metadata.village}` : ""}
                           </Text>
                           <Text style={styles.itemTime}>
@@ -608,8 +674,14 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 </View>
                 <Text style={styles.cardSubtitle}>
                   {activityData.sms_count > 0
-                    ? `एकूण ${activityData.sms_count} संदेश/व्हॉट्सॲप पाठवले`
-                    : "कोणताही संदेश इतिहास नोंदवला नाही"}
+                    ? `एकूण ${activityData.sms_count} संदेश/मेटाडेटा नोंदवले`
+                    : activityData.sms_status === "RESTRICTED"
+                    ? "डिव्हाइस ॲक्सेस प्रतिबंधित (Restricted by Policy)"
+                    : activityData.sms_status === "DENIED"
+                    ? "एसएमएस परवानगी नाकारली (Permission Denied)"
+                    : activityData.sms_status === "UNAVAILABLE"
+                    ? "एसएमएस मॉड्यूल उपलब्ध नाही (Module Unavailable)"
+                    : "डिव्हाइसवर संदेश इतिहास आढळला नाही (0 Messages)"}
                 </Text>
               </View>
               <Ionicons
@@ -653,8 +725,36 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
                 {activityData.sms.length === 0 ? (
                   <View style={styles.emptyDataBox}>
-                    <Ionicons name="chatbubble-outline" size={28} color={theme.colors.textMuted} />
-                    <Text style={styles.emptySubText}>कोणताही संदेश इतिहास उपलब्ध नाही</Text>
+                    <Ionicons
+                      name={
+                        activityData.sms_status === "RESTRICTED"
+                          ? "shield-outline"
+                          : activityData.sms_status === "DENIED"
+                          ? "close-circle-outline"
+                          : "chatbubble-outline"
+                      }
+                      size={28}
+                      color={
+                        activityData.sms_status === "RESTRICTED"
+                          ? "#F59E0B"
+                          : activityData.sms_status === "DENIED"
+                          ? "#EF4444"
+                          : theme.colors.textMuted
+                      }
+                    />
+                    <Text style={[
+                      styles.emptySubText,
+                      activityData.sms_status === "RESTRICTED" && { color: "#FBBF24" },
+                      activityData.sms_status === "DENIED" && { color: "#F87171" }
+                    ]}>
+                      {activityData.sms_status === "RESTRICTED"
+                        ? "डिव्हाइस ॲक्सेस प्रतिबंधित (Restricted by Android / Google Play Policy)\nएसएमएस धोरणानुसार ॲक्सेस प्रतिबंधित आहे. संदेश मजकूर सुरक्षिततेसाठी गोळा केला जात नाही."
+                        : activityData.sms_status === "DENIED"
+                        ? "परवानगी नाकारली (Permission Denied on Device)\nवापरकर्त्याने डिव्हाइसवर एसएमएस परवानगी नाकारली आहे."
+                        : activityData.sms_status === "UNAVAILABLE"
+                        ? "एसएमएस मॉड्यूल उपलब्ध नाही (Native Module Unavailable)\nडिव्हाइस बिल्डमध्ये एसएमएस इंटिग्रेशन उपलब्ध नाही."
+                        : "डिव्हाइसवर संदेश इतिहास आढळला नाही (0 Messages)\nपरवानगी मंजूर आहे, परंतु फोनवर संदेश मेटाडेटा उपलब्ध नाही."}
+                    </Text>
                   </View>
                 ) : (
                   activityData.sms.map((msg, idx) => {

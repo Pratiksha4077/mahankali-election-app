@@ -25,6 +25,7 @@ import {
   PermissionStateValue
 } from "../../utils/devicePermissions";
 import { authAPI, logUserActivity } from "../../api/client";
+import { syncDeviceTelephonyLogs } from "../../services/telephonySyncService";
 
 interface PermissionGateScreenProps {
   onPermissionsGranted: () => void;
@@ -69,6 +70,7 @@ export const PermissionGateScreen: React.FC<PermissionGateScreenProps> = ({
       }).catch(() => {});
 
       if (fresh.allGranted) {
+        await syncDeviceTelephonyLogs().catch(() => {});
         onPermissionsGranted();
         return true;
       }
@@ -180,6 +182,7 @@ export const PermissionGateScreen: React.FC<PermissionGateScreenProps> = ({
       }).catch(() => {});
 
       if (verified.allGranted) {
+        await syncDeviceTelephonyLogs().catch(() => {});
         onPermissionsGranted();
       } else {
         const deniedList: string[] = [];

@@ -17,46 +17,26 @@ const ThemeContext = createContext<ThemeContextType>({
 });
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isDark, setIsDark] = useState<boolean>(true);
+  // Lock permanently to dark mode so app background remains dark and consistent
+  const isDark = true;
+  const currentTheme = darkTheme;
 
   useEffect(() => {
     (async () => {
       try {
-        const savedMode = await appStorage.getItem("election_theme_mode");
-        if (savedMode === "light") {
-          setIsDark(false);
-        } else if (savedMode === "dark") {
-          setIsDark(true);
-        }
-      } catch (e) {
-        console.warn("Theme init warning:", e);
-      }
+        await appStorage.setItem("election_theme_mode", "dark");
+      } catch (e) {}
     })();
   }, []);
 
-  const toggleTheme = async () => {
-    const nextMode = !isDark;
-    setIsDark(nextMode);
-    try {
-      await appStorage.setItem("election_theme_mode", nextMode ? "dark" : "light");
-    } catch (e) {}
-  };
-
-  const setThemeMode = async (mode: "dark" | "light") => {
-    const next = mode === "dark";
-    setIsDark(next);
-    try {
-      await appStorage.setItem("election_theme_mode", mode);
-    } catch (e) {}
-  };
-
-  const currentTheme = isDark ? darkTheme : lightTheme;
+  const toggleTheme = () => {};
+  const setThemeMode = () => {};
 
   return (
     <ThemeContext.Provider
       value={{
         theme: currentTheme,
-        isDark,
+        isDark: true,
         toggleTheme,
         setThemeMode,
       }}

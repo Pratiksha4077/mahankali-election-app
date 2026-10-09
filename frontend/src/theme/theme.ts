@@ -37,41 +37,8 @@ export const darkColors = {
 };
 
 export const lightColors = {
-  // Backgrounds (Clean White / Light Mode)
-  background: "#F1F5F9",
-  surface: "#FFFFFF",
-  card: "#FFFFFF",
-  cardElevated: "#F8FAFC",
-  header: "#1E293B",
-  border: "#E2E8F0",
-  borderLight: "#CBD5E1",
-  
-  // Accents
-  primary: "#4338CA",       // Deep Indigo
-  primaryLight: "#4F46E5",
-  primaryDark: "#312E81",
-  secondary: "#0891B2",     // Cyan
-  accent: "#7C3AED",        // Purple
-
-  // Text
-  textPrimary: "#0F172A",
-  textSecondary: "#475569",
-  textMuted: "#64748B",
-  textInverse: "#F8FAFC",
-
-  // Voter 5-Color Category System (Green to Red)
-  categoryGreen: "#059669",
-  categoryLightGreen: "#65A30D",
-  categoryYellow: "#D97706",
-  categoryOrange: "#EA580C",
-  categoryRed: "#DC2626",
-
-  // Semantic Statuses
-  success: "#059669",
-  warning: "#D97706",
-  error: "#DC2626",
-  info: "#2563EB",
-  deceased: "#475569",
+  // App is permanently locked in dark theme - background must never turn white
+  ...darkColors,
 };
 
 export const themeSpacing = {

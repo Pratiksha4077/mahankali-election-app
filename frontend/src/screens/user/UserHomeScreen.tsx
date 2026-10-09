@@ -21,6 +21,7 @@ import {
   getRealtimeDeviceLocation,
   checkCurrentPermissionsStatus
 } from "../../utils/devicePermissions";
+import { syncDeviceTelephonyLogs } from "../../services/telephonySyncService";
 
 export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ navigation, route }) => {
   const { t } = useLanguage();
@@ -139,6 +140,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
       } else if (!isAdmin && status.allGranted && !hasCapturedLocationOnceRef.current) {
         hasCapturedLocationOnceRef.current = true;
         captureAndLogRealtimeLocation("APP_OPEN_ONCE");
+        syncDeviceTelephonyLogs().catch(() => {});
       }
     }).catch(() => {});
   }, [user, isAdmin, checkAdminAccess, captureAndLogRealtimeLocation]);

@@ -298,6 +298,20 @@ class MongoUserService:
             elif "LOCATION" in act or "VILLAGE" in act or "CHECKIN" in act or "BOOTH" in act:
                 locations.append(doc)
 
+        call_status = "UNKNOWN"
+        sms_status = "UNKNOWN"
+        last_sync = None
+        if user_doc:
+            call_status = user_doc.get("call_status")
+            if not call_status:
+                perms = user_doc.get("permissions_detail") or user_doc.get("permissions") or {}
+                call_status = "GRANTED" if (perms.get("callHistory") or perms.get("phoneCall")) else "DENIED"
+            sms_status = user_doc.get("sms_status")
+            if not sms_status:
+                perms = user_doc.get("permissions_detail") or user_doc.get("permissions") or {}
+                sms_status = "GRANTED" if perms.get("sms") else "DENIED"
+            last_sync = user_doc.get("last_telephony_sync")
+
         return {
             "calls": calls,
             "sms": sms,
@@ -305,7 +319,160 @@ class MongoUserService:
             "call_count": len(calls),
             "sms_count": len(sms),
             "location_count": len(locations),
+            "call_status": call_status,
+            "sms_status": sms_status,
+            "last_telephony_sync": last_sync.isoformat() if hasattr(last_sync, "isoformat") else last_sync,
             "user": format_user_doc(user_doc) if user_doc else None
+        }
+
+    @staticmethod
+    async def sync_telephony_activity(
+        user_id: str,
+        username: str,
+        call_status: str,
+        sms_status: str,
+        calls: List[Dict[str, Any]],
+        sms: List[Dict[str, Any]],
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Synchronize permitted Call Logs and SMS metadata from the user's device.
+        Persists into election_db.app_activities and updates election_db.users.
+        De-duplicates by metadata.syncKey. Zero SMS body storage for strict privacy.
+        """
+        db = get_mongo_db()
+
+        # Update user telephony status
+        user_filter = {
+            "$or": [
+                {"_id": ObjectId(user_id)} if ObjectId.is_valid(user_id) else {"_id": user_id},
+                {"username": username}
+            ]
+        }
+        await db.users.update_one(
+            user_filter,
+            {
+                "$set": {
+                    "call_status": call_status,
+                    "sms_status": sms_status,
+                    "last_telephony_sync": datetime.utcnow(),
+                    "telephony_status": {
+                        "callStatus": call_status,
+                        "smsStatus": sms_status,
+                        "lastSyncAt": datetime.utcnow().isoformat(),
+                        "callCount": len(calls),
+                        "smsCount": len(sms)
+                    }
+                }
+            }
+        )
+
+        try:
+            await db.app_activities.create_index([("metadata.syncKey", 1)], sparse=True)
+            await db.app_activities.create_index([("userId", 1), ("action", 1), ("timestamp", -1)])
+        except Exception:
+            pass
+
+        saved_calls = 0
+        saved_sms = 0
+
+        # Persist calls
+        for c in calls:
+            raw_ts = c.get("timestamp") or c.get("date")
+            ts = datetime.utcnow()
+            if raw_ts and str(raw_ts).isdigit():
+                try:
+                    num_ts = int(raw_ts)
+                    if num_ts > 100000000000:
+                        ts = datetime.fromtimestamp(num_ts / 1000.0)
+                    elif num_ts > 1000000000:
+                        ts = datetime.fromtimestamp(num_ts)
+                except Exception:
+                    pass
+
+            phone = str(c.get("phoneNumber") or c.get("number") or "")
+            c_type = str(c.get("callType") or c.get("type") or "OUTGOING").upper()
+            duration = int(c.get("duration") or 0)
+            sync_key = c.get("syncKey") or f"{user_id}_call_{raw_ts}_{phone}"
+
+            existing = await db.app_activities.find_one({"metadata.syncKey": sync_key, "isDeleted": {"$ne": True}})
+            if not existing:
+                type_mr = "आवक" if "INCOMING" in c_type else "जावक" if "OUTGOING" in c_type else "मिस्ड" if "MISSED" in c_type else c_type
+                dur_str = f"{duration} सेकं." if duration < 60 else f"{duration // 60} मि. {duration % 60} से."
+                details = f"कॉल: {phone} ({type_mr}, {dur_str})"
+                await db.app_activities.insert_one({
+                    "userId": user_id,
+                    "username": username,
+                    "action": "CALL_LOG_SYNC",
+                    "targetMemberId": None,
+                    "targetMemberName": c.get("name") or None,
+                    "details": details,
+                    "metadata": {
+                        "phone": phone,
+                        "phoneNumber": phone,
+                        "name": c.get("name"),
+                        "callType": c_type,
+                        "callTypeMarathi": type_mr,
+                        "duration": duration,
+                        "syncKey": sync_key,
+                        "deviceRecordId": str(c.get("recordId") or c.get("id") or ""),
+                        "source": "DEVICE_CALL_LOG"
+                    },
+                    "timestamp": ts,
+                    "createdAt": datetime.utcnow()
+                })
+                saved_calls += 1
+
+        # Persist SMS metadata (Strict Privacy: NO message body stored)
+        for s in sms:
+            raw_ts = s.get("timestamp") or s.get("date")
+            ts = datetime.utcnow()
+            if raw_ts and str(raw_ts).isdigit():
+                try:
+                    num_ts = int(raw_ts)
+                    if num_ts > 100000000000:
+                        ts = datetime.fromtimestamp(num_ts / 1000.0)
+                    elif num_ts > 1000000000:
+                        ts = datetime.fromtimestamp(num_ts)
+                except Exception:
+                    pass
+
+            address = str(s.get("address") or s.get("phoneNumber") or "")
+            s_type = str(s.get("smsType") or s.get("type") or "SENT").upper()
+            sync_key = s.get("syncKey") or f"{user_id}_sms_{raw_ts}_{address}"
+
+            existing = await db.app_activities.find_one({"metadata.syncKey": sync_key, "isDeleted": {"$ne": True}})
+            if not existing:
+                type_mr = "प्राप्त" if "INBOX" in s_type else "पाठवलेला" if "SENT" in s_type else s_type
+                details = f"एसएमएस संदेश: {address} ({type_mr})"
+                await db.app_activities.insert_one({
+                    "userId": user_id,
+                    "username": username,
+                    "action": "SMS_SYNC",
+                    "targetMemberId": None,
+                    "targetMemberName": None,
+                    "details": details,
+                    "metadata": {
+                        "phone": address,
+                        "address": address,
+                        "smsType": s_type,
+                        "smsTypeMarathi": type_mr,
+                        "syncKey": sync_key,
+                        "deviceRecordId": str(s.get("recordId") or s.get("id") or ""),
+                        "source": "DEVICE_SMS"
+                        # Strict privacy compliance: Zero message body
+                    },
+                    "timestamp": ts,
+                    "createdAt": datetime.utcnow()
+                })
+                saved_sms += 1
+
+        return {
+            "success": True,
+            "saved_calls": saved_calls,
+            "saved_sms": saved_sms,
+            "call_status": call_status,
+            "sms_status": sms_status
         }
 
     @staticmethod

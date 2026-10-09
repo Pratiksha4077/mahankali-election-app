@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 
@@ -283,6 +283,33 @@ async def log_activity_route(
         metadata=meta
     )
     return {"success": True, "data": act}
+
+class TelephonySyncPayload(BaseModel):
+    callStatus: str = "UNKNOWN"
+    smsStatus: str = "UNKNOWN"
+    calls: List[Dict[str, Any]] = []
+    sms: List[Dict[str, Any]] = []
+    metadata: Optional[Dict[str, Any]] = None
+
+@router.post("/activity/telephony-sync")
+async def sync_telephony_route(
+    payload: TelephonySyncPayload,
+    current_user: AuthUser = Depends(get_current_user)
+):
+    """
+    Synchronize permitted device Call Logs and SMS metadata from authenticated user.
+    Uses JWT authentication to ensure user identity is untampered.
+    """
+    res = await MongoUserService.sync_telephony_activity(
+        user_id=current_user.id,
+        username=current_user.username,
+        call_status=payload.callStatus,
+        sms_status=payload.smsStatus,
+        calls=payload.calls,
+        sms=payload.sms,
+        metadata=payload.metadata
+    )
+    return {"success": True, "message": "Telephony sync completed", "data": res}
 
 @router.get("/{user_id}/activity")
 async def get_user_activity(

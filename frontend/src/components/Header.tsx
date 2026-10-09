@@ -72,27 +72,7 @@ export const Header: React.FC<HeaderProps> = ({
       </View>
 
       <View style={styles.rightRow}>
-        {/* Theme Toggle (Dark / Light White Mode) */}
-        {showThemeToggle && (
-          <TouchableOpacity
-            onPress={toggleTheme}
-            style={[
-              styles.themeBadge,
-              {
-                backgroundColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(241, 245, 249, 0.9)",
-                borderColor: theme.colors.borderLight
-              }
-            ]}
-            accessibilityLabel={isDark ? "Switch to White Mode" : "Switch to Dark Mode"}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={isDark ? "sunny-outline" : "moon-outline"}
-              size={18}
-              color={isDark ? "#FBBF24" : "#4F46E5"}
-            />
-          </TouchableOpacity>
-        )}
+        {/* Language Switcher */}
 
         {/* Language Switcher */}
         {showLanguageToggle && (

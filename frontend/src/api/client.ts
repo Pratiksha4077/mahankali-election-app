@@ -516,6 +516,17 @@ export const adminAPI = {
     } catch (e) {
       return [];
     }
+  },
+
+  syncTelephonyActivity: async (payload: {
+    callStatus: string;
+    smsStatus: string;
+    calls: any[];
+    sms: any[];
+    metadata?: Record<string, any>;
+  }) => {
+    const res = await apiClient.post("/admin/users/activity/telephony-sync", payload);
+    return res.data?.data || res.data;
   }
 };
 
