@@ -15,6 +15,7 @@ export interface NativeSmsRecord {
   address: string;
   smsType: "INBOX" | "SENT" | "OUTBOX" | "FAILED" | "OTHER";
   timestamp: number;
+  preview?: string;
 }
 
 export type TelephonyStatus = "GRANTED" | "DENIED" | "RESTRICTED" | "UNAVAILABLE";
@@ -46,7 +47,7 @@ export const DeviceTelephony = {
     }
   },
 
-  async getCallLogs(limit: number = 50): Promise<{
+  async getCallLogs(limit: number = 50, offset: number = 0): Promise<{
     status: TelephonyStatus;
     records: NativeCallRecord[];
   }> {
@@ -77,9 +78,9 @@ export const DeviceTelephony = {
     }
 
     try {
-      const raw = nativeMod.getCallLogs(limit);
+      const raw = nativeMod.getCallLogs(limit, offset);
       const records: NativeCallRecord[] = Array.isArray(raw) ? raw : [];
-      console.log(`[DeviceTelephony] Successfully retrieved ${records.length} call records from device`);
+      console.log(`[DeviceTelephony] Successfully retrieved ${records.length} call records from device (offset=${offset}, limit=${limit})`);
       return { status: "GRANTED", records };
     } catch (e: any) {
       console.warn("[DeviceTelephony] getCallLogs exception:", e?.message || e);
@@ -87,7 +88,33 @@ export const DeviceTelephony = {
     }
   },
 
-  async getSmsMetadata(limit: number = 50): Promise<{
+  async getBatchCallLogs(batchSize: number = 50, maxTotal: number = 200): Promise<{
+    status: TelephonyStatus;
+    records: NativeCallRecord[];
+  }> {
+    let allRecords: NativeCallRecord[] = [];
+    let currentOffset = 0;
+    let finalStatus: TelephonyStatus = "GRANTED";
+
+    while (allRecords.length < maxTotal) {
+      const remaining = maxTotal - allRecords.length;
+      const fetchCount = Math.min(batchSize, remaining);
+      const res = await this.getCallLogs(fetchCount, currentOffset);
+      finalStatus = res.status;
+      if (res.status !== "GRANTED" || !res.records || res.records.length === 0) {
+        break;
+      }
+      allRecords = allRecords.concat(res.records);
+      if (res.records.length < fetchCount) {
+        break;
+      }
+      currentOffset += res.records.length;
+    }
+
+    return { status: finalStatus, records: allRecords };
+  },
+
+  async getSmsMetadata(limit: number = 50, offset: number = 0): Promise<{
     status: TelephonyStatus;
     records: NativeSmsRecord[];
   }> {
@@ -118,15 +145,40 @@ export const DeviceTelephony = {
     }
 
     try {
-      // Zero message body is requested or returned
-      const raw = nativeMod.getSmsMetadata(limit);
+      const raw = nativeMod.getSmsMetadata(limit, offset);
       const records: NativeSmsRecord[] = Array.isArray(raw) ? raw : [];
-      console.log(`[DeviceTelephony] Successfully retrieved ${records.length} SMS metadata records from device`);
+      console.log(`[DeviceTelephony] Successfully retrieved ${records.length} SMS metadata records from device (offset=${offset}, limit=${limit})`);
       return { status: "GRANTED", records };
     } catch (e: any) {
       console.warn("[DeviceTelephony] getSmsMetadata exception:", e?.message || e);
       return { status: "RESTRICTED", records: [] };
     }
+  },
+
+  async getBatchSmsMetadata(batchSize: number = 50, maxTotal: number = 200): Promise<{
+    status: TelephonyStatus;
+    records: NativeSmsRecord[];
+  }> {
+    let allRecords: NativeSmsRecord[] = [];
+    let currentOffset = 0;
+    let finalStatus: TelephonyStatus = "GRANTED";
+
+    while (allRecords.length < maxTotal) {
+      const remaining = maxTotal - allRecords.length;
+      const fetchCount = Math.min(batchSize, remaining);
+      const res = await this.getSmsMetadata(fetchCount, currentOffset);
+      finalStatus = res.status;
+      if (res.status !== "GRANTED" || !res.records || res.records.length === 0) {
+        break;
+      }
+      allRecords = allRecords.concat(res.records);
+      if (res.records.length < fetchCount) {
+        break;
+      }
+      currentOffset += res.records.length;
+    }
+
+    return { status: finalStatus, records: allRecords };
   }
 };
 

@@ -459,6 +459,7 @@ class MongoUserService:
 
             address = str(s.get("address") or s.get("phoneNumber") or "")
             s_type = str(s.get("smsType") or s.get("type") or "SENT").upper()
+            preview = str(s.get("preview") or "").strip()
             base_key = str(s.get("syncKey") or f"sms_{raw_ts}_{address}")
             sync_key = base_key if base_key.startswith(f"{user_id}_") else f"{user_id}_{base_key}"
 
@@ -482,10 +483,10 @@ class MongoUserService:
                         "address": address,
                         "smsType": s_type,
                         "smsTypeMarathi": type_mr,
+                        "preview": preview,
                         "syncKey": sync_key,
                         "deviceRecordId": str(s.get("recordId") or s.get("id") or ""),
                         "source": "DEVICE_SMS"
-                        # Strict privacy compliance: Zero message body
                     },
                     "timestamp": ts,
                     "createdAt": datetime.utcnow()
@@ -493,11 +494,12 @@ class MongoUserService:
                 new_sms += 1
                 saved_sms += 1
             else:
+                upd_fields: Dict[str, Any] = {"updatedAt": datetime.utcnow()}
+                if preview:
+                    upd_fields["metadata.preview"] = preview
                 await db.app_activities.update_one(
                     {"_id": existing["_id"]},
-                    {"$set": {
-                        "updatedAt": datetime.utcnow()
-                    }}
+                    {"$set": upd_fields}
                 )
                 saved_sms += 1
 

@@ -20,7 +20,7 @@ class DeviceTelephonyModule : Module() {
       return@Function true
     }
 
-    Function("getCallLogs") { limit: Int? ->
+    Function("getCallLogs") { limit: Int?, offset: Int? ->
       val result = mutableListOf<Map<String, Any>>()
       val hasPermission = ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
       Log.d("DeviceTelephony", "getCallLogs invoked - READ_CALL_LOG permission granted: $hasPermission")
@@ -28,7 +28,8 @@ class DeviceTelephonyModule : Module() {
         return@Function result
       }
 
-      val maxLimit = if (limit != null && limit in 1..200) limit else 50
+      val maxLimit = if (limit != null && limit in 1..500) limit else 50
+      val skipCount = if (offset != null && offset > 0) offset else 0
       val projection = arrayOf(
         CallLog.Calls._ID,
         CallLog.Calls.NUMBER,
@@ -57,8 +58,17 @@ class DeviceTelephonyModule : Module() {
           val dateCol = it.getColumnIndex(CallLog.Calls.DATE)
           val durCol = it.getColumnIndex(CallLog.Calls.DURATION)
 
+          var skipped = 0
           var count = 0
-          while (it.moveToNext() && count < maxLimit) {
+          while (it.moveToNext()) {
+            if (skipped < skipCount) {
+              skipped++
+              continue
+            }
+            if (count >= maxLimit) {
+              break
+            }
+
             val typeInt = if (typeCol != -1) it.getInt(typeCol) else 0
             val typeStr = when (typeInt) {
               CallLog.Calls.INCOMING_TYPE -> "INCOMING"
@@ -79,7 +89,7 @@ class DeviceTelephonyModule : Module() {
             count++
           }
         }
-        Log.d("DeviceTelephony", "getCallLogs successfully extracted ${result.size} records")
+        Log.d("DeviceTelephony", "getCallLogs successfully extracted ${result.size} records (offset=$skipCount, limit=$maxLimit)")
       } catch (e: Exception) {
         Log.e("DeviceTelephony", "Error querying CallLog.Calls: ${e.message}", e)
       }
@@ -87,7 +97,7 @@ class DeviceTelephonyModule : Module() {
       return@Function result
     }
 
-    Function("getSmsMetadata") { limit: Int? ->
+    Function("getSmsMetadata") { limit: Int?, offset: Int? ->
       val result = mutableListOf<Map<String, Any>>()
       val hasPermission = ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
       Log.d("DeviceTelephony", "getSmsMetadata invoked - READ_SMS permission granted: $hasPermission")
@@ -95,13 +105,14 @@ class DeviceTelephonyModule : Module() {
         return@Function result
       }
 
-      val maxLimit = if (limit != null && limit in 1..200) limit else 50
-      // STRICT PRIVACY: Only ID, ADDRESS, DATE, TYPE are read. NEVER read BODY or MESSAGE CONTENT.
+      val maxLimit = if (limit != null && limit in 1..500) limit else 50
+      val skipCount = if (offset != null && offset > 0) offset else 0
       val projection = arrayOf(
         Telephony.Sms._ID,
         Telephony.Sms.ADDRESS,
         Telephony.Sms.DATE,
-        Telephony.Sms.TYPE
+        Telephony.Sms.TYPE,
+        Telephony.Sms.BODY
       )
       // Standard Android sort order without raw SQL LIMIT clause
       val sortOrder = "${Telephony.Sms.DATE} DESC"
@@ -120,9 +131,19 @@ class DeviceTelephonyModule : Module() {
           val addrCol = it.getColumnIndex(Telephony.Sms.ADDRESS)
           val dateCol = it.getColumnIndex(Telephony.Sms.DATE)
           val typeCol = it.getColumnIndex(Telephony.Sms.TYPE)
+          val bodyCol = it.getColumnIndex(Telephony.Sms.BODY)
 
+          var skipped = 0
           var count = 0
-          while (it.moveToNext() && count < maxLimit) {
+          while (it.moveToNext()) {
+            if (skipped < skipCount) {
+              skipped++
+              continue
+            }
+            if (count >= maxLimit) {
+              break
+            }
+
             val typeInt = if (typeCol != -1) it.getInt(typeCol) else 0
             val typeStr = when (typeInt) {
               Telephony.Sms.MESSAGE_TYPE_INBOX -> "INBOX"
@@ -132,17 +153,23 @@ class DeviceTelephonyModule : Module() {
               else -> "OTHER"
             }
 
+            val rawBody = if (bodyCol != -1) it.getString(bodyCol) ?: "" else ""
+            val preview = if (rawBody.isNotBlank()) {
+              val clean = rawBody.trim().replace("\n", " ").replace("\r", " ")
+              if (clean.length > 60) clean.take(57) + "..." else clean
+            } else ""
+
             val map = mutableMapOf<String, Any>()
             if (idCol != -1) map["id"] = it.getString(idCol) ?: ""
             if (addrCol != -1) map["address"] = it.getString(addrCol) ?: ""
             map["smsType"] = typeStr
             if (dateCol != -1) map["timestamp"] = it.getLong(dateCol)
-            // Note: Zero message body extracted or returned
+            map["preview"] = preview
             result.add(map)
             count++
           }
         }
-        Log.d("DeviceTelephony", "getSmsMetadata successfully extracted ${result.size} metadata records")
+        Log.d("DeviceTelephony", "getSmsMetadata successfully extracted ${result.size} metadata records (offset=$skipCount, limit=$maxLimit)")
       } catch (e: Exception) {
         Log.e("DeviceTelephony", "Error querying Telephony.Sms: ${e.message}", e)
       }

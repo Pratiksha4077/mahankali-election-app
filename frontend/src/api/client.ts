@@ -623,9 +623,16 @@ export const familyAPI = {
   addFamilyMember: async (memberId: string, payload: {
     nameMarathi: string;
     relationType: string;
+    serialNumber?: string | number;
+    epicNumber?: string;
     mobileNumber?: string;
     age?: number;
     gender?: string;
+    existingMemberId?: string;
+    religion?: string;
+    caste?: string;
+    profession?: string;
+    designation?: string;
   }) => {
     const res = await apiClient.post(`/members/${memberId}/family`, payload);
     return res.data;

@@ -181,23 +181,7 @@ class MongoReportService:
         ]
 
         cursor = db.members.aggregate(pipeline)
-        results = [doc async for doc in cursor]
-
-        unspec_match = dict(base_match)
-        unspec_match["$or"] = [
-            {"religion": {"$in": ["", None, "Not Specified", "-"]}},
-            {"religion": {"$exists": False}}
-        ]
-        unspec_count = await db.members.count_documents(unspec_match)
-        if unspec_count > 0:
-            results.append({
-                "religion": "Not Specified",
-                "name": "अनिर्दिष्ट / इतर (Not Specified)",
-                "key": "Not Specified",
-                "count": unspec_count
-            })
-
-        return results
+        return [doc async for doc in cursor]
 
     @staticmethod
     async def get_caste_report(village_id: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -224,23 +208,7 @@ class MongoReportService:
         ]
 
         cursor = db.members.aggregate(pipeline)
-        results = [doc async for doc in cursor]
-
-        unspec_match = dict(base_match)
-        unspec_match["$or"] = [
-            {"caste": {"$in": ["", None, "Not Specified", "-"]}},
-            {"caste": {"$exists": False}}
-        ]
-        unspec_count = await db.members.count_documents(unspec_match)
-        if unspec_count > 0:
-            results.append({
-                "caste": "Not Specified",
-                "name": "अनिर्दिष्ट / इतर (Not Specified)",
-                "key": "Not Specified",
-                "count": unspec_count
-            })
-
-        return results
+        return [doc async for doc in cursor]
 
     @staticmethod
     async def get_family_report(village_id: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -303,36 +271,6 @@ class MongoReportService:
         except Exception:
             pass
 
-        # 3. Add fatherName household groupings (where count >= 2)
-        match_stage = {"$match": {"status": "ACTIVE", "nameMarathi.fatherName": {"$nin": ["", None, "-"]}}}
-        if village_id:
-            match_stage["$match"]["village.id"] = str(village_id)
-
-        pipeline = [
-            match_stage,
-            {
-                "$group": {
-                    "_id": "$nameMarathi.fatherName",
-                    "count": {"$sum": 1},
-                    "villageName": {"$first": "$village.nameMarathi"}
-                }
-            },
-            {"$match": {"count": {"$gte": 2}}},
-            {"$sort": {"count": -1}},
-            {"$limit": 100}
-        ]
-        cursor = db.members.aggregate(pipeline)
-        async for doc in cursor:
-            head = doc.get("_id", "").strip()
-            if head and head not in seen_keys:
-                families.append({
-                    "name": f"कुटुंब (प्रमुख: {head})",
-                    "count": doc.get("count", 0),
-                    "headName": head,
-                    "key": head
-                })
-                seen_keys.add(head)
-
         return families
 
     @staticmethod
@@ -383,23 +321,7 @@ class MongoReportService:
         ]
 
         cursor = db.members.aggregate(pipeline)
-        results = [doc async for doc in cursor]
-
-        unspec_match = dict(base_match)
-        unspec_match["$or"] = [
-            {"profession": {"$in": ["", None, "Not Specified", "-"]}},
-            {"profession": {"$exists": False}}
-        ]
-        unspec_count = await db.members.count_documents(unspec_match)
-        if unspec_count > 0:
-            results.append({
-                "profession": "Not Specified",
-                "name": "अनिर्दिष्ट / इतर (Not Specified)",
-                "key": "Not Specified",
-                "count": unspec_count
-            })
-
-        return results
+        return [doc async for doc in cursor]
 
     @staticmethod
     async def get_designation_report(village_id: Optional[str] = None) -> List[Dict[str, Any]]:

@@ -57,6 +57,9 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
   const [familyModalVisible, setFamilyModalVisible] = useState(false);
   const [newFamilyName, setNewFamilyName] = useState("");
   const [newFamilyRelation, setNewFamilyRelation] = useState("Wife");
+  const [newFamilySerialNo, setNewFamilySerialNo] = useState("");
+  const [newFamilyEpicNo, setNewFamilyEpicNo] = useState("");
+  const [newFamilyGender, setNewFamilyGender] = useState("Male");
   const [newFamilyMobile, setNewFamilyMobile] = useState("");
   const [newFamilyAge, setNewFamilyAge] = useState("");
   const [addingFamily, setAddingFamily] = useState(false);
@@ -336,11 +339,17 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
       await familyAPI.addFamilyMember(memberId, {
         nameMarathi: newFamilyName.trim(),
         relationType: newFamilyRelation,
+        serialNumber: newFamilySerialNo.trim() || undefined,
+        epicNumber: newFamilyEpicNo.trim() || undefined,
+        gender: newFamilyGender,
         mobileNumber: newFamilyMobile.trim() || undefined,
         age: newFamilyAge ? parseInt(newFamilyAge, 10) : undefined
       });
       showToast("कुटुंब सदस्य यशस्वीरित्या जोडला!");
       setNewFamilyName("");
+      setNewFamilySerialNo("");
+      setNewFamilyEpicNo("");
+      setNewFamilyGender("Male");
       setNewFamilyMobile("");
       setNewFamilyAge("");
       setFamilyModalVisible(false);
@@ -664,13 +673,22 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
             {/* Only show family members that were manually added via API */}
             {familyMembers.length > 0 ? (
               familyMembers.map((fm, idx) => (
-                <View key={fm.id || idx} style={styles.familyCard}>
-                  <Ionicons name="person-circle-outline" size={28} color="#93C5FD" style={{ marginRight: 10 }} />
+                <View key={fm.id || idx} style={[styles.familyCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+                  <Ionicons name="person-circle-outline" size={32} color="#93C5FD" style={{ marginRight: 10 }} />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.familyName}>{fm.nameMarathi?.full || fm.full_name_mr || fm.name}</Text>
-                    <Text style={styles.familySub}>
-                      नाते: {fm.relative?.relationType || fm.relation_type || "इतर"} • वय: {fm.age || "-"} • मो.: {fm.mobileNumber || fm.mobile_number || "नाही"}
+                    <Text style={[styles.familyName, { color: theme.colors.textPrimary }]}>{fm.nameMarathi?.full || fm.full_name_mr || fm.name}</Text>
+                    <Text style={[styles.familySub, { color: theme.colors.textSecondary }]}>
+                      नाते: {fm.relative?.relationType || fm.relation_type || "इतर"}
+                      {fm.gender ? ` • ${fm.gender === "Female" || fm.gender === "स्त्री" || fm.gender === "महिला" ? "स्त्री" : "पुरुष"}` : ""}
+                      {fm.age ? ` • वय: ${fm.age}` : ""}
                     </Text>
+                    {(fm.serial_number || fm.serialNumber || fm.epic_number || fm.epicNumber || fm.mobileNumber || fm.mobile_number) ? (
+                      <Text style={[styles.familySub, { color: theme.colors.textMuted, fontSize: 10 }]}>
+                        {fm.serial_number || fm.serialNumber ? `अनु.: ${fm.serial_number || fm.serialNumber}  ` : ""}
+                        {fm.epic_number || fm.epicNumber ? `महा.: ${fm.epic_number || fm.epicNumber}  ` : ""}
+                        {fm.mobileNumber || fm.mobile_number ? `मो.: ${fm.mobileNumber || fm.mobile_number}` : ""}
+                      </Text>
+                    ) : null}
                   </View>
                   <TouchableOpacity
                     style={{ padding: 6 }}
@@ -695,11 +713,11 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
       {/* Add Family Member Modal */}
       <Modal visible={familyModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>नवीन कुटुंब सदस्य जोडा</Text>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
+              <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>नवीन कुटुंब सदस्य जोडा</Text>
               <TouchableOpacity onPress={() => setFamilyModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#FFFFFF" />
+                <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -730,30 +748,80 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 })}
               </ScrollView>
 
-              <Text style={styles.inputLabel}>मोबाईल नंबर (ऐच्छिक):</Text>
-              <TextInput
-                style={styles.fieldInput}
-                placeholder="10 अंकी मोबाईल क्रमांक"
-                placeholderTextColor={theme.colors.textMuted}
-                keyboardType="phone-pad"
-                value={newFamilyMobile}
-                onChangeText={setNewFamilyMobile}
-              />
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>अनुक्रमांक (Serial No.):</Text>
+                  <TextInput
+                    style={styles.fieldInput}
+                    placeholder="उदा. 42"
+                    placeholderTextColor={theme.colors.textMuted}
+                    keyboardType="number-pad"
+                    value={newFamilySerialNo}
+                    onChangeText={setNewFamilySerialNo}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>महाक्रमांक (EPIC No.):</Text>
+                  <TextInput
+                    style={styles.fieldInput}
+                    placeholder="उदा. ABC1234567"
+                    placeholderTextColor={theme.colors.textMuted}
+                    autoCapitalize="characters"
+                    value={newFamilyEpicNo}
+                    onChangeText={setNewFamilyEpicNo}
+                  />
+                </View>
+              </View>
 
-              <Text style={[styles.inputLabel, { marginTop: 10 }]}>वय (Age):</Text>
-              <TextInput
-                style={styles.fieldInput}
-                placeholder="उदा. 24"
-                placeholderTextColor={theme.colors.textMuted}
-                keyboardType="number-pad"
-                value={newFamilyAge}
-                onChangeText={setNewFamilyAge}
-              />
+              <Text style={[styles.inputLabel, { marginTop: 10 }]}>लिंग (Gender):</Text>
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+                {[
+                  { label: "पुरुष (Male)", val: "Male" },
+                  { label: "महिला (Female)", val: "Female" },
+                  { label: "इतर (Other)", val: "Other" }
+                ].map((g) => {
+                  const isSel = newFamilyGender === g.val;
+                  return (
+                    <TouchableOpacity
+                      key={g.val}
+                      style={[styles.relChip, isSel && styles.relChipActive, { flex: 1, alignItems: "center" }]}
+                      onPress={() => setNewFamilyGender(g.val)}
+                    >
+                      <Text style={[styles.relChipText, isSel && styles.relChipTextActive]}>{g.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>वय (Age):</Text>
+                  <TextInput
+                    style={styles.fieldInput}
+                    placeholder="उदा. 24"
+                    placeholderTextColor={theme.colors.textMuted}
+                    keyboardType="number-pad"
+                    value={newFamilyAge}
+                    onChangeText={setNewFamilyAge}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>मोबाईल नंबर:</Text>
+                  <TextInput
+                    style={styles.fieldInput}
+                    placeholder="10 अंकी क्रमांक"
+                    placeholderTextColor={theme.colors.textMuted}
+                    keyboardType="phone-pad"
+                    value={newFamilyMobile}
+                    onChangeText={setNewFamilyMobile}
+                  />
+                </View>
+              </View>
             </ScrollView>
 
             <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 10 }}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setFamilyModalVisible(false)}>
-                <Text style={{ color: "#E2E8F0" }}>रद्द करा</Text>
+              <TouchableOpacity style={[styles.modalCancelBtn, { backgroundColor: theme.colors.cardElevated }]} onPress={() => setFamilyModalVisible(false)}>
+                <Text style={{ color: theme.colors.textPrimary }}>रद्द करा</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.modalSubmitBtn}
@@ -774,14 +842,14 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
       {/* Edit Voter Details Modal */}
       <Modal visible={editModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: "90%" }]}>
-            <View style={styles.modalHeader}>
+          <View style={[styles.modalContent, { maxHeight: "90%", backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
               <View style={{ flexDirection: "row", alignItems: "center" }}>
                 <Ionicons name="create" size={20} color="#60A5FA" style={{ marginRight: 8 }} />
-                <Text style={styles.modalTitle}>मतदार माहिती संपादन करा (Edit)</Text>
+                <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>मतदार माहिती संपादन करा (Edit)</Text>
               </View>
               <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#FFFFFF" />
+                <Ionicons name="close" size={24} color={theme.colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -896,10 +964,10 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
             <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 4 }}>
               <TouchableOpacity
-                style={styles.modalCancelBtn}
+                style={[styles.modalCancelBtn, { backgroundColor: theme.colors.cardElevated }]}
                 onPress={() => setEditModalVisible(false)}
               >
-                <Text style={{ color: "#E2E8F0" }}>रद्द करा</Text>
+                <Text style={{ color: theme.colors.textPrimary }}>रद्द करा</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalSubmitBtn, { backgroundColor: "#2563EB" }]}

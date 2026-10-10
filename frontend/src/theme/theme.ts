@@ -37,8 +37,41 @@ export const darkColors = {
 };
 
 export const lightColors = {
-  // App is permanently locked in dark theme - background must never turn white
-  ...darkColors,
+  // Backgrounds
+  background: "#F8FAFC",
+  surface: "#FFFFFF",
+  card: "#FFFFFF",
+  cardElevated: "#F1F5F9",
+  header: "#FFFFFF",
+  border: "#E2E8F0",
+  borderLight: "#CBD5E1",
+  
+  // Accents
+  primary: "#4F46E5",
+  primaryLight: "#6366F1",
+  primaryDark: "#3730A3",
+  secondary: "#0284C7",
+  accent: "#8B5CF6",
+
+  // Text
+  textPrimary: "#0F172A",
+  textSecondary: "#475569",
+  textMuted: "#94A3B8",
+  textInverse: "#FFFFFF",
+
+  // Voter 5-Color Category System (Green to Red)
+  categoryGreen: "#10B981",
+  categoryLightGreen: "#84CC16",
+  categoryYellow: "#F59E0B",
+  categoryOrange: "#F97316",
+  categoryRed: "#EF4444",
+
+  // Semantic Statuses
+  success: "#10B981",
+  warning: "#F59E0B",
+  error: "#EF4444",
+  info: "#3B82F6",
+  deceased: "#6B7280",
 };
 
 export const themeSpacing = {

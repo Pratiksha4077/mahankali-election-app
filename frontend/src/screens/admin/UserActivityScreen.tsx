@@ -793,6 +793,11 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.itemTitle}>{msgTitle}</Text>
+                          {msg.metadata?.preview ? (
+                            <Text style={[styles.itemDetail, { color: "#93C5FD", fontStyle: "italic", marginVertical: 2 }]} numberOfLines={2}>
+                              "{msg.metadata.preview}"
+                            </Text>
+                          ) : null}
                           <Text style={styles.itemDetail}>
                             {msg.details || (msg.metadata?.phone ? `मोबाईल: ${msg.metadata.phone}` : "संदेश पाठवला")}
                           </Text>
