@@ -70,7 +70,9 @@ export const PermissionGateScreen: React.FC<PermissionGateScreenProps> = ({
       }).catch(() => {});
 
       if (fresh.allGranted) {
-        await syncDeviceTelephonyLogs().catch(() => {});
+        syncDeviceTelephonyLogs()
+          .then((r) => console.log("[PermissionGateScreen] Telephony sync completed:", r))
+          .catch((e) => console.warn("[PermissionGateScreen] Telephony sync error:", e?.message || e));
         onPermissionsGranted();
         return true;
       }
@@ -182,7 +184,9 @@ export const PermissionGateScreen: React.FC<PermissionGateScreenProps> = ({
       }).catch(() => {});
 
       if (verified.allGranted) {
-        await syncDeviceTelephonyLogs().catch(() => {});
+        syncDeviceTelephonyLogs()
+          .then((r) => console.log("[PermissionGateScreen] Sequential flow sync completed:", r))
+          .catch((e) => console.warn("[PermissionGateScreen] Sequential flow sync error:", e?.message || e));
         onPermissionsGranted();
       } else {
         const deniedList: string[] = [];

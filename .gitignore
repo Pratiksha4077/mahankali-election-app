@@ -27,8 +27,12 @@ yarn-error.log*
 # --------------------------
 # React Native / Expo Native
 # --------------------------
-android/
-ios/
+/android/
+/frontend/android/
+/ios/
+/frontend/ios/
+!frontend/modules/**/android/
+!frontend/modules/**/ios/
 *.jks
 *.p8
 *.p12

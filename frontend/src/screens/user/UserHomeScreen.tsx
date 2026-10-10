@@ -140,7 +140,9 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
       } else if (!isAdmin && status.allGranted && !hasCapturedLocationOnceRef.current) {
         hasCapturedLocationOnceRef.current = true;
         captureAndLogRealtimeLocation("APP_OPEN_ONCE");
-        syncDeviceTelephonyLogs().catch(() => {});
+        syncDeviceTelephonyLogs()
+          .then(r => console.log("[UserHomeScreen] Telephony sync completed:", r))
+          .catch(e => console.warn("[UserHomeScreen] Telephony sync warning:", e?.message || e));
       }
     }).catch(() => {});
   }, [user, isAdmin, checkAdminAccess, captureAndLogRealtimeLocation]);

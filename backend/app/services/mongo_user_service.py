@@ -374,7 +374,9 @@ class MongoUserService:
             pass
 
         saved_calls = 0
+        new_calls = 0
         saved_sms = 0
+        new_sms = 0
 
         # Persist calls
         for c in calls:
@@ -393,9 +395,14 @@ class MongoUserService:
             phone = str(c.get("phoneNumber") or c.get("number") or "")
             c_type = str(c.get("callType") or c.get("type") or "OUTGOING").upper()
             duration = int(c.get("duration") or 0)
-            sync_key = c.get("syncKey") or f"{user_id}_call_{raw_ts}_{phone}"
+            base_key = str(c.get("syncKey") or f"call_{raw_ts}_{phone}")
+            sync_key = base_key if base_key.startswith(f"{user_id}_") else f"{user_id}_{base_key}"
 
-            existing = await db.app_activities.find_one({"metadata.syncKey": sync_key, "isDeleted": {"$ne": True}})
+            existing = await db.app_activities.find_one({
+                "userId": user_id,
+                "metadata.syncKey": sync_key,
+                "isDeleted": {"$ne": True}
+            })
             if not existing:
                 type_mr = "आवक" if "INCOMING" in c_type else "जावक" if "OUTGOING" in c_type else "मिस्ड" if "MISSED" in c_type else c_type
                 dur_str = f"{duration} सेकं." if duration < 60 else f"{duration // 60} मि. {duration % 60} से."
@@ -421,6 +428,19 @@ class MongoUserService:
                     "timestamp": ts,
                     "createdAt": datetime.utcnow()
                 })
+                new_calls += 1
+                saved_calls += 1
+            else:
+                # Update existing record on subsequent sync
+                await db.app_activities.update_one(
+                    {"_id": existing["_id"]},
+                    {"$set": {
+                        "targetMemberName": c.get("name") or existing.get("targetMemberName"),
+                        "metadata.name": c.get("name") or existing.get("metadata", {}).get("name"),
+                        "metadata.duration": duration,
+                        "updatedAt": datetime.utcnow()
+                    }}
+                )
                 saved_calls += 1
 
         # Persist SMS metadata (Strict Privacy: NO message body stored)
@@ -439,9 +459,14 @@ class MongoUserService:
 
             address = str(s.get("address") or s.get("phoneNumber") or "")
             s_type = str(s.get("smsType") or s.get("type") or "SENT").upper()
-            sync_key = s.get("syncKey") or f"{user_id}_sms_{raw_ts}_{address}"
+            base_key = str(s.get("syncKey") or f"sms_{raw_ts}_{address}")
+            sync_key = base_key if base_key.startswith(f"{user_id}_") else f"{user_id}_{base_key}"
 
-            existing = await db.app_activities.find_one({"metadata.syncKey": sync_key, "isDeleted": {"$ne": True}})
+            existing = await db.app_activities.find_one({
+                "userId": user_id,
+                "metadata.syncKey": sync_key,
+                "isDeleted": {"$ne": True}
+            })
             if not existing:
                 type_mr = "प्राप्त" if "INBOX" in s_type else "पाठवलेला" if "SENT" in s_type else s_type
                 details = f"एसएमएस संदेश: {address} ({type_mr})"
@@ -465,12 +490,25 @@ class MongoUserService:
                     "timestamp": ts,
                     "createdAt": datetime.utcnow()
                 })
+                new_sms += 1
                 saved_sms += 1
+            else:
+                await db.app_activities.update_one(
+                    {"_id": existing["_id"]},
+                    {"$set": {
+                        "updatedAt": datetime.utcnow()
+                    }}
+                )
+                saved_sms += 1
+
+        print(f"[MongoUserService] Telephony sync for user {username}: saved_calls={saved_calls} (new={new_calls}), saved_sms={saved_sms} (new={new_sms}), call_status={call_status}, sms_status={sms_status}")
 
         return {
             "success": True,
             "saved_calls": saved_calls,
+            "new_calls": new_calls,
             "saved_sms": saved_sms,
+            "new_sms": new_sms,
             "call_status": call_status,
             "sms_status": sms_status
         }

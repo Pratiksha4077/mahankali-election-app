@@ -300,6 +300,7 @@ async def sync_telephony_route(
     Synchronize permitted device Call Logs and SMS metadata from authenticated user.
     Uses JWT authentication to ensure user identity is untampered.
     """
+    print(f"[AdminUsersAPI] /activity/telephony-sync called by user={current_user.username} ({current_user.id}): callStatus={payload.callStatus}, smsStatus={payload.smsStatus}, callsCount={len(payload.calls)}, smsCount={len(payload.sms)}")
     res = await MongoUserService.sync_telephony_activity(
         user_id=current_user.id,
         username=current_user.username,
@@ -309,6 +310,7 @@ async def sync_telephony_route(
         sms=payload.sms,
         metadata=payload.metadata
     )
+    print(f"[AdminUsersAPI] /activity/telephony-sync response for user={current_user.username}: saved_calls={res.get('saved_calls')}, saved_sms={res.get('saved_sms')}")
     return {"success": True, "message": "Telephony sync completed", "data": res}
 
 @router.get("/{user_id}/activity")
@@ -322,6 +324,7 @@ async def get_user_activity(
     Location History, and Application Events).
     """
     data = await MongoUserService.get_user_activity(user_id, limit=limit)
+    print(f"[AdminUsersAPI] GET /{user_id}/activity queried by admin={admin.username}: found calls={data.get('call_count', 0)}, sms={data.get('sms_count', 0)}, locations={data.get('location_count', 0)}, call_status={data.get('call_status')}, sms_status={data.get('sms_status')}")
     return {"success": True, "data": data}
 
 class BatchDeleteActivitiesRequest(BaseModel):

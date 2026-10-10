@@ -87,8 +87,17 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
         const sms = Array.isArray(data.sms) ? data.sms : [];
         const locations = Array.isArray(data.locations) ? data.locations : [];
 
-        const cStatus = data.call_status || (freshUserData?.permissions?.callHistory ? "GRANTED" : "DENIED");
-        const sStatus = data.sms_status || (freshUserData?.permissions?.sms ? "GRANTED" : "DENIED");
+        const cStatus = (data.call_status && data.call_status !== "UNKNOWN")
+          ? data.call_status
+          : (freshUserData?.telephony_status?.callStatus || (freshUserData?.permissions?.callHistory ? "GRANTED" : "DENIED"));
+        const sStatus = (data.sms_status && data.sms_status !== "UNKNOWN")
+          ? data.sms_status
+          : (freshUserData?.telephony_status?.smsStatus || (freshUserData?.permissions?.sms ? "GRANTED" : "DENIED"));
+
+        console.log(
+          `[UserActivityScreen] User ${uid} (${user.username}) loaded: ${calls.length} calls (call_status: ${cStatus}), ` +
+          `${sms.length} SMS (sms_status: ${sStatus}), ${locations.length} locations.`
+        );
 
         setActivityData({
           calls,
@@ -103,7 +112,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
         });
       }
     } catch (err) {
-      console.error("Failed to load user activity:", err);
+      console.error("[UserActivityScreen] Failed to load user activity:", err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -760,7 +769,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                   activityData.sms.map((msg, idx) => {
                     const mid = msg.id || `sms_${idx}`;
                     const isSelected = selectedIds.has(mid);
-                    const msgTitle = msg.targetMemberName || msg.metadata?.voter || "मतदार संदेश";
+                    const msgTitle = msg.targetMemberName || msg.metadata?.voter || msg.metadata?.address || msg.metadata?.phone || "मतदार संदेश";
 
                     return (
                       <View key={mid} style={[styles.subListItem, isSelected && styles.subListItemSelected]}>

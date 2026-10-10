@@ -37,6 +37,24 @@ export const apiClient = axios.create({
 
 let authToken: string | null = null;
 
+// Request interceptor: Guarantees JWT Authorization header is attached on every API request
+apiClient.interceptors.request.use(async (config) => {
+  if (!config.headers.Authorization) {
+    if (authToken) {
+      config.headers.Authorization = `Bearer ${authToken}`;
+    } else {
+      try {
+        const storedToken = await appStorage.getItem("election_auth_token");
+        if (storedToken) {
+          authToken = storedToken;
+          config.headers.Authorization = `Bearer ${storedToken}`;
+        }
+      } catch (err) {}
+    }
+  }
+  return config;
+}, (error) => Promise.reject(error));
+
 // Initialize stored Server Base URL & Auth Token asynchronously
 (async () => {
   try {
@@ -485,8 +503,17 @@ export const adminAPI = {
     try {
       const res = await apiClient.get(`/admin/users/${user_id}/activity`);
       const payload = res.data?.data || res.data;
-      if (payload) return payload;
-    } catch (e) { }
+      if (payload) {
+        console.log(
+          `[adminAPI.getUserActivity] HTTP ${res.status}: Retrieved ${payload.call_count ?? payload.calls?.length ?? 0} calls, ` +
+          `${payload.sms_count ?? payload.sms?.length ?? 0} SMS, ${payload.location_count ?? payload.locations?.length ?? 0} locations. ` +
+          `call_status=${payload.call_status}, sms_status=${payload.sms_status}`
+        );
+        return payload;
+      }
+    } catch (e: any) {
+      console.warn(`[adminAPI.getUserActivity] HTTP Error for user_id=${user_id}:`, e?.response?.status, e?.message || e);
+    }
     return { calls: [], sms: [], locations: [], call_count: 0, sms_count: 0, location_count: 0 };
   },
 
@@ -526,7 +553,12 @@ export const adminAPI = {
     metadata?: Record<string, any>;
   }) => {
     const res = await apiClient.post("/admin/users/activity/telephony-sync", payload);
-    return res.data?.data || res.data;
+    const data = res.data?.data || res.data;
+    console.log(
+      `[adminAPI.syncTelephonyActivity] HTTP ${res.status}: Sent ${payload.calls.length} calls, ${payload.sms.length} SMS. ` +
+      `Server saved: calls=${data?.saved_calls ?? data?.callCount}, sms=${data?.saved_sms ?? data?.smsCount}`
+    );
+    return data;
   }
 };
 

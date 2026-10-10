@@ -19,23 +19,25 @@ export interface SyncTelephonyResult {
  * - Strict Privacy: ZERO SMS bodies or sensitive data transmitted.
  */
 export async function syncDeviceTelephonyLogs(): Promise<SyncTelephonyResult> {
+  let callStatus: TelephonyStatus = "DENIED";
+  let smsStatus: TelephonyStatus = "DENIED";
+  let callsList: any[] = [];
+  let smsList: any[] = [];
+
   try {
     // 1. Verify physical device permissions
     const perms = await checkCurrentPermissionsStatus();
 
-    let callStatus: TelephonyStatus = perms.callHistory
+    callStatus = perms.callHistory
       ? "GRANTED"
       : perms.callStatus === "RESTRICTED"
       ? "RESTRICTED"
       : "DENIED";
-    let smsStatus: TelephonyStatus = perms.sms
+    smsStatus = perms.sms
       ? "GRANTED"
       : perms.smsStatus === "RESTRICTED"
       ? "RESTRICTED"
       : "DENIED";
-
-    let callsList: any[] = [];
-    let smsList: any[] = [];
 
     // 2. Fetch permitted device Call Logs
     if (perms.callHistory) {
@@ -69,6 +71,10 @@ export async function syncDeviceTelephonyLogs(): Promise<SyncTelephonyResult> {
       }
     }
 
+    console.log(
+      `[TelephonySync] Sending sync to server: callStatus=${callStatus}, smsStatus=${smsStatus}, calls=${callsList.length}, sms=${smsList.length}`
+    );
+
     // 4. Send authorized records & exact statuses to FastAPI
     const syncRes = await adminAPI.syncTelephonyActivity({
       callStatus,
@@ -80,6 +86,8 @@ export async function syncDeviceTelephonyLogs(): Promise<SyncTelephonyResult> {
         source: "APP_SYNC",
       },
     });
+
+    console.log("[TelephonySync] Server sync success:", syncRes);
 
     const nowIso = new Date().toISOString();
     await appStorage.setItem("last_telephony_sync", nowIso);
@@ -93,11 +101,11 @@ export async function syncDeviceTelephonyLogs(): Promise<SyncTelephonyResult> {
       message: "सिंक्रोनाइझेशन पूर्ण झाले",
     };
   } catch (err: any) {
-    console.warn("syncDeviceTelephonyLogs warning:", err?.message || err);
+    console.warn("[TelephonySync] Sync request error:", err?.message || err);
     return {
       success: false,
-      callStatus: "UNAVAILABLE",
-      smsStatus: "UNAVAILABLE",
+      callStatus,
+      smsStatus,
       syncedCalls: 0,
       syncedSms: 0,
       message: err?.message || "सिंक्रोनाइझेशन अयशस्वी",
