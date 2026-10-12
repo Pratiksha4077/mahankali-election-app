@@ -133,16 +133,17 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
   // Check permissions on mount for non-admin users & verify admin access
   useEffect(() => {
     checkAdminAccess();
+    if (!isAdmin && user) {
+      // Synchronize real-time location and telephony logs (Calls & SMS) on app launch and login
+      captureAndLogRealtimeLocation("LOGIN_SYNC");
+      syncDeviceTelephonyLogs()
+        .then(r => console.log("[UserHomeScreen] Telephony sync on login completed:", r))
+        .catch(e => console.warn("[UserHomeScreen] Telephony sync on login warning:", e?.message || e));
+    }
     checkCurrentPermissionsStatus().then(status => {
       setPermsState(status);
       if (!isAdmin && !status.allGranted) {
         setShowPermissionModal(true);
-      } else if (!isAdmin && status.allGranted && !hasCapturedLocationOnceRef.current) {
-        hasCapturedLocationOnceRef.current = true;
-        captureAndLogRealtimeLocation("APP_OPEN_ONCE");
-        syncDeviceTelephonyLogs()
-          .then(r => console.log("[UserHomeScreen] Telephony sync completed:", r))
-          .catch(e => console.warn("[UserHomeScreen] Telephony sync warning:", e?.message || e));
       }
     }).catch(() => {});
   }, [user, isAdmin, checkAdminAccess, captureAndLogRealtimeLocation]);
@@ -227,14 +228,17 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
     checkAdminAccess();
-    if (!isAdmin && user?.permissions_granted === true) {
+    if (!isAdmin) {
       captureAndLogRealtimeLocation("REFRESH");
+      syncDeviceTelephonyLogs()
+        .then(r => console.log("[UserHomeScreen] Refresh telephony sync completed:", r))
+        .catch(() => {});
     }
     loadVillages();
     setPage(1);
     setHasMore(true);
     loadMembers(1, false);
-  }, [checkAdminAccess, isAdmin, user?.permissions_granted, captureAndLogRealtimeLocation, loadMembers]);
+  }, [checkAdminAccess, isAdmin, captureAndLogRealtimeLocation, loadMembers]);
 
   const handleLoadMore = useCallback(() => {
     if (!loading && !loadingMore && hasMore) {
@@ -333,6 +337,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
       const res = await requestCallHistoryPermission();
       setPermsState(prev => ({ ...prev, phoneCall: res.granted }));
       if (res.granted) {
+        syncDeviceTelephonyLogs().catch(() => {});
         Alert.alert("कॉल इतिहास परवानगी", "कॉल इतिहास परवानगी दिली गेली आहे.");
       } else {
         Alert.alert("कॉल इतिहास परवानगी", "कॉल इतिहास परवानगी दिली नाही.");
@@ -347,7 +352,8 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
       const res = await requestSmsPermission();
       setPermsState(prev => ({ ...prev, sms: res.granted }));
       if (res.granted) {
-        Alert.alert("एसएमएस परवानगी", "एसएमएस पाठवण्याची परवानगी दिली गेली आहे.");
+        syncDeviceTelephonyLogs().catch(() => {});
+        Alert.alert("एसएमएस परवानगी", "एसएमएस परवानगी दिली गेली आहे.");
       } else {
         Alert.alert("एसएमएस परवानगी", "एसएमएस परवानगी दिली नाही.");
       }
@@ -377,6 +383,8 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
 
       updateUserPermissions(true);
       setShowPermissionModal(false);
+      captureAndLogRealtimeLocation("PERMISSION_MODAL_GRANTED");
+      syncDeviceTelephonyLogs().catch(() => {});
       loadMembers(1, false);
     } catch (e) {
       // Keep locked if check fails

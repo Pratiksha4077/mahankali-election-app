@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  SafeAreaView, ActivityIndicator, RefreshControl, FlatList
+  SafeAreaView, ActivityIndicator, RefreshControl, FlatList, Platform
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
@@ -13,7 +13,7 @@ import { theme } from "../../theme/theme";
 type ActiveTab = "analysis" | "voters";
 
 export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<ActiveTab>("analysis");
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -104,33 +104,41 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
       <Header title="Vote Analysis & Voters Data" />
 
       {/* Tab Switcher */}
-      <View style={[styles.tabsRow, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+      <View style={[styles.tabsRow, { backgroundColor: isDark ? theme.colors.surface : "#FFFFFF", borderBottomColor: isDark ? theme.colors.border : "#E2E8F0" }]}>
         <TouchableOpacity
-          style={[styles.tabBtn, activeTab === "analysis" && styles.activeTabBtn]}
+          style={[
+            styles.tabBtn,
+            { backgroundColor: isDark ? theme.colors.card : "#F1F5F9", borderColor: isDark ? theme.colors.border : "#E2E8F0" },
+            activeTab === "analysis" && { backgroundColor: "#4F46E5", borderColor: "#4F46E5" }
+          ]}
           onPress={() => setActiveTab("analysis")}
         >
           <Ionicons
             name="bar-chart"
             size={16}
-            color={activeTab === "analysis" ? "#FFFFFF" : theme.colors.textMuted}
+            color={activeTab === "analysis" ? "#FFFFFF" : isDark ? theme.colors.textMuted : "#64748B"}
             style={{ marginRight: 6 }}
           />
-          <Text style={[styles.tabText, activeTab === "analysis" && styles.activeTabText]}>
+          <Text style={[styles.tabText, { color: activeTab === "analysis" ? "#FFFFFF" : isDark ? theme.colors.textMuted : "#64748B" }]}>
             Vote Analysis
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.tabBtn, activeTab === "voters" && styles.activeTabBtn]}
+          style={[
+            styles.tabBtn,
+            { backgroundColor: isDark ? theme.colors.card : "#F1F5F9", borderColor: isDark ? theme.colors.border : "#E2E8F0" },
+            activeTab === "voters" && { backgroundColor: "#4F46E5", borderColor: "#4F46E5" }
+          ]}
           onPress={() => setActiveTab("voters")}
         >
           <Ionicons
             name="people"
             size={16}
-            color={activeTab === "voters" ? "#FFFFFF" : theme.colors.textMuted}
+            color={activeTab === "voters" ? "#FFFFFF" : isDark ? theme.colors.textMuted : "#64748B"}
             style={{ marginRight: 6 }}
           />
-          <Text style={[styles.tabText, activeTab === "voters" && styles.activeTabText]}>
+          <Text style={[styles.tabText, { color: activeTab === "voters" ? "#FFFFFF" : isDark ? theme.colors.textMuted : "#64748B" }]}>
             Voters Data ({totalVoters})
           </Text>
         </TouchableOpacity>
@@ -147,7 +155,7 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
           {loading ? (
             <View style={styles.loaderCenter}>
               <ActivityIndicator size="large" color={theme.colors.primaryLight} />
-              <Text style={styles.loaderText}>डेटा विश्लेषण लोड होत आहे...</Text>
+              <Text style={[styles.loaderText, { color: theme.colors.textSecondary }]}>डेटा विश्लेषण लोड होत आहे...</Text>
             </View>
           ) : (
             <>
@@ -171,66 +179,66 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
               </View>
 
               {/* Summary Metric Cards */}
-              <Text style={styles.sectionHeading}>मतदार सारांश (Voter Summary)</Text>
+              <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>मतदार सारांश (Voter Summary)</Text>
               <View style={styles.statsGrid}>
                 <TouchableOpacity
-                  style={[styles.statCard, { borderColor: "#3B82F6" }]}
+                  style={[styles.statCard, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: "#3B82F6" }]}
                   onPress={() => setActiveTab("voters")}
                   activeOpacity={0.7}
                 >
                   <View style={[styles.statIconWrap, { backgroundColor: "rgba(59,130,246,0.15)" }]}>
-                    <Ionicons name="people-circle-outline" size={22} color="#60A5FA" />
+                    <Ionicons name="people-circle-outline" size={22} color="#3B82F6" />
                   </View>
-                  <Text style={styles.statNumber}>{totalVoters.toLocaleString()}</Text>
-                  <Text style={styles.statLabel}>एकूण मतदार</Text>
-                  <Text style={styles.statSubLabel}>Tap to view list →</Text>
+                  <Text style={[styles.statNumber, { color: theme.colors.textPrimary }]}>{totalVoters.toLocaleString()}</Text>
+                  <Text style={[styles.statLabel, { color: isDark ? theme.colors.textSecondary : "#475569" }]}>एकूण मतदार</Text>
+                  <Text style={[styles.statSubLabel, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>Tap to view list →</Text>
                 </TouchableOpacity>
 
-                <View style={[styles.statCard, { borderColor: "#10B981" }]}>
+                <View style={[styles.statCard, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: "#10B981" }]}>
                   <View style={[styles.statIconWrap, { backgroundColor: "rgba(16,185,129,0.15)" }]}>
-                    <Ionicons name="checkmark-done-circle-outline" size={22} color="#34D399" />
+                    <Ionicons name="checkmark-done-circle-outline" size={22} color="#10B981" />
                   </View>
-                  <Text style={[styles.statNumber, { color: "#34D399" }]}>{activeVoters.toLocaleString()}</Text>
-                  <Text style={styles.statLabel}>सक्रिय मतदार</Text>
-                  <Text style={styles.statSubLabel}>{totalVoters > 0 ? `${Math.round((activeVoters / totalVoters) * 100)}%` : "0%"}</Text>
+                  <Text style={[styles.statNumber, { color: "#10B981" }]}>{activeVoters.toLocaleString()}</Text>
+                  <Text style={[styles.statLabel, { color: isDark ? theme.colors.textSecondary : "#475569" }]}>सक्रिय मतदार</Text>
+                  <Text style={[styles.statSubLabel, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>{totalVoters > 0 ? `${Math.round((activeVoters / totalVoters) * 100)}%` : "0%"}</Text>
                 </View>
 
-                <View style={[styles.statCard, { borderColor: "#EF4444" }]}>
+                <View style={[styles.statCard, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: "#EF4444" }]}>
                   <View style={[styles.statIconWrap, { backgroundColor: "rgba(239,68,68,0.15)" }]}>
                     <Ionicons name="skull-outline" size={22} color="#EF4444" />
                   </View>
-                  <Text style={[styles.statNumber, { color: "#F87171" }]}>{deceasedVoters.toLocaleString()}</Text>
-                  <Text style={styles.statLabel}>मयत नोंदी</Text>
-                  <Text style={styles.statSubLabel}>{totalVoters > 0 ? `${Math.round((deceasedVoters / totalVoters) * 100)}%` : "0%"}</Text>
+                  <Text style={[styles.statNumber, { color: "#EF4444" }]}>{deceasedVoters.toLocaleString()}</Text>
+                  <Text style={[styles.statLabel, { color: isDark ? theme.colors.textSecondary : "#475569" }]}>मयत नोंदी</Text>
+                  <Text style={[styles.statSubLabel, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>{totalVoters > 0 ? `${Math.round((deceasedVoters / totalVoters) * 100)}%` : "0%"}</Text>
                 </View>
 
                 <TouchableOpacity
-                  style={[styles.statCard, { borderColor: "#F59E0B" }]}
+                  style={[styles.statCard, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: "#F59E0B" }]}
                   onPress={() => navigation.navigate("UserManagement")}
                   activeOpacity={0.7}
                 >
                   <View style={[styles.statIconWrap, { backgroundColor: "rgba(245,158,11,0.15)" }]}>
-                    <Ionicons name="person-outline" size={22} color="#FBBF24" />
+                    <Ionicons name="person-outline" size={22} color="#F59E0B" />
                   </View>
-                  <Text style={[styles.statNumber, { color: "#FBBF24" }]}>{stats?.total_users || 0}</Text>
-                  <Text style={styles.statLabel}>App Users</Text>
-                  <Text style={styles.statSubLabel}>{stats?.active_users || 0} active</Text>
+                  <Text style={[styles.statNumber, { color: "#F59E0B" }]}>{stats?.total_users || 0}</Text>
+                  <Text style={[styles.statLabel, { color: isDark ? theme.colors.textSecondary : "#475569" }]}>App Users</Text>
+                  <Text style={[styles.statSubLabel, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>{stats?.active_users || 0} active</Text>
                 </TouchableOpacity>
 
-                <View style={[styles.statCard, { borderColor: "#EC4899" }]}>
+                <View style={[styles.statCard, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: "#EC4899" }]}>
                   <View style={[styles.statIconWrap, { backgroundColor: "rgba(236,72,153,0.15)" }]}>
-                    <Ionicons name="color-palette-outline" size={22} color="#F472B6" />
+                    <Ionicons name="color-palette-outline" size={22} color="#EC4899" />
                   </View>
-                  <Text style={[styles.statNumber, { color: "#F472B6" }]}>{categorized}</Text>
-                  <Text style={styles.statLabel}>Color Tagged</Text>
-                  <Text style={styles.statSubLabel}>{uncategorized} pending</Text>
+                  <Text style={[styles.statNumber, { color: "#EC4899" }]}>{categorized}</Text>
+                  <Text style={[styles.statLabel, { color: isDark ? theme.colors.textSecondary : "#475569" }]}>Color Tagged</Text>
+                  <Text style={[styles.statSubLabel, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>{uncategorized} pending</Text>
                 </View>
               </View>
 
               {/* Vote Analysis: Active vs Deceased Progress */}
-              <View style={styles.sectionCard}>
+              <View style={[styles.sectionCard, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: isDark ? theme.colors.border : "#E2E8F0" }]}>
                 <View style={styles.sectionHeaderRow}>
-                  <Text style={styles.sectionHeading}>मतदार स्थिती विश्लेषण</Text>
+                  <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary, marginBottom: 0 }]}>मतदार स्थिती विश्लेषण</Text>
                   <Ionicons name="analytics-outline" size={18} color={theme.colors.textSecondary} />
                 </View>
 
@@ -250,12 +258,12 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
                     {/* Active Voters Bar */}
                     <View style={styles.analysisRow}>
                       <View style={styles.analysisLabelRow}>
-                        <View style={[styles.analysisDot, { backgroundColor: "#34D399" }]} />
-                        <Text style={styles.analysisLabel}>सक्रिय मतदार (Active)</Text>
-                        <Text style={styles.analysisCount}>{activeVoters} ({totalVoters > 0 ? Math.round((activeVoters / totalVoters) * 100) : 0}%)</Text>
+                        <View style={[styles.analysisDot, { backgroundColor: "#10B981" }]} />
+                        <Text style={[styles.analysisLabel, { color: isDark ? theme.colors.textSecondary : "#334155" }]}>सक्रिय मतदार (Active)</Text>
+                        <Text style={[styles.analysisCount, { color: theme.colors.textPrimary }]}>{activeVoters} ({totalVoters > 0 ? Math.round((activeVoters / totalVoters) * 100) : 0}%)</Text>
                       </View>
-                      <View style={styles.barTrack}>
-                        <View style={[styles.barFill, { width: `${totalVoters > 0 ? Math.round((activeVoters / totalVoters) * 100) : 0}%`, backgroundColor: "#34D399" }]} />
+                      <View style={[styles.barTrack, { backgroundColor: isDark ? theme.colors.surface : "#E2E8F0" }]}>
+                        <View style={[styles.barFill, { width: `${totalVoters > 0 ? Math.round((activeVoters / totalVoters) * 100) : 0}%`, backgroundColor: "#10B981" }]} />
                       </View>
                     </View>
 
@@ -263,10 +271,10 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
                     <View style={styles.analysisRow}>
                       <View style={styles.analysisLabelRow}>
                         <View style={[styles.analysisDot, { backgroundColor: "#EF4444" }]} />
-                        <Text style={styles.analysisLabel}>मयत (Deceased)</Text>
-                        <Text style={styles.analysisCount}>{deceasedVoters} ({totalVoters > 0 ? Math.round((deceasedVoters / totalVoters) * 100) : 0}%)</Text>
+                        <Text style={[styles.analysisLabel, { color: isDark ? theme.colors.textSecondary : "#334155" }]}>मयत (Deceased)</Text>
+                        <Text style={[styles.analysisCount, { color: theme.colors.textPrimary }]}>{deceasedVoters} ({totalVoters > 0 ? Math.round((deceasedVoters / totalVoters) * 100) : 0}%)</Text>
                       </View>
-                      <View style={styles.barTrack}>
+                      <View style={[styles.barTrack, { backgroundColor: isDark ? theme.colors.surface : "#E2E8F0" }]}>
                         <View style={[styles.barFill, { width: `${totalVoters > 0 ? Math.round((deceasedVoters / totalVoters) * 100) : 0}%`, backgroundColor: "#EF4444" }]} />
                       </View>
                     </View>
@@ -274,12 +282,12 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
                     {/* Categorized Bar */}
                     <View style={styles.analysisRow}>
                       <View style={styles.analysisLabelRow}>
-                        <View style={[styles.analysisDot, { backgroundColor: "#F472B6" }]} />
-                        <Text style={styles.analysisLabel}>रंग-टॅग केलेले (Tagged)</Text>
-                        <Text style={styles.analysisCount}>{categorized} ({totalVoters > 0 ? Math.round((categorized / totalVoters) * 100) : 0}%)</Text>
+                        <View style={[styles.analysisDot, { backgroundColor: "#EC4899" }]} />
+                        <Text style={[styles.analysisLabel, { color: isDark ? theme.colors.textSecondary : "#334155" }]}>रंग-टॅग केलेले (Tagged)</Text>
+                        <Text style={[styles.analysisCount, { color: theme.colors.textPrimary }]}>{categorized} ({totalVoters > 0 ? Math.round((categorized / totalVoters) * 100) : 0}%)</Text>
                       </View>
-                      <View style={styles.barTrack}>
-                        <View style={[styles.barFill, { width: `${totalVoters > 0 ? Math.round((categorized / totalVoters) * 100) : 0}%`, backgroundColor: "#F472B6" }]} />
+                      <View style={[styles.barTrack, { backgroundColor: isDark ? theme.colors.surface : "#E2E8F0" }]}>
+                        <View style={[styles.barFill, { width: `${totalVoters > 0 ? Math.round((categorized / totalVoters) * 100) : 0}%`, backgroundColor: "#EC4899" }]} />
                       </View>
                     </View>
                   </>
@@ -288,18 +296,18 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
 
               {/* Color Tag Classification */}
               {categoryData.length > 0 && (
-                <View style={styles.sectionCard}>
+                <View style={[styles.sectionCard, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: isDark ? theme.colors.border : "#E2E8F0" }]}>
                   <View style={styles.sectionHeaderRow}>
-                    <Text style={styles.sectionHeading}>रंग श्रेणी वर्गीकरण</Text>
+                    <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary, marginBottom: 0 }]}>रंग श्रेणी वर्गीकरण</Text>
                     <Ionicons name="color-palette-outline" size={18} color={theme.colors.textSecondary} />
                   </View>
                   <View style={styles.catGrid}>
                     {categoryData.map((c) => (
-                      <View key={c.category_id} style={[styles.catPill, { borderColor: c.color }]}>
+                      <View key={c.category_id} style={[styles.catPill, { backgroundColor: isDark ? theme.colors.surface : "#F8FAFC", borderColor: c.color }]}>
                         <View style={[styles.catDot, { backgroundColor: c.color }]} />
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.catLabel}>{c.label}</Text>
-                          <Text style={styles.catCount}>{c.count} मतदार</Text>
+                          <Text style={[styles.catLabel, { color: theme.colors.textPrimary }]}>{c.label}</Text>
+                          <Text style={[styles.catCount, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>{c.count} मतदार</Text>
                         </View>
                         <Text style={[styles.catPct, { color: c.color }]}>
                           {totalVoters > 0 ? Math.round((c.count / totalVoters) * 100) : 0}%
@@ -312,19 +320,19 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
 
               {/* Recent Activity */}
               {stats?.recent_activities && stats.recent_activities.length > 0 && (
-                <View style={styles.sectionCard}>
+                <View style={[styles.sectionCard, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: isDark ? theme.colors.border : "#E2E8F0" }]}>
                   <View style={styles.sectionHeaderRow}>
-                    <Text style={styles.sectionHeading}>अलीकडील क्रियाकलाप</Text>
+                    <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary, marginBottom: 0 }]}>अलीकडील क्रियाकलाप</Text>
                     <TouchableOpacity onPress={() => navigation.navigate("AuditLogs")}>
                       <Text style={styles.viewAllText}>सर्व पहा →</Text>
                     </TouchableOpacity>
                   </View>
                   {stats.recent_activities.slice(0, 5).map((act) => (
-                    <View key={act.id} style={styles.activityRow}>
+                    <View key={act.id} style={[styles.activityRow, { borderBottomColor: isDark ? theme.colors.border : "#E2E8F0" }]}>
                       <View style={styles.actDot} />
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.actDetail}>{act.details || act.action}</Text>
-                        <Text style={styles.actMeta}>
+                        <Text style={[styles.actDetail, { color: theme.colors.textPrimary }]}>{act.details || act.action}</Text>
+                        <Text style={[styles.actMeta, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>
                           {act.username} • {act.timestamp ? new Date(act.timestamp).toLocaleString("mr-IN") : ""}
                         </Text>
                       </View>
@@ -341,20 +349,20 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
       {activeTab === "voters" && (
         <View style={{ flex: 1 }}>
           {/* Header info bar */}
-          <View style={styles.votersHeader}>
-            <Text style={styles.votersHeaderText}>एकूण मतदार: {votersTotal.toLocaleString()}</Text>
+          <View style={[styles.votersHeader, { backgroundColor: isDark ? "#111827" : "#F8FAFC", borderBottomColor: isDark ? theme.colors.border : "#E2E8F0" }]}>
+            <Text style={[styles.votersHeaderText, { color: theme.colors.textPrimary }]}>एकूण मतदार: {votersTotal.toLocaleString()}</Text>
             <TouchableOpacity
-              style={styles.votersRefreshBtn}
+              style={[styles.votersRefreshBtn, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: isDark ? theme.colors.border : "#CBD5E1" }]}
               onPress={() => { setVotersPage(1); setVotersHasMore(true); loadVoters(1, false); }}
             >
-              <Ionicons name="refresh" size={16} color="#60A5FA" />
+              <Ionicons name="refresh" size={16} color="#4F46E5" />
             </TouchableOpacity>
           </View>
 
           {votersLoading ? (
             <View style={styles.loaderCenter}>
               <ActivityIndicator size="large" color={theme.colors.primaryLight} />
-              <Text style={styles.loaderText}>मतदार यादी लोड होत आहे...</Text>
+              <Text style={[styles.loaderText, { color: theme.colors.textSecondary }]}>मतदार यादी लोड होत आहे...</Text>
             </View>
           ) : (
             <FlatList
@@ -362,23 +370,23 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
               keyExtractor={(item, idx) => item.id || `${idx}`}
               renderItem={({ item, index }) => (
                 <TouchableOpacity
-                  style={styles.voterRow}
+                  style={[styles.voterRow, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderBottomColor: isDark ? theme.colors.border : "#E2E8F0" }]}
                   onPress={() => navigation.navigate("VoterProfile", { memberId: item.id })}
                   activeOpacity={0.7}
                 >
-                  <View style={styles.voterIndexBadge}>
-                    <Text style={styles.voterIndexText}>{(votersPage - 1) * 50 + index + 1}</Text>
+                  <View style={[styles.voterIndexBadge, { backgroundColor: isDark ? theme.colors.surface : "#F1F5F9", borderColor: isDark ? theme.colors.border : "#E2E8F0" }]}>
+                    <Text style={[styles.voterIndexText, { color: isDark ? theme.colors.textMuted : "#475569" }]}>{(votersPage - 1) * 50 + index + 1}</Text>
                   </View>
                   <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={styles.voterName} numberOfLines={1}>
+                    <Text style={[styles.voterName, { color: theme.colors.textPrimary }]} numberOfLines={1}>
                       {item.full_name_mr || item.full_name_en || "-"}
                     </Text>
-                    <Text style={styles.voterMeta}>
+                    <Text style={[styles.voterMeta, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>
                       {item.epic_number ? `EPIC: ${item.epic_number}` : ""}{item.age ? ` • वय: ${item.age}` : ""}
                       {item.gender === "M" || item.gender === "Male" ? " • पुरुष" : item.gender === "F" || item.gender === "Female" ? " • महिला" : ""}
                     </Text>
                     {!!item.mobile_number && (
-                      <Text style={styles.voterPhone}>📱 {item.mobile_number}</Text>
+                      <Text style={[styles.voterPhone, { color: isDark ? "#34D399" : "#059669" }]}>📱 {item.mobile_number}</Text>
                     )}
                   </View>
                   <View style={{ alignItems: "flex-end", gap: 4 }}>
@@ -392,19 +400,23 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
                       if (dotColor && dotColor !== "#6B7280" && dotColor !== "") {
                         return <View style={[styles.catColorDot, { backgroundColor: dotColor }]} />;
                       }
-                      return <View style={styles.catColorUnassigned} />;
+                      return <View style={[styles.catColorUnassigned, { borderColor: isDark ? theme.colors.border : "#CBD5E1" }]} />;
                     })()}
-                    <Ionicons name="chevron-forward" size={14} color={theme.colors.textMuted} />
+                    <Ionicons name="chevron-forward" size={14} color={isDark ? theme.colors.textMuted : "#94A3B8"} />
                   </View>
                 </TouchableOpacity>
               )}
               contentContainerStyle={{ paddingBottom: 40 }}
+              initialNumToRender={20}
+              maxToRenderPerBatch={20}
+              windowSize={5}
+              removeClippedSubviews={Platform.OS !== "web"}
               onEndReached={handleLoadMoreVoters}
               onEndReachedThreshold={0.4}
               ListEmptyComponent={
                 <View style={styles.loaderCenter}>
                   <Ionicons name="people-outline" size={48} color={theme.colors.textMuted} />
-                  <Text style={styles.noDataText}>मतदार डेटा उपलब्ध नाही</Text>
+                  <Text style={[styles.noDataText, { color: theme.colors.textMuted }]}>मतदार डेटा उपलब्ध नाही</Text>
                 </View>
               }
               ListFooterComponent={
@@ -414,7 +426,7 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
                   </View>
                 ) : !votersHasMore && voters.length > 0 ? (
                   <View style={{ paddingVertical: 14, alignItems: "center" }}>
-                    <Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>
+                    <Text style={{ color: isDark ? theme.colors.textMuted : "#64748B", fontSize: 12 }}>
                       ✓ सर्व {votersTotal} मतदार लोड झाले
                     </Text>
                   </View>

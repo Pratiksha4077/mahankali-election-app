@@ -356,7 +356,7 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
                 color={theme.colors.primaryLight}
                 style={{ marginRight: 8 }}
               />
-              <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>
+              <Text style={[styles.modalTitle, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>
                 {modalMode === "add" ? "Add New User / Admin" : "Edit User / Admin"}
               </Text>
             </View>
@@ -364,7 +364,7 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
             <View style={styles.modalField}>
               <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>User Name</Text>
               <TextInput
-                style={[styles.modalInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
+                style={[styles.modalInput, { backgroundColor: isDark ? theme.colors.surface : "#F8FAFC", borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                 value={formUsername}
                 onChangeText={setFormUsername}
                 placeholder="उदा. रुपेश सर किंवा नाव"
@@ -375,7 +375,7 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
             <View style={styles.modalField}>
               <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>Mobile Number</Text>
               <TextInput
-                style={[styles.modalInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
+                style={[styles.modalInput, { backgroundColor: isDark ? theme.colors.surface : "#F8FAFC", borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                 value={formMobile}
                 onChangeText={setFormMobile}
                 placeholder="10 अंकी नंबर..."
@@ -387,7 +387,7 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
             <View style={styles.modalField}>
               <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>Password</Text>
               <TextInput
-                style={[styles.modalInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
+                style={[styles.modalInput, { backgroundColor: isDark ? theme.colors.surface : "#F8FAFC", borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                 value={formPassword}
                 onChangeText={setFormPassword}
                 placeholder="पासवर्ड प्रविष्ट करा..."
@@ -397,25 +397,33 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
             </View>
 
             <View style={styles.roleSection}>
-              <Text style={styles.fieldLabel}>Role:</Text>
+              <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>Role:</Text>
               <View style={styles.roleButtons}>
                 <TouchableOpacity
-                  style={[styles.roleBtn, formRole === "USER" && styles.activeRoleBtn]}
+                  style={[
+                    styles.roleBtn,
+                    { backgroundColor: isDark ? "#0F172A" : "#F1F5F9", borderColor: theme.colors.border },
+                    formRole === "USER" && styles.activeRoleBtn
+                  ]}
                   onPress={() => setFormRole("USER")}
                 >
-                  <Text style={[styles.roleBtnText, formRole === "USER" && styles.activeRoleBtnText]}>USER</Text>
+                  <Text style={[styles.roleBtnText, { color: formRole === "USER" ? "#FFFFFF" : (isDark ? theme.colors.textMuted : "#475569") }, formRole === "USER" && styles.activeRoleBtnText]}>USER</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.roleBtn, formRole === "ADMIN" && styles.activeRoleBtn]}
+                  style={[
+                    styles.roleBtn,
+                    { backgroundColor: isDark ? "#0F172A" : "#F1F5F9", borderColor: theme.colors.border },
+                    formRole === "ADMIN" && styles.activeRoleBtn
+                  ]}
                   onPress={() => setFormRole("ADMIN")}
                 >
-                  <Text style={[styles.roleBtnText, formRole === "ADMIN" && styles.activeRoleBtnText]}>ADMIN</Text>
+                  <Text style={[styles.roleBtnText, { color: formRole === "ADMIN" ? "#FFFFFF" : (isDark ? theme.colors.textMuted : "#475569") }, formRole === "ADMIN" && styles.activeRoleBtnText]}>ADMIN</Text>
                 </TouchableOpacity>
               </View>
             </View>
 
             <View style={styles.statusRow}>
-              <Text style={styles.fieldLabel}>Account Status: {formIsActive ? "Active" : "Disabled"}</Text>
+              <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>Account Status: {formIsActive ? "Active" : "Disabled"}</Text>
               <Switch
                 value={formIsActive}
                 onValueChange={setFormIsActive}
@@ -425,7 +433,7 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
 
             <View style={styles.modalBtnRow}>
               <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.cancelBtn}>
-                <Text style={styles.cancelBtnText}>Cancel</Text>
+                <Text style={[styles.cancelBtnText, { color: theme.colors.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity onPress={handleSaveModal} style={styles.confirmBtn}>

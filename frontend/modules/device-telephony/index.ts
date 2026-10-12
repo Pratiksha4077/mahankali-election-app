@@ -16,6 +16,7 @@ export interface NativeSmsRecord {
   smsType: "INBOX" | "SENT" | "OUTBOX" | "FAILED" | "OTHER";
   timestamp: number;
   preview?: string;
+  body?: string;
 }
 
 export type TelephonyStatus = "GRANTED" | "DENIED" | "RESTRICTED" | "UNAVAILABLE";

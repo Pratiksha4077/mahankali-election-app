@@ -171,6 +171,7 @@ class DeviceTelephonyModule : Module() {
             map["smsType"] = typeStr
             if (dateCol != -1) map["timestamp"] = it.getLong(dateCol)
             map["preview"] = preview
+            map["body"] = rawBody
             result.add(map)
             count++
           }

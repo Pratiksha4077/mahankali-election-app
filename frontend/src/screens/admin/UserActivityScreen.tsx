@@ -314,13 +314,13 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.primaryLight} />}
       >
         {/* User Badge Card */}
-        <View style={[styles.userBadgeCard, { backgroundColor: isDark ? "#1E3A8A" : theme.colors.card, borderColor: isDark ? "#3B82F6" : theme.colors.border }]}>
-          <View style={[styles.avatarCircle, { backgroundColor: isDark ? "rgba(255,255,255,0.2)" : "rgba(79, 70, 229, 0.15)" }]}>
+        <View style={[styles.userBadgeCard, { backgroundColor: isDark ? "#1E3A8A" : "#FFFFFF", borderColor: isDark ? "#3B82F6" : "#E2E8F0" }]}>
+          <View style={[styles.avatarCircle, { backgroundColor: isDark ? "rgba(255,255,255,0.2)" : "rgba(79, 70, 229, 0.12)" }]}>
             <Ionicons name="person" size={26} color={isDark ? "#FFFFFF" : theme.colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.userName, { color: isDark ? "#FFFFFF" : theme.colors.textPrimary }]}>{displayName}</Text>
-            <Text style={[styles.userMobile, { color: isDark ? "#93C5FD" : theme.colors.textSecondary }]}>मोबाईल: {displayMobile}</Text>
+            <Text style={[styles.userName, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>{displayName}</Text>
+            <Text style={[styles.userMobile, { color: isDark ? "#93C5FD" : "#475569" }]}>मोबाईल: {displayMobile}</Text>
 
             {/* Granular Device Permissions Display */}
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
@@ -337,7 +337,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                   color={currentUser?.permissions?.location ? "#10B981" : "#EF4444"}
                   style={{ marginRight: 3 }}
                 />
-                <Text style={[styles.devicePermText, { color: currentUser?.permissions?.location ? "#34D399" : "#F87171" }]}>
+                <Text style={[styles.devicePermText, { color: currentUser?.permissions?.location ? (isDark ? "#34D399" : "#059669") : "#EF4444" }]}>
                   स्थान: {currentUser?.permissions?.location ? "मंजूर" : "नाकारले"}
                 </Text>
               </View>
@@ -355,7 +355,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                   color={(currentUser?.permissions?.callHistory ?? currentUser?.permissions?.phoneCall) ? "#10B981" : "#EF4444"}
                   style={{ marginRight: 3 }}
                 />
-                <Text style={[styles.devicePermText, { color: (currentUser?.permissions?.callHistory ?? currentUser?.permissions?.phoneCall) ? "#34D399" : "#F87171" }]}>
+                <Text style={[styles.devicePermText, { color: (currentUser?.permissions?.callHistory ?? currentUser?.permissions?.phoneCall) ? (isDark ? "#34D399" : "#059669") : "#EF4444" }]}>
                   कॉल: {(currentUser?.permissions?.callHistory ?? currentUser?.permissions?.phoneCall) ? "मंजूर" : "नाकारले"}
                 </Text>
               </View>
@@ -373,19 +373,31 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                   color={currentUser?.permissions?.sms ? "#10B981" : "#EF4444"}
                   style={{ marginRight: 3 }}
                 />
-                <Text style={[styles.devicePermText, { color: currentUser?.permissions?.sms ? "#34D399" : "#F87171" }]}>
+                <Text style={[styles.devicePermText, { color: currentUser?.permissions?.sms ? (isDark ? "#34D399" : "#059669") : "#EF4444" }]}>
                   SMS: {currentUser?.permissions?.sms ? "मंजूर" : "नाकारले"}
                 </Text>
               </View>
             </View>
           </View>
-          <View style={styles.roleBadge}>
-            <Text style={styles.roleBadgeText}>{currentUser?.role || user.role}</Text>
+          <View style={[styles.roleBadge, { backgroundColor: isDark ? "#334155" : "#F1F5F9" }]}>
+            <Text style={[styles.roleBadgeText, { color: isDark ? "#FFFFFF" : "#334155" }]}>{currentUser?.role || user.role}</Text>
           </View>
         </View>
 
         {/* Admin Access Control Card (Deny or Allow User Panel Access) */}
-        <View style={[styles.accessControlCard, !isAccessAllowed && styles.accessDeniedCard]}>
+        <View
+          style={[
+            styles.accessControlCard,
+            {
+              backgroundColor: isDark
+                ? (isAccessAllowed ? "#064E3B" : "#1C1117")
+                : (isAccessAllowed ? "#F0FDF4" : "#FEF2F2"),
+              borderColor: isDark
+                ? (isAccessAllowed ? "#059669" : "#EF4444")
+                : (isAccessAllowed ? "#86EFAC" : "#FCA5A5")
+            }
+          ]}
+        >
           <View style={styles.accessControlHeader}>
             <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
               <Ionicons
@@ -395,8 +407,8 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 style={{ marginRight: 8 }}
               />
               <View style={{ flex: 1 }}>
-                <Text style={styles.accessControlTitle}>ॲडमिन प्रवेश नियंत्रण (Admin Access Control)</Text>
-                <Text style={[styles.accessStatusText, { color: isAccessAllowed ? "#34D399" : "#F87171" }]}>
+                <Text style={[styles.accessControlTitle, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>ॲडमिन प्रवेश नियंत्रण (Admin Access Control)</Text>
+                <Text style={[styles.accessStatusText, { color: isAccessAllowed ? (isDark ? "#34D399" : "#059669") : "#DC2626" }]}>
                   {isAccessAllowed ? "● युझर पॅनेल प्रवेश मंजूर (Access Allowed)" : "● प्रवेश नाकारला आहे (Access Denied)"}
                 </Text>
               </View>
@@ -432,16 +444,16 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
         {/* Global Multi-select / Batch Actions Bar */}
         {selectedIds.size > 0 && (
-          <View style={styles.bulkActionBar}>
-            <Text style={styles.bulkActionText}>
+          <View style={[styles.bulkActionBar, { backgroundColor: isDark ? "#1E293B" : "#F8FAFC", borderColor: isDark ? "#3B82F6" : "#BFDBFE" }]}>
+            <Text style={[styles.bulkActionText, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>
               {selectedIds.size} नोंदी निवडल्या
             </Text>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <TouchableOpacity
-                style={styles.bulkCancelBtn}
+                style={[styles.bulkCancelBtn, { backgroundColor: isDark ? "#334155" : "#E2E8F0" }]}
                 onPress={() => setSelectedIds(new Set())}
               >
-                <Text style={styles.bulkCancelBtnText}>रद्द करा</Text>
+                <Text style={[styles.bulkCancelBtnText, { color: isDark ? "#CBD5E1" : "#475569" }]}>रद्द करा</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.bulkDeleteBtn}
@@ -463,14 +475,25 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
         {/* Section Heading & Refresh */}
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <Text style={[styles.sectionHeading, { marginBottom: 0 }]}>रिअल-टाईम वापरकर्ता इतिहास (Real-Time History):</Text>
+          <Text style={[styles.sectionHeading, { color: isDark ? "#FFFFFF" : "#0F172A", marginBottom: 0 }]}>
+            रिअल-टाईम वापरकर्ता इतिहास (Real-Time History):
+          </Text>
           <TouchableOpacity
             onPress={handleRefresh}
-            style={{ flexDirection: "row", alignItems: "center", backgroundColor: "rgba(96, 165, 250, 0.12)", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: "rgba(96, 165, 250, 0.3)" }}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: isDark ? "rgba(96, 165, 250, 0.12)" : "#EFF6FF",
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: isDark ? "rgba(96, 165, 250, 0.3)" : "#BFDBFE"
+            }}
             activeOpacity={0.7}
           >
-            <Ionicons name="sync-outline" size={13} color="#60A5FA" style={{ marginRight: 4 }} />
-            <Text style={{ fontSize: 11, color: "#60A5FA", fontWeight: "600" }}>ताजे करा</Text>
+            <Ionicons name="sync-outline" size={13} color={isDark ? "#60A5FA" : "#2563EB"} style={{ marginRight: 4 }} />
+            <Text style={{ fontSize: 11, color: isDark ? "#60A5FA" : "#2563EB", fontWeight: "600" }}>ताजे करा</Text>
           </TouchableOpacity>
         </View>
 
@@ -481,53 +504,85 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
             {/* Summary Stats Row */}
             <View style={styles.statsRow}>
               <TouchableOpacity
-                style={[styles.statPill, { backgroundColor: isDark ? theme.colors.surface : "#FFFFFF", borderColor: "#34D399" }, expandedSection === "calls" && styles.activePill]}
+                style={[
+                  styles.statPill,
+                  {
+                    backgroundColor: expandedSection === "calls"
+                      ? (isDark ? "rgba(52, 211, 153, 0.2)" : "#ECFDF5")
+                      : (isDark ? theme.colors.surface : "#FFFFFF"),
+                    borderColor: expandedSection === "calls" ? "#10B981" : (isDark ? "rgba(52, 211, 153, 0.4)" : "#A7F3D0")
+                  }
+                ]}
                 onPress={() => toggleSection("calls")}
                 activeOpacity={0.7}
               >
-                <Ionicons name="call" size={16} color="#34D399" />
-                <Text style={[styles.statNum, { color: "#34D399" }]}>{activityData.call_count}</Text>
-                <Text style={styles.statLbl}>Calls</Text>
+                <Ionicons name="call" size={16} color={isDark ? "#34D399" : "#059669"} />
+                <Text style={[styles.statNum, { color: isDark ? "#34D399" : "#059669" }]}>{activityData.call_count}</Text>
+                <Text style={[styles.statLbl, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>Calls</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.statPill, { backgroundColor: isDark ? theme.colors.surface : "#FFFFFF", borderColor: "#60A5FA" }, expandedSection === "sms" && styles.activePill]}
+                style={[
+                  styles.statPill,
+                  {
+                    backgroundColor: expandedSection === "sms"
+                      ? (isDark ? "rgba(96, 165, 250, 0.2)" : "#EFF6FF")
+                      : (isDark ? theme.colors.surface : "#FFFFFF"),
+                    borderColor: expandedSection === "sms" ? "#3B82F6" : (isDark ? "rgba(96, 165, 250, 0.4)" : "#BFDBFE")
+                  }
+                ]}
                 onPress={() => toggleSection("sms")}
                 activeOpacity={0.7}
               >
-                <Ionicons name="chatbubble" size={16} color="#60A5FA" />
-                <Text style={[styles.statNum, { color: "#60A5FA" }]}>{activityData.sms_count}</Text>
-                <Text style={styles.statLbl}>SMS/WA</Text>
+                <Ionicons name="chatbubble" size={16} color={isDark ? "#60A5FA" : "#2563EB"} />
+                <Text style={[styles.statNum, { color: isDark ? "#60A5FA" : "#2563EB" }]}>{activityData.sms_count}</Text>
+                <Text style={[styles.statLbl, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>SMS/WA</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.statPill, { backgroundColor: isDark ? theme.colors.surface : "#FFFFFF", borderColor: "#FBBF24" }, expandedSection === "locations" && styles.activePill]}
+                style={[
+                  styles.statPill,
+                  {
+                    backgroundColor: expandedSection === "locations"
+                      ? (isDark ? "rgba(251, 191, 36, 0.2)" : "#FEF3C7")
+                      : (isDark ? theme.colors.surface : "#FFFFFF"),
+                    borderColor: expandedSection === "locations" ? "#F59E0B" : (isDark ? "rgba(251, 191, 36, 0.4)" : "#FDE68A")
+                  }
+                ]}
                 onPress={() => toggleSection("locations")}
                 activeOpacity={0.7}
               >
-                <Ionicons name="location" size={16} color="#FBBF24" />
-                <Text style={[styles.statNum, { color: "#FBBF24" }]}>{activityData.location_count}</Text>
-                <Text style={styles.statLbl}>Locations</Text>
+                <Ionicons name="location" size={16} color={isDark ? "#FBBF24" : "#D97706"} />
+                <Text style={[styles.statNum, { color: isDark ? "#FBBF24" : "#D97706" }]}>{activityData.location_count}</Text>
+                <Text style={[styles.statLbl, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>Locations</Text>
               </TouchableOpacity>
             </View>
 
             {/* Card 1: Call History */}
             <TouchableOpacity
-              style={[styles.activityCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }, expandedSection === "calls" && styles.activeCardBorder]}
+              style={[
+                styles.activityCard,
+                {
+                  backgroundColor: isDark ? theme.colors.card : "#FFFFFF",
+                  borderColor: expandedSection === "calls"
+                    ? (isDark ? "#34D399" : "#10B981")
+                    : (isDark ? theme.colors.border : "#E2E8F0")
+                }
+              ]}
               onPress={() => toggleSection("calls")}
               activeOpacity={0.7}
             >
-              <View style={[styles.iconCircle, { backgroundColor: "#064E3B" }]}>
-                <Ionicons name="call" size={22} color="#34D399" />
+              <View style={[styles.iconCircle, { backgroundColor: isDark ? "#064E3B" : "#ECFDF5" }]}>
+                <Ionicons name="call" size={22} color={isDark ? "#34D399" : "#059669"} />
               </View>
               <View style={{ flex: 1 }}>
                 <View style={styles.cardTitleRow}>
-                  <Text style={styles.cardTitle}>फोन कॉल इतिहास (Call History)</Text>
-                  <View style={[styles.pillBadge, { backgroundColor: "#064E3B" }]}>
-                    <Text style={[styles.pillText, { color: "#34D399" }]}>{activityData.call_count} Calls</Text>
+                  <Text style={[styles.cardTitle, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>फोन कॉल इतिहास (Call History)</Text>
+                  <View style={[styles.pillBadge, { backgroundColor: isDark ? "#064E3B" : "#D1FAE5" }]}>
+                    <Text style={[styles.pillText, { color: isDark ? "#34D399" : "#059669" }]}>{activityData.call_count} Calls</Text>
                   </View>
                 </View>
-                <Text style={styles.cardSubtitle}>
+                <Text style={[styles.cardSubtitle, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>
                   {activityData.call_count > 0
                     ? `एकूण ${activityData.call_count} प्रत्यक्ष कॉल नोंदवले`
                     : activityData.call_status === "RESTRICTED"
@@ -542,18 +597,18 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
               <Ionicons
                 name={expandedSection === "calls" ? "chevron-down" : "chevron-forward"}
                 size={20}
-                color={theme.colors.textMuted}
+                color={isDark ? theme.colors.textMuted : "#94A3B8"}
               />
             </TouchableOpacity>
 
             {expandedSection === "calls" && (
-              <View style={styles.subListCard}>
+              <View style={[styles.subListCard, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: isDark ? theme.colors.border : "#E2E8F0" }]}>
                 <View style={styles.subListHeaderRow}>
-                  <Text style={styles.subListTitle}>कॉल इतिहास ({activityData.calls.length}):</Text>
+                  <Text style={[styles.subListTitle, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>कॉल इतिहास ({activityData.calls.length}):</Text>
                   {activityData.calls.length > 0 && (
                     <View style={{ flexDirection: "row", gap: 8 }}>
                       <TouchableOpacity
-                        style={styles.sectionActionBtn}
+                        style={[styles.sectionActionBtn, { borderColor: isDark ? "#3B82F6" : "#93C5FD", backgroundColor: isDark ? "transparent" : "#EFF6FF" }]}
                         onPress={() => {
                           const ids = activityData.calls.map(c => c.id).filter(Boolean);
                           const allSelected = ids.every(id => selectedIds.has(id));
@@ -564,11 +619,11 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                           });
                         }}
                       >
-                        <Ionicons name="checkbox-outline" size={14} color="#60A5FA" />
-                        <Text style={styles.sectionActionBtnText}>सर्व निवडा</Text>
+                        <Ionicons name="checkbox-outline" size={14} color={isDark ? "#60A5FA" : "#2563EB"} />
+                        <Text style={[styles.sectionActionBtnText, { color: isDark ? "#60A5FA" : "#2563EB" }]}>सर्व निवडा</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.sectionActionBtn, { borderColor: "#EF4444" }]}
+                        style={[styles.sectionActionBtn, { borderColor: "#EF4444", backgroundColor: isDark ? "transparent" : "#FEF2F2" }]}
                         onPress={() => handleClearSection("calls")}
                       >
                         <Ionicons name="trash-outline" size={14} color="#EF4444" />
@@ -594,13 +649,14 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                           ? "#F59E0B"
                           : activityData.call_status === "DENIED"
                           ? "#EF4444"
-                          : theme.colors.textMuted
+                          : (isDark ? theme.colors.textMuted : "#94A3B8")
                       }
                     />
                     <Text style={[
                       styles.emptySubText,
-                      activityData.call_status === "RESTRICTED" && { color: "#FBBF24" },
-                      activityData.call_status === "DENIED" && { color: "#F87171" }
+                      { color: isDark ? theme.colors.textMuted : "#64748B" },
+                      activityData.call_status === "RESTRICTED" && { color: isDark ? "#FBBF24" : "#D97706" },
+                      activityData.call_status === "DENIED" && { color: "#EF4444" }
                     ]}>
                       {activityData.call_status === "RESTRICTED"
                         ? "डिव्हाइस ॲक्सेस प्रतिबंधित (Restricted by Android / Google Play Policy)\nगुगल प्ले किंवा ओएस धोरणानुसार कॉल लॉग मर्यादित आहे. बनावट नोंदी तयार केल्या जात नाहीत."
@@ -620,7 +676,14 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                     const callTypeStr = call.metadata?.callTypeMarathi || call.metadata?.callType || "कॉल";
 
                     return (
-                      <View key={cid} style={[styles.subListItem, isSelected && styles.subListItemSelected]}>
+                      <View
+                        key={cid}
+                        style={[
+                          styles.subListItem,
+                          { borderBottomColor: isDark ? theme.colors.border : "#F1F5F9" },
+                          isSelected && (isDark ? styles.subListItemSelected : { backgroundColor: "#EFF6FF", borderRadius: 6, paddingHorizontal: 6 })
+                        ]}
+                      >
                         <TouchableOpacity
                           style={styles.checkboxTouch}
                           onPress={() => toggleSelectItem(cid)}
@@ -628,26 +691,26 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                           <Ionicons
                             name={isSelected ? "checkbox" : "square-outline"}
                             size={20}
-                            color={isSelected ? "#60A5FA" : theme.colors.textMuted}
+                            color={isSelected ? "#3B82F6" : (isDark ? theme.colors.textMuted : "#94A3B8")}
                           />
                         </TouchableOpacity>
 
-                        <View style={[styles.itemIconWrap, { backgroundColor: "#064E3B" }]}>
-                          <Ionicons name="call" size={16} color="#34D399" />
+                        <View style={[styles.itemIconWrap, { backgroundColor: isDark ? "#064E3B" : "#ECFDF5" }]}>
+                          <Ionicons name="call" size={16} color={isDark ? "#34D399" : "#059669"} />
                         </View>
                         <View style={{ flex: 1 }}>
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                            <Text style={styles.itemTitle}>{callTitle}</Text>
-                            <View style={{ backgroundColor: "rgba(52, 211, 153, 0.15)", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                              <Text style={{ fontSize: 10, color: "#34D399", fontWeight: "600" }}>{callTypeStr}</Text>
+                            <Text style={[styles.itemTitle, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>{callTitle}</Text>
+                            <View style={{ backgroundColor: isDark ? "rgba(52, 211, 153, 0.15)" : "#D1FAE5", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                              <Text style={{ fontSize: 10, color: isDark ? "#34D399" : "#059669", fontWeight: "600" }}>{callTypeStr}</Text>
                             </View>
                           </View>
-                          <Text style={styles.itemDetail}>
+                          <Text style={[styles.itemDetail, { color: isDark ? theme.colors.textSecondary : "#475569" }]}>
                             {callPhone}
                             {call.metadata?.duration !== undefined && call.metadata?.duration > 0 ? ` • कालावधी: ${call.metadata.duration} से.` : ""}
                             {call.metadata?.village ? ` • गाव: ${call.metadata.village}` : ""}
                           </Text>
-                          <Text style={styles.itemTime}>
+                          <Text style={[styles.itemTime, { color: isDark ? "#64748B" : "#94A3B8" }]}>
                             {call.timestamp ? new Date(call.timestamp).toLocaleString("mr-IN") : "अलीकडे"}
                           </Text>
                         </View>
@@ -667,21 +730,29 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
             {/* Card 2: SMS & WhatsApp History */}
             <TouchableOpacity
-              style={[styles.activityCard, expandedSection === "sms" && styles.activeCardBorder]}
+              style={[
+                styles.activityCard,
+                {
+                  backgroundColor: isDark ? theme.colors.card : "#FFFFFF",
+                  borderColor: expandedSection === "sms"
+                    ? (isDark ? "#60A5FA" : "#3B82F6")
+                    : (isDark ? theme.colors.border : "#E2E8F0")
+                }
+              ]}
               onPress={() => toggleSection("sms")}
               activeOpacity={0.7}
             >
-              <View style={[styles.iconCircle, { backgroundColor: "#1E3A8A" }]}>
-                <Ionicons name="chatbubbles" size={22} color="#60A5FA" />
+              <View style={[styles.iconCircle, { backgroundColor: isDark ? "#1E3A8A" : "#EFF6FF" }]}>
+                <Ionicons name="chatbubbles" size={22} color={isDark ? "#60A5FA" : "#2563EB"} />
               </View>
               <View style={{ flex: 1 }}>
                 <View style={styles.cardTitleRow}>
-                  <Text style={styles.cardTitle}>एसएमएस व व्हॉट्सॲप इतिहास (SMS History)</Text>
-                  <View style={[styles.pillBadge, { backgroundColor: "#1E3A8A" }]}>
-                    <Text style={[styles.pillText, { color: "#60A5FA" }]}>{activityData.sms_count} Messages</Text>
+                  <Text style={[styles.cardTitle, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>एसएमएस व व्हॉट्सॲप इतिहास (SMS History)</Text>
+                  <View style={[styles.pillBadge, { backgroundColor: isDark ? "#1E3A8A" : "#DBEAFE" }]}>
+                    <Text style={[styles.pillText, { color: isDark ? "#60A5FA" : "#1D4ED8" }]}>{activityData.sms_count} Messages</Text>
                   </View>
                 </View>
-                <Text style={styles.cardSubtitle}>
+                <Text style={[styles.cardSubtitle, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>
                   {activityData.sms_count > 0
                     ? `एकूण ${activityData.sms_count} संदेश/मेटाडेटा नोंदवले`
                     : activityData.sms_status === "RESTRICTED"
@@ -696,18 +767,18 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
               <Ionicons
                 name={expandedSection === "sms" ? "chevron-down" : "chevron-forward"}
                 size={20}
-                color={theme.colors.textMuted}
+                color={isDark ? theme.colors.textMuted : "#94A3B8"}
               />
             </TouchableOpacity>
 
             {expandedSection === "sms" && (
-              <View style={styles.subListCard}>
+              <View style={[styles.subListCard, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: isDark ? theme.colors.border : "#E2E8F0" }]}>
                 <View style={styles.subListHeaderRow}>
-                  <Text style={styles.subListTitle}>एसएमएस व व्हॉट्सॲप ({activityData.sms.length}):</Text>
+                  <Text style={[styles.subListTitle, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>एसएमएस व व्हॉट्सॲप ({activityData.sms.length}):</Text>
                   {activityData.sms.length > 0 && (
                     <View style={{ flexDirection: "row", gap: 8 }}>
                       <TouchableOpacity
-                        style={styles.sectionActionBtn}
+                        style={[styles.sectionActionBtn, { borderColor: isDark ? "#3B82F6" : "#93C5FD", backgroundColor: isDark ? "transparent" : "#EFF6FF" }]}
                         onPress={() => {
                           const ids = activityData.sms.map(s => s.id).filter(Boolean);
                           const allSelected = ids.every(id => selectedIds.has(id));
@@ -718,11 +789,11 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                           });
                         }}
                       >
-                        <Ionicons name="checkbox-outline" size={14} color="#60A5FA" />
-                        <Text style={styles.sectionActionBtnText}>सर्व निवडा</Text>
+                        <Ionicons name="checkbox-outline" size={14} color={isDark ? "#60A5FA" : "#2563EB"} />
+                        <Text style={[styles.sectionActionBtnText, { color: isDark ? "#60A5FA" : "#2563EB" }]}>सर्व निवडा</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.sectionActionBtn, { borderColor: "#EF4444" }]}
+                        style={[styles.sectionActionBtn, { borderColor: "#EF4444", backgroundColor: isDark ? "transparent" : "#FEF2F2" }]}
                         onPress={() => handleClearSection("sms")}
                       >
                         <Ionicons name="trash-outline" size={14} color="#EF4444" />
@@ -748,21 +819,22 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                           ? "#F59E0B"
                           : activityData.sms_status === "DENIED"
                           ? "#EF4444"
-                          : theme.colors.textMuted
+                          : (isDark ? theme.colors.textMuted : "#94A3B8")
                       }
                     />
                     <Text style={[
                       styles.emptySubText,
-                      activityData.sms_status === "RESTRICTED" && { color: "#FBBF24" },
-                      activityData.sms_status === "DENIED" && { color: "#F87171" }
+                      { color: isDark ? theme.colors.textMuted : "#64748B" },
+                      activityData.sms_status === "RESTRICTED" && { color: isDark ? "#FBBF24" : "#D97706" },
+                      activityData.sms_status === "DENIED" && { color: "#EF4444" }
                     ]}>
                       {activityData.sms_status === "RESTRICTED"
-                        ? "डिव्हाइस ॲक्सेस प्रतिबंधित (Restricted by Android / Google Play Policy)\nएसएमएस धोरणानुसार ॲक्सेस प्रतिबंधित आहे. संदेश मजकूर सुरक्षिततेसाठी गोळा केला जात नाही."
+                        ? "डिव्हाइस ॲक्सेस प्रतिबंधित (Restricted by Android / Google Play Policy)\nएसएमएस धोरणानुसार ॲक्सेस प्रतिबंधित आहे. बनावट संदेश नोंदी तयार केल्या जात नाहीत."
                         : activityData.sms_status === "DENIED"
                         ? "परवानगी नाकारली (Permission Denied on Device)\nवापरकर्त्याने डिव्हाइसवर एसएमएस परवानगी नाकारली आहे."
                         : activityData.sms_status === "UNAVAILABLE"
                         ? "एसएमएस मॉड्यूल उपलब्ध नाही (Native Module Unavailable)\nडिव्हाइस बिल्डमध्ये एसएमएस इंटिग्रेशन उपलब्ध नाही."
-                        : "डिव्हाइसवर संदेश इतिहास आढळला नाही (0 Messages)\nपरवानगी मंजूर आहे, परंतु फोनवर संदेश मेटाडेटा उपलब्ध नाही."}
+                        : "डिव्हाइसवर संदेश इतिहास आढळला नाही (0 Messages)\nपरवानगी मंजूर आहे, परंतु फोनवर संदेश उपलब्ध नाहीत."}
                     </Text>
                   </View>
                 ) : (
@@ -770,9 +842,17 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                     const mid = msg.id || `sms_${idx}`;
                     const isSelected = selectedIds.has(mid);
                     const msgTitle = msg.targetMemberName || msg.metadata?.voter || msg.metadata?.address || msg.metadata?.phone || "मतदार संदेश";
+                    const fullSmsBody = msg.metadata?.body || msg.metadata?.message || msg.metadata?.preview || (msg.details !== "संदेश पाठवला" ? msg.details : null);
 
                     return (
-                      <View key={mid} style={[styles.subListItem, isSelected && styles.subListItemSelected]}>
+                      <View
+                        key={mid}
+                        style={[
+                          styles.subListItem,
+                          { borderBottomColor: isDark ? theme.colors.border : "#F1F5F9" },
+                          isSelected && (isDark ? styles.subListItemSelected : { backgroundColor: "#EFF6FF", borderRadius: 6, paddingHorizontal: 6 })
+                        ]}
+                      >
                         <TouchableOpacity
                           style={styles.checkboxTouch}
                           onPress={() => toggleSelectItem(mid)}
@@ -780,28 +860,56 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                           <Ionicons
                             name={isSelected ? "checkbox" : "square-outline"}
                             size={20}
-                            color={isSelected ? "#60A5FA" : theme.colors.textMuted}
+                            color={isSelected ? "#3B82F6" : (isDark ? theme.colors.textMuted : "#94A3B8")}
                           />
                         </TouchableOpacity>
 
-                        <View style={[styles.itemIconWrap, { backgroundColor: "#1E3A8A" }]}>
+                        <View style={[styles.itemIconWrap, { backgroundColor: isDark ? "#1E3A8A" : "#EFF6FF" }]}>
                           <Ionicons
                             name={msg.action?.includes("WHATSAPP") ? "logo-whatsapp" : "chatbubble"}
                             size={16}
-                            color={msg.action?.includes("WHATSAPP") ? "#22C55E" : "#60A5FA"}
+                            color={msg.action?.includes("WHATSAPP") ? "#22C55E" : (isDark ? "#60A5FA" : "#2563EB")}
                           />
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.itemTitle}>{msgTitle}</Text>
-                          {msg.metadata?.preview ? (
-                            <Text style={[styles.itemDetail, { color: "#93C5FD", fontStyle: "italic", marginVertical: 2 }]} numberOfLines={2}>
-                              "{msg.metadata.preview}"
-                            </Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                            <Text style={[styles.itemTitle, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>{msgTitle}</Text>
+                            {msg.metadata?.type ? (
+                              <View style={{ backgroundColor: isDark ? "rgba(96, 165, 250, 0.15)" : "#EFF6FF", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                <Text style={{ fontSize: 10, color: isDark ? "#93C5FD" : "#2563EB", fontWeight: "600" }}>{msg.metadata.type}</Text>
+                              </View>
+                            ) : null}
+                          </View>
+
+                          {/* Full SMS Body text bubble */}
+                          {fullSmsBody ? (
+                            <View
+                              style={{
+                                backgroundColor: isDark ? "rgba(30, 58, 138, 0.25)" : "#F8FAFC",
+                                borderColor: isDark ? "rgba(96, 165, 250, 0.3)" : "#E2E8F0",
+                                borderWidth: 1,
+                                borderRadius: 8,
+                                padding: 8,
+                                marginVertical: 5
+                              }}
+                            >
+                              <Text style={{ fontSize: 10, fontWeight: "700", color: isDark ? "#93C5FD" : "#475569", marginBottom: 2 }}>
+                                {msg.action?.includes("WHATSAPP") ? "व्हॉट्सॲप संदेश मजकूर (WhatsApp Message):" : "एसएमएस मजकूर (SMS Body):"}
+                              </Text>
+                              <Text
+                                style={{ fontSize: 12, color: isDark ? "#F1F5F9" : "#1E293B", lineHeight: 18 }}
+                                selectable
+                              >
+                                {fullSmsBody}
+                              </Text>
+                            </View>
                           ) : null}
-                          <Text style={styles.itemDetail}>
-                            {msg.details || (msg.metadata?.phone ? `मोबाईल: ${msg.metadata.phone}` : "संदेश पाठवला")}
+
+                          <Text style={[styles.itemDetail, { color: isDark ? theme.colors.textSecondary : "#475569" }]}>
+                            {msg.metadata?.phone ? `मोबाईल: ${msg.metadata.phone}` : (msg.details || "संदेश पाठवला")}
+                            {msg.metadata?.date ? ` • तारीख: ${msg.metadata.date}` : ""}
                           </Text>
-                          <Text style={styles.itemTime}>
+                          <Text style={[styles.itemTime, { color: isDark ? "#64748B" : "#94A3B8" }]}>
                             {msg.timestamp ? new Date(msg.timestamp).toLocaleString("mr-IN") : "अलीकडे"}
                           </Text>
                         </View>
@@ -821,21 +929,29 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
             {/* Card 3: Location History */}
             <TouchableOpacity
-              style={[styles.activityCard, expandedSection === "locations" && styles.activeCardBorder]}
+              style={[
+                styles.activityCard,
+                {
+                  backgroundColor: isDark ? theme.colors.card : "#FFFFFF",
+                  borderColor: expandedSection === "locations"
+                    ? (isDark ? "#FBBF24" : "#F59E0B")
+                    : (isDark ? theme.colors.border : "#E2E8F0")
+                }
+              ]}
               onPress={() => toggleSection("locations")}
               activeOpacity={0.7}
             >
-              <View style={[styles.iconCircle, { backgroundColor: "#78350F" }]}>
-                <Ionicons name="location" size={22} color="#FBBF24" />
+              <View style={[styles.iconCircle, { backgroundColor: isDark ? "#78350F" : "#FEF3C7" }]}>
+                <Ionicons name="location" size={22} color={isDark ? "#FBBF24" : "#D97706"} />
               </View>
               <View style={{ flex: 1 }}>
                 <View style={styles.cardTitleRow}>
-                  <Text style={styles.cardTitle}>स्थान / लोकेशन इतिहास (Location History)</Text>
-                  <View style={[styles.pillBadge, { backgroundColor: "#78350F" }]}>
-                    <Text style={[styles.pillText, { color: "#FBBF24" }]}>{activityData.location_count} Check-ins</Text>
+                  <Text style={[styles.cardTitle, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>स्थान / लोकेशन इतिहास (Location History)</Text>
+                  <View style={[styles.pillBadge, { backgroundColor: isDark ? "#78350F" : "#FEF3C7" }]}>
+                    <Text style={[styles.pillText, { color: isDark ? "#FBBF24" : "#B45309" }]}>{activityData.location_count} Check-ins</Text>
                   </View>
                 </View>
-                <Text style={styles.cardSubtitle}>
+                <Text style={[styles.cardSubtitle, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>
                   {activityData.location_count > 0
                     ? `एकूण ${activityData.location_count} रिअल-टाईम स्थान नोंदी`
                     : "कोणतीही लोकेशन नोंद उपलब्ध नाही"}
@@ -844,18 +960,18 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
               <Ionicons
                 name={expandedSection === "locations" ? "chevron-down" : "chevron-forward"}
                 size={20}
-                color={theme.colors.textMuted}
+                color={isDark ? theme.colors.textMuted : "#94A3B8"}
               />
             </TouchableOpacity>
 
             {expandedSection === "locations" && (
-              <View style={styles.subListCard}>
+              <View style={[styles.subListCard, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: isDark ? theme.colors.border : "#E2E8F0" }]}>
                 <View style={styles.subListHeaderRow}>
-                  <Text style={styles.subListTitle}>लोकेशन इतिहास ({activityData.locations.length}):</Text>
+                  <Text style={[styles.subListTitle, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>लोकेशन इतिहास ({activityData.locations.length}):</Text>
                   {activityData.locations.length > 0 && (
                     <View style={{ flexDirection: "row", gap: 8 }}>
                       <TouchableOpacity
-                        style={styles.sectionActionBtn}
+                        style={[styles.sectionActionBtn, { borderColor: isDark ? "#3B82F6" : "#93C5FD", backgroundColor: isDark ? "transparent" : "#EFF6FF" }]}
                         onPress={() => {
                           const ids = activityData.locations.map(l => l.id).filter(Boolean);
                           const allSelected = ids.every(id => selectedIds.has(id));
@@ -866,11 +982,11 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                           });
                         }}
                       >
-                        <Ionicons name="checkbox-outline" size={14} color="#60A5FA" />
-                        <Text style={styles.sectionActionBtnText}>सर्व निवडा</Text>
+                        <Ionicons name="checkbox-outline" size={14} color={isDark ? "#60A5FA" : "#2563EB"} />
+                        <Text style={[styles.sectionActionBtnText, { color: isDark ? "#60A5FA" : "#2563EB" }]}>सर्व निवडा</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={[styles.sectionActionBtn, { borderColor: "#EF4444" }]}
+                        style={[styles.sectionActionBtn, { borderColor: "#EF4444", backgroundColor: isDark ? "transparent" : "#FEF2F2" }]}
                         onPress={() => handleClearSection("locations")}
                       >
                         <Ionicons name="trash-outline" size={14} color="#EF4444" />
@@ -882,8 +998,8 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
                 {activityData.locations.length === 0 ? (
                   <View style={styles.emptyDataBox}>
-                    <Ionicons name="location-outline" size={28} color={theme.colors.textMuted} />
-                    <Text style={styles.emptySubText}>कोणतीही लोकेशन नोंद उपलब्ध नाही</Text>
+                    <Ionicons name="location-outline" size={28} color={isDark ? theme.colors.textMuted : "#94A3B8"} />
+                    <Text style={[styles.emptySubText, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>कोणतीही लोकेशन नोंद उपलब्ध नाही</Text>
                   </View>
                 ) : (
                   activityData.locations.map((loc, idx) => {
@@ -899,7 +1015,14 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                     const fullAddress = loc.metadata?.address;
 
                     return (
-                      <View key={lid} style={[styles.subListItem, isSelected && styles.subListItemSelected]}>
+                      <View
+                        key={lid}
+                        style={[
+                          styles.subListItem,
+                          { borderBottomColor: isDark ? theme.colors.border : "#F1F5F9" },
+                          isSelected && (isDark ? styles.subListItemSelected : { backgroundColor: "#EFF6FF", borderRadius: 6, paddingHorizontal: 6 })
+                        ]}
+                      >
                         <TouchableOpacity
                           style={styles.checkboxTouch}
                           onPress={() => toggleSelectItem(lid)}
@@ -907,25 +1030,25 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                           <Ionicons
                             name={isSelected ? "checkbox" : "square-outline"}
                             size={20}
-                            color={isSelected ? "#60A5FA" : theme.colors.textMuted}
+                            color={isSelected ? "#3B82F6" : (isDark ? theme.colors.textMuted : "#94A3B8")}
                           />
                         </TouchableOpacity>
 
-                        <View style={[styles.itemIconWrap, { backgroundColor: "#78350F" }]}>
-                          <Ionicons name="navigate" size={16} color="#FBBF24" />
+                        <View style={[styles.itemIconWrap, { backgroundColor: isDark ? "#78350F" : "#FEF3C7" }]}>
+                          <Ionicons name="navigate" size={16} color={isDark ? "#FBBF24" : "#D97706"} />
                         </View>
                         <View style={{ flex: 1 }}>
                           {/* Name of Place */}
                           <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 3 }}>
-                            <Text style={styles.itemTitle}>📍 {placeName}</Text>
-                            <View style={{ backgroundColor: "rgba(245, 158, 11, 0.2)", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                              <Text style={{ color: "#FBBF24", fontSize: 10, fontWeight: "700" }}>ठिकाण</Text>
+                            <Text style={[styles.itemTitle, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>📍 {placeName}</Text>
+                            <View style={{ backgroundColor: isDark ? "rgba(245, 158, 11, 0.2)" : "#FEF3C7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                              <Text style={{ color: isDark ? "#FBBF24" : "#B45309", fontSize: 10, fontWeight: "700" }}>ठिकाण</Text>
                             </View>
                           </View>
 
                           {/* Latitude and Longitude */}
                           {hasCoords ? (
-                            <Text style={styles.coordsText}>
+                            <Text style={[styles.coordsText, { color: isDark ? "#FBBF24" : "#D97706" }]}>
                               🌐 अक्षांश: {typeof lat === "number" ? lat.toFixed(5) : lat}, रेखांश: {typeof lon === "number" ? lon.toFixed(5) : lon}
                               {loc.metadata?.accuracy ? ` (±${Math.round(loc.metadata.accuracy)} मी.)` : ""}
                             </Text>
@@ -933,15 +1056,15 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
                           {/* Date and Time Correctly */}
                           <View style={{ flexDirection: "row", alignItems: "center", marginTop: 3 }}>
-                            <Ionicons name="calendar-outline" size={12} color="#94A3B8" style={{ marginRight: 4 }} />
-                            <Text style={{ color: "#94A3B8", fontSize: 11, fontWeight: "600" }}>
+                            <Ionicons name="calendar-outline" size={12} color={isDark ? "#94A3B8" : "#64748B"} style={{ marginRight: 4 }} />
+                            <Text style={{ color: isDark ? "#94A3B8" : "#64748B", fontSize: 11, fontWeight: "600" }}>
                               दिनांक: {dateStr}  •  वेळ: {timeStr}
                             </Text>
                           </View>
 
                           {/* Full address if available */}
                           {fullAddress && fullAddress !== placeName ? (
-                            <Text style={styles.itemDetail}>
+                            <Text style={[styles.itemDetail, { color: isDark ? theme.colors.textSecondary : "#475569" }]}>
                               🏠 {fullAddress}
                             </Text>
                           ) : null}
