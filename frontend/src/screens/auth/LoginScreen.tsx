@@ -6,6 +6,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
+import { useTheme } from "../../context/ThemeContext";
 import { theme } from "../../theme/theme";
 import {
   getServerBaseUrl,
@@ -17,6 +18,7 @@ import {
 export const LoginScreen: React.FC = () => {
   const { login } = useAuth();
   const { language, toggleLanguage, t } = useLanguage();
+  const { theme, isDark, toggleTheme } = useTheme();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -95,60 +97,78 @@ export const LoginScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.container}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           <View style={styles.topBar}>
-            <View style={styles.systemTag}>
+            <View style={[styles.systemTag, { backgroundColor: isDark ? "#064E3B" : "#ECFDF5", borderColor: isDark ? "#059669" : "#A7F3D0" }]}>
               <Ionicons name="shield-checkmark" size={14} color="#10B981" style={{ marginRight: 4 }} />
-              <Text style={styles.systemTagText}>
+              <Text style={[styles.systemTagText, { color: isDark ? "#6EE7B7" : "#047857" }]}>
                 {language === "mr" ? "सुरक्षित प्रणाली २०२६" : "Secure System 2026"}
               </Text>
             </View>
 
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              {/* Theme Toggle Button */}
+              <TouchableOpacity
+                onPress={toggleTheme}
+                style={[styles.themeToggleBadge, { backgroundColor: isDark ? "rgba(255, 255, 255, 0.08)" : "#F1F5F9", borderColor: theme.colors.border }]}
+                activeOpacity={0.7}
+                accessibilityLabel="Toggle Theme"
+              >
+                <Ionicons
+                  name={isDark ? "sunny-outline" : "moon-outline"}
+                  size={16}
+                  color={isDark ? "#FBBF24" : "#4F46E5"}
+                />
+              </TouchableOpacity>
+
               {/* Server Settings Button */}
               <TouchableOpacity
                 onPress={handleOpenSettings}
-                style={styles.serverSettingsBadge}
+                style={[styles.serverSettingsBadge, { backgroundColor: isDark ? "rgba(59, 130, 246, 0.15)" : "#EFF6FF", borderColor: isDark ? "rgba(59, 130, 246, 0.3)" : "#BFDBFE" }]}
                 activeOpacity={0.7}
               >
-                <Ionicons name="server-outline" size={15} color="#93C5FD" style={{ marginRight: 4 }} />
-                <Text style={styles.serverSettingsText}>
+                <Ionicons name="server-outline" size={15} color={isDark ? "#93C5FD" : "#2563EB"} style={{ marginRight: 4 }} />
+                <Text style={[styles.serverSettingsText, { color: isDark ? "#93C5FD" : "#1D4ED8" }]}>
                   {language === "mr" ? "सर्व्हर" : "Server"}
                 </Text>
               </TouchableOpacity>
 
               {/* Language Switcher */}
-              <TouchableOpacity onPress={toggleLanguage} style={styles.langBadge} activeOpacity={0.7}>
-                <Ionicons name="globe-outline" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-                <Text style={styles.langText}>{language === "mr" ? "English" : "मराठी"}</Text>
+              <TouchableOpacity
+                onPress={toggleLanguage}
+                style={[styles.langBadge, { backgroundColor: isDark ? theme.colors.card : "#F1F5F9", borderColor: theme.colors.border }]}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="globe-outline" size={16} color={theme.colors.textPrimary} style={{ marginRight: 6 }} />
+                <Text style={[styles.langText, { color: theme.colors.textPrimary }]}>{language === "mr" ? "English" : "मराठी"}</Text>
               </TouchableOpacity>
             </View>
           </View>
 
           <View style={styles.content}>
-            <View style={styles.logoCircle}>
-              <Ionicons name="finger-print" size={44} color="#60A5FA" />
+            <View style={[styles.logoCircle, { backgroundColor: isDark ? "#1E293B" : "#EFF6FF", borderColor: isDark ? "#3B82F6" : "#60A5FA" }]}>
+              <Ionicons name="finger-print" size={44} color={isDark ? "#60A5FA" : "#2563EB"} />
             </View>
 
-            <Text style={styles.title}>{t("app_title")}</Text>
-            <Text style={styles.subtitle}>
+            <Text style={[styles.title, { color: theme.colors.textPrimary }]}>{t("app_title")}</Text>
+            <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
               {language === "mr"
                 ? "मतदार व सभासद व्यवस्थापन प्रणाली २०२६ (साखराळे)"
                 : "Voter and Member Management System 2026 (Sakharele)"}
             </Text>
 
-            <View style={styles.formCard}>
-              <View style={styles.cardHeader}>
-                <View style={styles.lockIconCircle}>
-                  <Ionicons name="lock-closed" size={20} color="#60A5FA" />
+            <View style={[styles.formCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+              <View style={[styles.cardHeader, { borderBottomColor: theme.colors.border }]}>
+                <View style={[styles.lockIconCircle, { backgroundColor: isDark ? "rgba(59, 130, 246, 0.15)" : "#EFF6FF", borderColor: isDark ? "rgba(59, 130, 246, 0.3)" : "#BFDBFE" }]}>
+                  <Ionicons name="lock-closed" size={20} color={isDark ? "#60A5FA" : "#2563EB"} />
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.cardTitle}>
+                  <Text style={[styles.cardTitle, { color: theme.colors.textPrimary }]}>
                     {language === "mr" ? "खात्यात प्रवेश करा" : "Sign In to Your Account"}
                   </Text>
-                  <Text style={styles.cardSubtitle}>
+                  <Text style={[styles.cardSubtitle, { color: theme.colors.textMuted }]}>
                     {language === "mr"
                       ? "आपले युझरनेम व पासवर्ड प्रविष्ट करा"
                       : "Enter your credentials to continue"}
@@ -157,7 +177,7 @@ export const LoginScreen: React.FC = () => {
               </View>
 
               {errorMessage && (
-                <View style={[styles.errorBox, errorMessage.includes("नाकारला") && { borderColor: "#EF4444", backgroundColor: "#3B1117" }]}>
+                <View style={[styles.errorBox, errorMessage.includes("नाकारला") && { borderColor: "#EF4444", backgroundColor: isDark ? "#3B1117" : "#FEE2E2" }]}>
                   <Ionicons
                     name={errorMessage.includes("नाकारला") ? "shield-half" : "alert-circle"}
                     size={20}
@@ -165,7 +185,7 @@ export const LoginScreen: React.FC = () => {
                     style={{ marginRight: 8, marginTop: 2 }}
                   />
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.errorText, errorMessage.includes("नाकारला") && { fontWeight: "800", color: "#FCA5A5" }]}>
+                    <Text style={[styles.errorText, errorMessage.includes("नाकारला") && { fontWeight: "800", color: isDark ? "#FCA5A5" : "#991B1B" }]}>
                       {errorMessage}
                     </Text>
                     {!errorMessage.includes("नाकारला") && (
@@ -174,7 +194,7 @@ export const LoginScreen: React.FC = () => {
                           onPress={handleOpenSettings}
                           style={{ alignSelf: "flex-start", marginRight: 4 }}
                         >
-                          <Text style={{ color: "#93C5FD", fontSize: 12, fontWeight: "700", textDecorationLine: "underline" }}>
+                          <Text style={{ color: isDark ? "#93C5FD" : "#2563EB", fontSize: 12, fontWeight: "700", textDecorationLine: "underline" }}>
                             ⚙️ {language === "mr" ? "सर्व्हर तपासा" : "Check Server"}
                           </Text>
                         </TouchableOpacity>
@@ -185,13 +205,13 @@ export const LoginScreen: React.FC = () => {
               )}
 
               <View style={styles.field}>
-                <Text style={styles.label}>
+                <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
                   {language === "mr" ? "युझरनेम किंवा मोबाईल क्रमांक" : "Username or Mobile Number"}
                 </Text>
-                <View style={styles.inputBox}>
-                  <Ionicons name="person-outline" size={18} color="#94A3B8" style={{ marginRight: 10 }} />
+                <View style={[styles.inputBox, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                  <Ionicons name="person-outline" size={18} color={theme.colors.textMuted} style={{ marginRight: 10 }} />
                   <TextInput
-                    style={styles.textInput}
+                    style={[styles.textInput, { color: theme.colors.textPrimary }]}
                     value={username}
                     onChangeText={(text) => { setUsername(text); setErrorMessage(null); }}
                     placeholder={language === "mr" ? "युझरनेम प्रविष्ट करा" : "Enter username"}
@@ -201,20 +221,20 @@ export const LoginScreen: React.FC = () => {
                   />
                   {username.length > 0 && (
                     <TouchableOpacity onPress={() => setUsername("")}>
-                      <Ionicons name="close-circle" size={16} color="#64748B" />
+                      <Ionicons name="close-circle" size={16} color={theme.colors.textMuted} />
                     </TouchableOpacity>
                   )}
                 </View>
               </View>
 
               <View style={styles.field}>
-                <Text style={styles.label}>
+                <Text style={[styles.label, { color: theme.colors.textSecondary }]}>
                   {language === "mr" ? "पासवर्ड" : "Password"}
                 </Text>
-                <View style={styles.inputBox}>
-                  <Ionicons name="lock-closed-outline" size={18} color="#94A3B8" style={{ marginRight: 10 }} />
+                <View style={[styles.inputBox, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                  <Ionicons name="lock-closed-outline" size={18} color={theme.colors.textMuted} style={{ marginRight: 10 }} />
                   <TextInput
-                    style={styles.textInput}
+                    style={[styles.textInput, { color: theme.colors.textPrimary }]}
                     value={password}
                     onChangeText={(text) => { setPassword(text); setErrorMessage(null); }}
                     placeholder="••••••••"
@@ -223,7 +243,7 @@ export const LoginScreen: React.FC = () => {
                     autoCapitalize="none"
                   />
                   <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={{ padding: 4 }}>
-                    <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={18} color="#94A3B8" />
+                    <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={18} color={theme.colors.textMuted} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -374,6 +394,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { flexGrow: 1, justifyContent: "center", paddingBottom: 32 },
   topBar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
+  themeToggleBadge: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   systemTag: { flexDirection: "row", alignItems: "center", backgroundColor: "#064E3B", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: "#059669" },
   systemTagText: { color: "#6EE7B7", fontSize: 11, fontWeight: "700" },
   serverSettingsBadge: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(59, 130, 246, 0.15)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: theme.borderRadius.full, borderWidth: 1, borderColor: "rgba(59, 130, 246, 0.3)" },
@@ -405,13 +426,13 @@ const styles = StyleSheet.create({
 
   // Modal styles
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.75)", justifyContent: "center", alignItems: "center", padding: 20 },
-  modalContent: { width: "100%", maxWidth: 440, backgroundColor: "#1E293B", borderRadius: 16, padding: 20, borderWidth: 1, borderColor: "#334155" },
+  modalContent: { width: "100%", maxWidth: 440, backgroundColor: theme.colors.card, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: theme.colors.border },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
-  modalTitle: { color: "#FFFFFF", fontSize: 17, fontWeight: "800" },
-  modalDesc: { color: "#94A3B8", fontSize: 12, lineHeight: 18, marginBottom: 16 },
+  modalTitle: { color: theme.colors.textPrimary, fontSize: 17, fontWeight: "800" },
+  modalDesc: { color: theme.colors.textMuted, fontSize: 12, lineHeight: 18, marginBottom: 16 },
   serverInputGroup: { marginBottom: 12 },
-  serverInputLabel: { color: "#CBD5E1", fontSize: 12, fontWeight: "700", marginBottom: 6 },
-  serverTextInput: { backgroundColor: "#0F172A", borderRadius: 8, borderWidth: 1, borderColor: "#334155", color: "#FFFFFF", paddingHorizontal: 12, height: 44, fontSize: 13 },
+  serverInputLabel: { color: theme.colors.textSecondary, fontSize: 12, fontWeight: "700", marginBottom: 6 },
+  serverTextInput: { backgroundColor: theme.colors.surface, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border, color: theme.colors.textPrimary, paddingHorizontal: 12, height: 44, fontSize: 13 },
   presetRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 },
   presetBtn: { backgroundColor: "#334155", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 },
   presetBtnText: { color: "#93C5FD", fontSize: 11, fontWeight: "600" },

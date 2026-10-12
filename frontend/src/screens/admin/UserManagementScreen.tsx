@@ -177,21 +177,33 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
 
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         {/* Header Tabs: All (31) vs Disabled (0) (Matches Screenshot Page 1) */}
-        <View style={[styles.tabsRow, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+        <View style={[styles.tabsRow, { backgroundColor: isDark ? theme.colors.surface : "#F1F5F9", borderColor: theme.colors.border }]}>
           <TouchableOpacity
-            style={[styles.tabBtn, activeTab === "all" && styles.activeTabBtn]}
+            style={[
+              styles.tabBtn,
+              {
+                backgroundColor: activeTab === "all" ? (isDark ? "#1E3A8A" : "#2563EB") : (isDark ? theme.colors.card : "#FFFFFF"),
+                borderColor: activeTab === "all" ? (isDark ? "#3B82F6" : "#2563EB") : theme.colors.border
+              }
+            ]}
             onPress={() => setActiveTab("all")}
           >
-            <Text style={[styles.tabText, activeTab === "all" && styles.activeTabText]}>
+            <Text style={[styles.tabText, { color: activeTab === "all" ? "#FFFFFF" : theme.colors.textSecondary }, activeTab === "all" && styles.activeTabText]}>
               All ({allCount})
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.tabBtn, activeTab === "disabled" && styles.activeTabBtn]}
+            style={[
+              styles.tabBtn,
+              {
+                backgroundColor: activeTab === "disabled" ? (isDark ? "#1E3A8A" : "#2563EB") : (isDark ? theme.colors.card : "#FFFFFF"),
+                borderColor: activeTab === "disabled" ? (isDark ? "#3B82F6" : "#2563EB") : theme.colors.border
+              }
+            ]}
             onPress={() => setActiveTab("disabled")}
           >
-            <Text style={[styles.tabText, activeTab === "disabled" && styles.activeTabText]}>
+            <Text style={[styles.tabText, { color: activeTab === "disabled" ? "#FFFFFF" : theme.colors.textSecondary }, activeTab === "disabled" && styles.activeTabText]}>
               Disabled ({disabledCount})
             </Text>
           </TouchableOpacity>
@@ -205,8 +217,8 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
             <View style={[styles.userCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
               <View style={styles.cardTopRow}>
                 <Text style={[styles.userName, { color: theme.colors.textPrimary }]}>{item.username}</Text>
-                <View style={styles.rolePill}>
-                  <Text style={styles.rolePillText}>{item.role}</Text>
+                <View style={[styles.rolePill, { backgroundColor: isDark ? "#334155" : "#E2E8F0" }]}>
+                  <Text style={[styles.rolePillText, { color: isDark ? "#94A3B8" : "#475569" }]}>{item.role}</Text>
                 </View>
                 <View style={[styles.statusBadge, !item.is_active && styles.disabledBadge]}>
                   <Text style={[styles.statusBadgeText, !item.is_active && styles.disabledBadgeText]}>
@@ -279,36 +291,45 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
                 </View>
               </View>
 
-              <View style={styles.cardActionsRow}>
+              <View style={[styles.cardActionsRow, { borderTopColor: isDark ? "rgba(255,255,255,0.08)" : "#E2E8F0" }]}>
                 <TouchableOpacity
                   style={styles.historyLink}
                   onPress={() => navigation.navigate("UserActivity", { user: item })}
                 >
-                  <Text style={styles.historyLinkText}>📞 Call • 💬 SMS • 📍 Location History →</Text>
+                  <Text style={[styles.historyLinkText, { color: isDark ? "#93C5FD" : "#2563EB" }]}>📞 Call • 💬 SMS • 📍 Location History →</Text>
                 </TouchableOpacity>
 
                 <View style={styles.buttonsGroup}>
                   {/* View Details & Activity Timeline Button */}
                   <TouchableOpacity
                     onPress={() => navigation.navigate("UserDetails", { userId: item.id })}
-                    style={styles.iconActionBtn}
+                    style={[styles.iconActionBtn, { backgroundColor: isDark ? "#1E293B" : "#F1F5F9", borderColor: isDark ? "#334155" : "#E2E8F0", borderWidth: 1 }]}
                     accessibilityLabel="View Details"
                   >
-                    <Ionicons name="eye" size={18} color="#A78BFA" />
+                    <Ionicons name="eye" size={18} color="#8B5CF6" />
                   </TouchableOpacity>
 
                   {/* Edit User Button */}
-                  <TouchableOpacity onPress={() => handleOpenEdit(item)} style={styles.iconActionBtn}>
+                  <TouchableOpacity
+                    onPress={() => handleOpenEdit(item)}
+                    style={[styles.iconActionBtn, { backgroundColor: isDark ? "#1E293B" : "#F1F5F9", borderColor: isDark ? "#334155" : "#E2E8F0", borderWidth: 1 }]}
+                  >
                     <Ionicons name="pencil" size={18} color="#3B82F6" />
                   </TouchableOpacity>
 
                   {/* Disable User Button */}
-                  <TouchableOpacity onPress={() => handleToggleStatus(item)} style={styles.iconActionBtn}>
+                  <TouchableOpacity
+                    onPress={() => handleToggleStatus(item)}
+                    style={[styles.iconActionBtn, { backgroundColor: isDark ? "#1E293B" : "#F1F5F9", borderColor: isDark ? "#334155" : "#E2E8F0", borderWidth: 1 }]}
+                  >
                     <Ionicons name="ban" size={18} color="#F59E0B" />
                   </TouchableOpacity>
 
                   {/* Delete User Button */}
-                  <TouchableOpacity onPress={() => handleDelete(item)} style={styles.iconActionBtn}>
+                  <TouchableOpacity
+                    onPress={() => handleDelete(item)}
+                    style={[styles.iconActionBtn, { backgroundColor: isDark ? "#1E293B" : "#F1F5F9", borderColor: isDark ? "#334155" : "#E2E8F0", borderWidth: 1 }]}
+                  >
                     <Ionicons name="trash" size={18} color="#EF4444" />
                   </TouchableOpacity>
                 </View>

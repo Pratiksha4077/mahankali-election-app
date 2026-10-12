@@ -8,8 +8,10 @@ import { Header } from "../../components/Header";
 import { adminAPI } from "../../api/client";
 import { AuditLog } from "../../models/types";
 import { theme } from "../../theme/theme";
+import { useTheme } from "../../context/ThemeContext";
 
 export const AuditLogsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
+  const { theme, isDark } = useTheme();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -27,14 +29,14 @@ export const AuditLogsScreen: React.FC<{ navigation: any }> = ({ navigation }) =
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
       <Header
         title="Application Audit Logs"
         showBack
         onBack={() => navigation.goBack()}
       />
 
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         {loading ? (
           <View style={styles.loaderCenter}>
             <ActivityIndicator size="large" color={theme.colors.primaryLight} />
@@ -44,15 +46,15 @@ export const AuditLogsScreen: React.FC<{ navigation: any }> = ({ navigation }) =
             data={logs}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
-              <View style={styles.logCard}>
+              <View style={[styles.logCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
                 <View style={styles.logHeader}>
-                  <View style={styles.actionPill}>
-                    <Text style={styles.actionPillText}>{item.action}</Text>
+                  <View style={[styles.actionPill, { backgroundColor: isDark ? "#1E3A8A" : "#EFF6FF" }]}>
+                    <Text style={[styles.actionPillText, { color: isDark ? "#93C5FD" : "#2563EB" }]}>{item.action}</Text>
                   </View>
-                  <Text style={styles.timeText}>{new Date(item.timestamp).toLocaleString()}</Text>
+                  <Text style={[styles.timeText, { color: theme.colors.textMuted }]}>{new Date(item.timestamp).toLocaleString()}</Text>
                 </View>
-                <Text style={styles.detailsText}>{item.details || "Action recorded"}</Text>
-                <Text style={styles.userText}>User: {item.username || "admin"}</Text>
+                <Text style={[styles.detailsText, { color: theme.colors.textPrimary }]}>{item.details || "Action recorded"}</Text>
+                <Text style={[styles.userText, { color: theme.colors.textSecondary }]}>User: {item.username || "admin"}</Text>
               </View>
             )}
             contentContainerStyle={{ padding: 16 }}

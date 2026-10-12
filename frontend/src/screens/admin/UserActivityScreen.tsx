@@ -481,7 +481,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
             {/* Summary Stats Row */}
             <View style={styles.statsRow}>
               <TouchableOpacity
-                style={[styles.statPill, { borderColor: "#34D399" }, expandedSection === "calls" && styles.activePill]}
+                style={[styles.statPill, { backgroundColor: isDark ? theme.colors.surface : "#FFFFFF", borderColor: "#34D399" }, expandedSection === "calls" && styles.activePill]}
                 onPress={() => toggleSection("calls")}
                 activeOpacity={0.7}
               >
@@ -491,7 +491,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.statPill, { borderColor: "#60A5FA" }, expandedSection === "sms" && styles.activePill]}
+                style={[styles.statPill, { backgroundColor: isDark ? theme.colors.surface : "#FFFFFF", borderColor: "#60A5FA" }, expandedSection === "sms" && styles.activePill]}
                 onPress={() => toggleSection("sms")}
                 activeOpacity={0.7}
               >
@@ -501,7 +501,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.statPill, { borderColor: "#FBBF24" }, expandedSection === "locations" && styles.activePill]}
+                style={[styles.statPill, { backgroundColor: isDark ? theme.colors.surface : "#FFFFFF", borderColor: "#FBBF24" }, expandedSection === "locations" && styles.activePill]}
                 onPress={() => toggleSection("locations")}
                 activeOpacity={0.7}
               >
@@ -513,7 +513,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
             {/* Card 1: Call History */}
             <TouchableOpacity
-              style={[styles.activityCard, expandedSection === "calls" && styles.activeCardBorder]}
+              style={[styles.activityCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }, expandedSection === "calls" && styles.activeCardBorder]}
               onPress={() => toggleSection("calls")}
               activeOpacity={0.7}
             >
@@ -1160,7 +1160,7 @@ const styles = StyleSheet.create({
   activityCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.card,
     borderRadius: theme.borderRadius.lg,
     padding: 16,
     marginBottom: 12,
@@ -1205,7 +1205,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   subListCard: {
-    backgroundColor: "#0B1120",
+    backgroundColor: theme.colors.card,
     borderRadius: theme.borderRadius.md,
     padding: 14,
     marginBottom: 14,
@@ -1224,7 +1224,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#1E293B",
+    borderBottomColor: theme.colors.border,
   },
   itemIconWrap: {
     width: 32,
@@ -1236,12 +1236,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   itemTitle: {
-    color: "#FFFFFF",
+    color: theme.colors.textPrimary,
     fontSize: 13,
     fontWeight: "700",
   },
   itemDetail: {
-    color: theme.colors.textMuted,
+    color: theme.colors.textSecondary,
     fontSize: 11,
     marginTop: 2,
   },

@@ -10,6 +10,7 @@ import { villageAPI, adminAPI } from "../../api/client";
 import { Village, ImportJob } from "../../models/types";
 import { theme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
+import { useTheme } from "../../context/ThemeContext";
 
 interface QueuedFile {
   id: string;
@@ -22,6 +23,7 @@ interface QueuedFile {
 
 export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { t } = useLanguage();
+  const { theme, isDark } = useTheme();
 
   const [villages, setVillages] = useState<Village[]>([]);
   const [selectedVillage, setSelectedVillage] = useState<Village | null>(null);
@@ -313,30 +315,30 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
       <Header title={t("upload_studio_title")} showBack onBack={() => navigation.goBack()} />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Info Banner */}
-        <View style={styles.bannerCard}>
-          <Ionicons name="cloud-upload" size={24} color="#60A5FA" />
+        <View style={[styles.bannerCard, { backgroundColor: isDark ? "rgba(37, 99, 235, 0.12)" : "#EFF6FF", borderColor: isDark ? "rgba(59, 130, 246, 0.3)" : "#BFDBFE" }]}>
+          <Ionicons name="cloud-upload" size={24} color={isDark ? "#60A5FA" : "#2563EB"} />
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={styles.bannerTitle}>Admin Excel/CSV Upload Studio</Text>
-            <Text style={styles.bannerText}>
+            <Text style={[styles.bannerTitle, { color: isDark ? "#93C5FD" : "#1D4ED8" }]}>Admin Excel/CSV Upload Studio</Text>
+            <Text style={[styles.bannerText, { color: isDark ? "#94A3B8" : "#475569" }]}>
               प्रथम गाव निवडा, त्यानंतर त्या गावाच्या एक्सेल किंवा सीएसव्ही फाईल्स (.xlsx, .xls, .csv) जोडून अपलोड करा.
             </Text>
           </View>
         </View>
 
         {/* RESET & CLEAN VOTER DATA CARD */}
-        <View style={styles.dangerActionCard}>
+        <View style={[styles.dangerActionCard, { backgroundColor: isDark ? "rgba(239, 68, 68, 0.08)" : "#FEF2F2", borderColor: isDark ? "rgba(239, 68, 68, 0.25)" : "#FECACA" }]}>
           <View style={styles.dangerHeaderRow}>
-            <View style={styles.dangerIconCircle}>
+            <View style={[styles.dangerIconCircle, { backgroundColor: isDark ? "rgba(239, 68, 68, 0.15)" : "#FEE2E2" }]}>
               <Ionicons name="trash-bin-outline" size={20} color="#EF4444" />
             </View>
             <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={styles.dangerTitle}>डेटाबेस साफ करा (Clear All Voter Data)</Text>
-              <Text style={styles.dangerSubtitle}>
+              <Text style={[styles.dangerTitle, { color: isDark ? "#FCA5A5" : "#991B1B" }]}>डेटाबेस साफ करा (Clear All Voter Data)</Text>
+              <Text style={[styles.dangerSubtitle, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>
                 नवीन Excel/CSV अपलोड करण्यापूर्वी जुना मतदार डेटा साफ करा जेणेकरून ॲपमध्ये फक्त नवीन रिअल-टाईम डेटा राहील.
               </Text>
             </View>
@@ -359,19 +361,23 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
         </View>
 
         {/* STEP 1: Target Village Selection */}
-        <Text style={styles.sectionHeading}>{t("target_village_selection")}</Text>
+        <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>{t("target_village_selection")}</Text>
         {loadingVillages ? (
           <ActivityIndicator color={theme.colors.primaryLight} style={{ marginVertical: 12 }} />
         ) : (
-          <View style={styles.villagePickerCard}>
-            <Text style={styles.label}>{t("choose_village")}</Text>
+          <View style={[styles.villagePickerCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <Text style={[styles.label, { color: theme.colors.textMuted }]}>{t("choose_village")}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
               {villages.map((v) => {
                 const isSelected = selectedVillage?.id === v.id;
                 return (
                   <TouchableOpacity
                     key={v.id}
-                    style={[styles.villageChip, isSelected && styles.villageChipActive]}
+                    style={[
+                      styles.villageChip,
+                      { backgroundColor: isDark ? theme.colors.surface : "#F1F5F9", borderColor: theme.colors.border },
+                      isSelected && styles.villageChipActive
+                    ]}
                     onPress={() => setSelectedVillage(v)}
                     activeOpacity={0.7}
                   >
@@ -381,7 +387,11 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
                       color={isSelected ? "#FFFFFF" : theme.colors.primaryLight}
                       style={{ marginRight: 6 }}
                     />
-                    <Text style={[styles.villageChipText, isSelected && styles.villageChipTextActive]}>
+                    <Text style={[
+                      styles.villageChipText,
+                      { color: theme.colors.textSecondary },
+                      isSelected && styles.villageChipTextActive
+                    ]}>
                       {v.name_mr || v.name_en}
                     </Text>
                   </TouchableOpacity>
@@ -389,10 +399,10 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
               })}
             </ScrollView>
             {selectedVillage && (
-              <View style={styles.selectedVillageDetail}>
+              <View style={[styles.selectedVillageDetail, { backgroundColor: isDark ? "rgba(99, 102, 241, 0.1)" : "#EEF2FF" }]}>
                 <Ionicons name="checkmark-circle" size={16} color="#34D399" style={{ marginRight: 6 }} />
-                <Text style={styles.selectedVillageText}>
-                  निवडलेले गाव: <Text style={{ fontWeight: "800", color: "#60A5FA" }}>{selectedVillage.name_mr || selectedVillage.name_en}</Text> ({selectedVillage.taluka || "वाळवा"}, {selectedVillage.district || "सांगली"})
+                <Text style={[styles.selectedVillageText, { color: theme.colors.textPrimary }]}>
+                  निवडलेले गाव: <Text style={{ fontWeight: "800", color: isDark ? "#60A5FA" : "#2563EB" }}>{selectedVillage.name_mr || selectedVillage.name_en}</Text> ({selectedVillage.taluka || "वाळवा"}, {selectedVillage.district || "सांगली"})
                 </Text>
               </View>
             )}
@@ -400,15 +410,19 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
         )}
 
         {/* STEP 2: File Picker Dropzone (Multiple Files) */}
-        <Text style={styles.sectionHeading}>{t("select_documents")}</Text>
-        <TouchableOpacity style={styles.dropzone} onPress={handlePickFiles} activeOpacity={0.7}>
-          <View style={styles.dropzoneIconCircle}>
-            <Ionicons name="folder-open-outline" size={36} color={theme.colors.primaryLight} />
+        <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>{t("select_documents")}</Text>
+        <TouchableOpacity
+          style={[styles.dropzone, { backgroundColor: theme.colors.card, borderColor: isDark ? "rgba(99, 102, 241, 0.4)" : "#CBD5E1" }]}
+          onPress={handlePickFiles}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.dropzoneIconCircle, { backgroundColor: isDark ? "rgba(99, 102, 241, 0.12)" : "#EEF2FF" }]}>
+            <Ionicons name="folder-open-outline" size={36} color={isDark ? theme.colors.primaryLight : "#4F46E5"} />
           </View>
-          <Text style={styles.dropzoneTitle}>
+          <Text style={[styles.dropzoneTitle, { color: theme.colors.textPrimary }]}>
             एक्सेल किंवा सीएसव्ही फाईल्स निवडा
           </Text>
-          <Text style={styles.dropzoneSub}>
+          <Text style={[styles.dropzoneSub, { color: theme.colors.textMuted }]}>
             फक्त मतदार यादी .xlsx, .xls किंवा .csv फाईल्स स्वीकारल्या जातात (पीडीएफ फाईल्स समर्थित नाहीत)
           </Text>
           <View style={styles.browseBtn}>
@@ -419,9 +433,9 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
 
         {/* Selected Files Queue */}
         {fileQueue.length > 0 && (
-          <View style={styles.queueContainer}>
-            <View style={styles.queueHeader}>
-              <Text style={styles.queueTitle}>
+          <View style={[styles.queueContainer, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <View style={[styles.queueHeader, { borderBottomColor: theme.colors.border }]}>
+              <Text style={[styles.queueTitle, { color: theme.colors.textPrimary }]}>
                 {t("selected_files_queue")} ({fileQueue.length})
               </Text>
               <TouchableOpacity onPress={handleClearAll}>
@@ -430,14 +444,14 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
             </View>
 
             {fileQueue.map((file) => (
-              <View key={file.id} style={styles.fileItemCard}>
+              <View key={file.id} style={[styles.fileItemCard, { backgroundColor: isDark ? theme.colors.surface : "#FFFFFF", borderColor: theme.colors.border, borderWidth: 1 }]}>
                 <View style={[styles.fileTypeBadge, { backgroundColor: file.type === "CSV" ? "#3B82F6" : "#10B981" }]}>
                   <Text style={styles.fileTypeBadgeText}>{file.type}</Text>
                 </View>
 
                 <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.fileNameText} numberOfLines={1}>{file.name}</Text>
-                  <Text style={styles.fileSizeText}>
+                  <Text style={[styles.fileNameText, { color: theme.colors.textPrimary }]} numberOfLines={1}>{file.name}</Text>
+                  <Text style={[styles.fileSizeText, { color: theme.colors.textMuted }]}>
                     {formatFileSize(file.size)} • {selectedVillage?.name_mr || "साखराळे"} साठी सज्ज
                   </Text>
                 </View>
@@ -453,8 +467,8 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
             ))}
 
             <TouchableOpacity style={styles.addMoreBtn} onPress={handlePickFiles}>
-              <Ionicons name="add" size={18} color="#60A5FA" style={{ marginRight: 6 }} />
-              <Text style={styles.addMoreBtnText}>{t("add_more_files")}</Text>
+              <Ionicons name="add" size={18} color={isDark ? "#60A5FA" : "#2563EB"} style={{ marginRight: 6 }} />
+              <Text style={[styles.addMoreBtnText, { color: isDark ? "#60A5FA" : "#2563EB" }]}>{t("add_more_files")}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -462,7 +476,7 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
         {/* Option to auto-clear before this upload */}
         {fileQueue.length > 0 && (
           <TouchableOpacity
-            style={styles.clearOptionRow}
+            style={[styles.clearOptionRow, { backgroundColor: isDark ? "rgba(239, 68, 68, 0.06)" : "#FEF2F2", borderColor: isDark ? "rgba(239, 68, 68, 0.2)" : "#FECACA" }]}
             onPress={() => setClearBeforeUpload(!clearBeforeUpload)}
             activeOpacity={0.8}
           >
@@ -472,7 +486,7 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
               color={clearBeforeUpload ? "#EF4444" : theme.colors.textMuted}
               style={{ marginRight: 8 }}
             />
-            <Text style={[styles.clearOptionText, clearBeforeUpload && { color: "#FCA5A5", fontWeight: "700" }]}>
+            <Text style={[styles.clearOptionText, { color: theme.colors.textSecondary }, clearBeforeUpload && { color: isDark ? "#FCA5A5" : "#991B1B", fontWeight: "700" }]}>
               नवीन डेटा अपलोड करताना आधीचा सर्व जुना डेटा आपोआप हटवा (Clear old data before import)
             </Text>
           </TouchableOpacity>
@@ -502,19 +516,19 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
 
         {/* STEP 4: Past Import Files & History */}
         <View style={styles.pastImportsHeaderRow}>
-          <Text style={styles.sectionHeading}>{t("past_import_history")}</Text>
+          <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>{t("past_import_history")}</Text>
           <TouchableOpacity onPress={loadPastImports} style={styles.refreshJobsBtn}>
-            <Ionicons name="refresh" size={16} color="#60A5FA" style={{ marginRight: 4 }} />
-            <Text style={styles.refreshJobsText}>ताजे करा (Refresh)</Text>
+            <Ionicons name="refresh" size={16} color={isDark ? "#60A5FA" : "#2563EB"} style={{ marginRight: 4 }} />
+            <Text style={[styles.refreshJobsText, { color: isDark ? "#60A5FA" : "#2563EB" }]}>ताजे करा (Refresh)</Text>
           </TouchableOpacity>
         </View>
 
         {loadingJobs ? (
           <ActivityIndicator color={theme.colors.primaryLight} style={{ marginVertical: 20 }} />
         ) : importJobs.length === 0 ? (
-          <View style={styles.emptyJobsCard}>
+          <View style={[styles.emptyJobsCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
             <Ionicons name="documents-outline" size={32} color={theme.colors.textMuted} />
-            <Text style={styles.emptyJobsText}>{t("no_past_imports")}</Text>
+            <Text style={[styles.emptyJobsText, { color: theme.colors.textMuted }]}>{t("no_past_imports")}</Text>
           </View>
         ) : (
           importJobs.map((job) => {
@@ -522,7 +536,7 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
             const dateStr = job.createdAt ? new Date(job.createdAt).toLocaleString("mr-IN") : "अलीकडे";
             const isDeleting = deletingJobId === job.id;
             return (
-              <View key={job.id} style={styles.jobCard}>
+              <View key={job.id} style={[styles.jobCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
                 <TouchableOpacity
                   style={{ flex: 1, flexDirection: "row", alignItems: "center" }}
                   onPress={() => navigation.navigate("ImportJobs", { jobId: job.id })}
@@ -537,16 +551,16 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
                   </View>
 
                   <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={styles.jobFileName} numberOfLines={1}>{job.fileName}</Text>
+                    <Text style={[styles.jobFileName, { color: theme.colors.textPrimary }]} numberOfLines={1}>{job.fileName}</Text>
                     <View style={styles.jobMetaRow}>
-                      <View style={styles.villageTag}>
-                        <Text style={styles.villageTagText}>{job.villageName || "साखराळे"}</Text>
+                      <View style={[styles.villageTag, { backgroundColor: isDark ? "rgba(99, 102, 241, 0.15)" : "#EEF2FF" }]}>
+                        <Text style={[styles.villageTagText, { color: isDark ? theme.colors.primaryLight : "#4F46E5" }]}>{job.villageName || "साखराळे"}</Text>
                       </View>
-                      <Text style={styles.jobRecordsText}>
+                      <Text style={[styles.jobRecordsText, { color: theme.colors.textMuted }]}>
                         {job.metrics?.totalRecords ? `${job.metrics.totalRecords.toLocaleString()} मतदार` : "प्रक्रिया सुरू"}
                       </Text>
                     </View>
-                    <Text style={styles.jobDateText}>{dateStr}</Text>
+                    <Text style={[styles.jobDateText, { color: theme.colors.textMuted }]}>{dateStr}</Text>
                   </View>
 
                   <View style={[styles.jobStatusPill, { backgroundColor: isCompleted ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)" }]}>
@@ -578,20 +592,20 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
       {/* Delete Import Job Confirmation Modal */}
       <Modal visible={deleteModalVisible} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={[styles.modalIconCircle, { backgroundColor: "rgba(239, 68, 68, 0.15)" }]}>
+          <View style={[styles.modalCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <View style={[styles.modalIconCircle, { backgroundColor: isDark ? "rgba(239, 68, 68, 0.15)" : "#FEE2E2" }]}>
               <Ionicons name="trash" size={28} color="#EF4444" />
             </View>
-            <Text style={styles.modalTitle}>इम्पोर्ट रेकॉर्ड हटवा</Text>
-            <Text style={styles.modalDesc}>
+            <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>इम्पोर्ट रेकॉर्ड हटवा</Text>
+            <Text style={[styles.modalDesc, { color: theme.colors.textSecondary }]}>
               {`'${jobToDelete?.fileName || "हा फाईल"}' चा इम्पोर्ट रेकॉर्ड आणि त्याद्वारे डेटाबेसमध्ये जोडलेला सर्व मतदार डेटा हटवायचा आहे का?`}
             </Text>
             <View style={styles.modalBtnRow}>
               <TouchableOpacity
-                style={styles.modalCancelBtn}
+                style={[styles.modalCancelBtn, { backgroundColor: isDark ? theme.colors.surface : "#F1F5F9", borderColor: theme.colors.border }]}
                 onPress={() => { setDeleteModalVisible(false); setJobToDelete(null); }}
               >
-                <Text style={styles.modalCancelText}>रद्द करा</Text>
+                <Text style={[styles.modalCancelText, { color: theme.colors.textPrimary }]}>रद्द करा</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalConfirmBtn, { backgroundColor: "#EF4444" }]}
@@ -607,21 +621,21 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
       {/* Clear Database Confirmation Modal */}
       <Modal visible={clearModalVisible} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={[styles.modalIconCircle, { backgroundColor: "rgba(239, 68, 68, 0.15)" }]}>
+          <View style={[styles.modalCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <View style={[styles.modalIconCircle, { backgroundColor: isDark ? "rgba(239, 68, 68, 0.15)" : "#FEE2E2" }]}>
               <Ionicons name="warning" size={28} color="#EF4444" />
             </View>
-            <Text style={styles.modalTitle}>सावधान! डेटाबेस साफ करा</Text>
-            <Text style={styles.modalDesc}>
+            <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>सावधान! डेटाबेस साफ करा</Text>
+            <Text style={[styles.modalDesc, { color: theme.colors.textSecondary }]}>
               आपण आधीचा सर्व मतदार डेटा व इम्पोर्ट इतिहास हटवू इच्छिता का? या कृतीमुळे सर्व मतदार नोंदी साफ केल्या जातील जेणेकरून आपण नवीन फाईल्स अपलोड करून फ्रेश मतदार डेटा वापरू शकता.
             </Text>
             <View style={styles.modalBtnRow}>
               <TouchableOpacity
-                style={styles.modalCancelBtn}
+                style={[styles.modalCancelBtn, { backgroundColor: isDark ? theme.colors.surface : "#F1F5F9", borderColor: theme.colors.border }]}
                 onPress={() => setClearModalVisible(false)}
                 disabled={clearing}
               >
-                <Text style={styles.modalCancelText}>रद्द करा</Text>
+                <Text style={[styles.modalCancelText, { color: theme.colors.textPrimary }]}>रद्द करा</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalConfirmBtn, { backgroundColor: "#EF4444" }, clearing && { opacity: 0.6 }]}

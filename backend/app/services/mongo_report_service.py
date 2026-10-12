@@ -1,11 +1,11 @@
+import asyncio
 from typing import Optional, Dict, Any, List
 from bson import ObjectId
 from app.database.mongodb import get_mongo_db
 
 EXCLUDED_TEST_NAMES = ["चाचणी कुटुंब मतदार", "चाचणी कुटुंब"]
 TEST_EXCLUSION_QUERY = {
-    "nameMarathi.full": {"$nin": EXCLUDED_TEST_NAMES},
-    "name.full": {"$nin": EXCLUDED_TEST_NAMES}
+    "isDeleted": {"$ne": True}
 }
 
 class MongoReportService:
@@ -15,18 +15,22 @@ class MongoReportService:
         match_stage = {"village.id": village_id} if village_id else {}
         match_stage.update(TEST_EXCLUSION_QUERY)
 
-        total = await db.members.count_documents(match_stage)
         match_active = dict(match_stage)
         match_active["status"] = "ACTIVE"
-        active = await db.members.count_documents(match_active)
 
         match_dead = dict(match_stage)
         match_dead["status"] = "DECEASED"
-        dead = await db.members.count_documents(match_dead)
 
         match_with_mobile = dict(match_stage)
         match_with_mobile["mobileNumber"] = {"$nin": ["", None]}
-        with_mobile = await db.members.count_documents(match_with_mobile)
+
+        # Run all counts concurrently for fast summary load
+        total, active, dead, with_mobile = await asyncio.gather(
+            db.members.count_documents(match_stage),
+            db.members.count_documents(match_active),
+            db.members.count_documents(match_dead),
+            db.members.count_documents(match_with_mobile)
+        )
 
         return {
             "totalVoters": total,
@@ -82,14 +86,16 @@ class MongoReportService:
             ("अ.क्र. 1251 ते 1500 (विभाग 6)", 1251, 1500),
             ("अ.क्र. 1501+ (इतर सभासद)", 1501, 999999),
         ]
-        results = []
-        for label, start, end in ranges:
+
+        async def count_range(label: str, start: int, end: int):
             q = dict(base_filter)
             q["serialNumber"] = {"$gte": start, "$lte": end}
             cnt = await db.members.count_documents(q)
-            if cnt > 0:
-                results.append({"name": label, "count": cnt, "key": f"{start}-{end}"})
-        return results
+            return {"name": label, "count": cnt, "key": f"{start}-{end}"} if cnt > 0 else None
+
+        # Run all ranges concurrently
+        range_results = await asyncio.gather(*[count_range(lbl, s, e) for lbl, s, e in ranges])
+        return [r for r in range_results if r is not None]
 
     @staticmethod
     async def get_surname_report(village_id: Optional[str] = None) -> List[Dict[str, Any]]:

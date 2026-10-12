@@ -1,12 +1,11 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import logging
 
 from app.config.config import settings
-from app.config.database import Base, engine, SessionLocal
-from app.utils.seed_data import seed_initial_data
 from app.database.mongodb import connect_to_mongo, close_mongo_connection
 from app.database.seed_mongo import seed_mongo_initial_data
 
@@ -26,18 +25,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"MongoDB startup warning: {e}")
 
-    # 2. SQLite / SQLAlchemy compatibility fallback
-    try:
-        Base.metadata.create_all(bind=engine)
-        db = SessionLocal()
-        seed_initial_data(db)
-        db.close()
-    except Exception as e:
-        logger.warning(f"SQLAlchemy startup note: {e}")
-
     yield
 
-    # 3. Shutdown
+    # 2. Shutdown
     await close_mongo_connection()
 
 app = FastAPI(
@@ -46,6 +36,9 @@ app = FastAPI(
     description="Production-grade Backend API for Election & Voter Management App with MongoDB, Marathi Electoral Roll PDF Extraction, Excel Processing, and Dual Admin/User Panels.",
     lifespan=lifespan
 )
+
+# High-Performance GZip Compression for Large Payloads (> 1KB)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # CORS Configuration for Mobile App & Web
 app.add_middleware(

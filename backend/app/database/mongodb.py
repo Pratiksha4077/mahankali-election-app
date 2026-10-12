@@ -105,6 +105,16 @@ async def init_mongo_indexes():
     await db.members.create_index([("assignedUserId", 1), ("village.id", 1)])
     await db.members.create_index([("updatedAt", -1)])
 
+    # High performance compound indexes for fast filtering, counting, and sorting
+    await db.members.create_index([("isDeleted", 1), ("status", 1), ("serialNumber", 1)])
+    await db.members.create_index([("isDeleted", 1), ("village.id", 1), ("status", 1), ("serialNumber", 1)])
+    await db.members.create_index([("isDeleted", 1), ("village.nameMarathi", 1)])
+    await db.members.create_index([("isDeleted", 1), ("nameMarathi.surname", 1)])
+    await db.members.create_index([("isDeleted", 1), ("mobileNumber", 1)])
+    await db.members.create_index([("isDeleted", 1), ("familyId", 1)])
+    await db.members.create_index([("isDeleted", 1), ("category.id", 1)])
+    await db.members.create_index([("isDeleted", 1), ("assignedUserId", 1)])
+
     # 2. Users Indexes
     await db.users.create_index([("username", 1)], unique=True)
     await db.users.create_index([("mobileNumber", 1)])

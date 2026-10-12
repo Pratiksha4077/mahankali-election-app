@@ -465,27 +465,27 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
         <ScrollView contentContainerStyle={styles.scrollContent}>
           {/* Quick Actions - WhatsApp, SMS, Call ONLY (no print) */}
           <View style={styles.actionRow}>
-            <TouchableOpacity onPress={handleWhatsApp} style={[styles.actionBtn, { backgroundColor: "#065F46" }]}>
-              <Ionicons name="logo-whatsapp" size={22} color="#34D399" />
-              <Text style={styles.actionBtnText}>WhatsApp</Text>
+            <TouchableOpacity onPress={handleWhatsApp} style={[styles.actionBtn, { backgroundColor: isDark ? "#065F46" : "#DCFCE7" }]}>
+              <Ionicons name="logo-whatsapp" size={22} color={isDark ? "#34D399" : "#16A34A"} />
+              <Text style={[styles.actionBtnText, { color: isDark ? "#ECFDF5" : "#166534" }]}>WhatsApp</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={handleSMS} style={[styles.actionBtn, { backgroundColor: "#1E3A8A" }]}>
-              <Ionicons name="chatbubble-ellipses" size={22} color="#60A5FA" />
-              <Text style={styles.actionBtnText}>SMS</Text>
+            <TouchableOpacity onPress={handleSMS} style={[styles.actionBtn, { backgroundColor: isDark ? "#1E3A8A" : "#DBEAFE" }]}>
+              <Ionicons name="chatbubble-ellipses" size={22} color={isDark ? "#60A5FA" : "#2563EB"} />
+              <Text style={[styles.actionBtnText, { color: isDark ? "#EFF6FF" : "#1E40AF" }]}>SMS</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={handleCall} style={[styles.actionBtn, { backgroundColor: "#581C87" }]}>
-              <Ionicons name="call" size={22} color="#C084FC" />
-              <Text style={styles.actionBtnText}>Call</Text>
+            <TouchableOpacity onPress={handleCall} style={[styles.actionBtn, { backgroundColor: isDark ? "#581C87" : "#F3E8FF" }]}>
+              <Ionicons name="call" size={22} color={isDark ? "#C084FC" : "#7C3AED"} />
+              <Text style={[styles.actionBtnText, { color: isDark ? "#FAF5FF" : "#6B21A8" }]}>Call</Text>
             </TouchableOpacity>
           </View>
 
           {/* Profile Card with all member data */}
-          <View style={[styles.profileCard, { backgroundColor: isDark ? "#1E3A8A" : theme.colors.card, borderColor: isDark ? "#2563EB" : theme.colors.border }]}>
+          <View style={[styles.profileCard, { backgroundColor: isDark ? "#1E293B" : theme.colors.card, borderColor: isDark ? "#334155" : theme.colors.border }]}>
             <View style={[styles.profileHeader, { borderBottomColor: isDark ? "rgba(255,255,255,0.1)" : theme.colors.border }]}>
-              <View style={[styles.avatarCircle, { backgroundColor: isDark ? "rgba(255,255,255,0.15)" : "rgba(79, 70, 229, 0.15)" }]}>
-                <Ionicons name="person" size={24} color={isDark ? "#93C5FD" : theme.colors.primary} />
+              <View style={[styles.avatarCircle, { backgroundColor: isDark ? "rgba(255,255,255,0.15)" : "rgba(79, 70, 229, 0.12)" }]}>
+                <Ionicons name="person" size={24} color={isDark ? "#93C5FD" : theme.colors.primaryLight} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.cardSublabel, { color: isDark ? "#93C5FD" : theme.colors.textMuted }]}>पूर्ण नाव (Full Name)</Text>
@@ -504,7 +504,7 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
             {/* All Voter Data Fields */}
             {getVoterFields().map((field, idx) => (
               <View key={idx} style={[styles.detailRow, { borderBottomColor: isDark ? "rgba(255,255,255,0.07)" : theme.colors.border }]}>
-                <Ionicons name={field.icon as any} size={16} color={isDark ? "#93C5FD" : theme.colors.primary} style={{ marginRight: 10 }} />
+                <Ionicons name={field.icon as any} size={16} color={isDark ? "#93C5FD" : theme.colors.primaryLight} style={{ marginRight: 10 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.cardSublabel, { color: isDark ? "#93C5FD" : theme.colors.textMuted }]}>{field.label}</Text>
                   <Text style={[styles.cardValue, { color: isDark ? "#F8FAFC" : theme.colors.textPrimary }]}>{field.value}</Text>
@@ -515,8 +515,8 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
           {/* Voter Color Tag */}
           <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>मतदार रंग श्रेणी (Voter Color Tag)</Text>
-            <View style={styles.colorPaletteRow}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>मतदार रंग श्रेणी (Voter Color Tag)</Text>
+            <View style={[styles.colorPaletteRow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
               {effectiveCategories.map((cp) => {
                 const isSelected = isSelectedCategory(cp);
                 const circleColor = cp.color_hex || (cp as any).color || "#10B981";
@@ -531,34 +531,34 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 );
               })}
             </View>
-            <Text style={styles.selectedCatLabel}>
+            <Text style={[styles.selectedCatLabel, { color: theme.colors.textMuted }]}>
               निवडलेली श्रेणी: {getSelectedCatLabel()}
             </Text>
           </View>
 
           {/* Mark as Deceased */}
-          <View style={styles.switchCard}>
+          <View style={[styles.switchCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
             <View style={styles.switchLeft}>
               <Ionicons name="skull-outline" size={22} color={isDeceased ? "#EF4444" : theme.colors.textSecondary} />
-              <Text style={[styles.switchLabel, isDeceased && { color: "#EF4444" }]}>
+              <Text style={[styles.switchLabel, { color: theme.colors.textPrimary }, isDeceased && { color: "#EF4444" }]}>
                 {t("mark_deceased")}
               </Text>
             </View>
             <Switch
               value={isDeceased}
               onValueChange={handleToggleDeceased}
-              trackColor={{ false: "#374151", true: "#EF4444" }}
-              thumbColor={isDeceased ? "#FFFFFF" : "#9CA3AF"}
+              trackColor={{ false: isDark ? "#374151" : "#D1D5DB", true: "#EF4444" }}
+              thumbColor={isDeceased ? "#FFFFFF" : isDark ? "#9CA3AF" : "#6B7280"}
             />
           </View>
 
           {/* Mobile Number */}
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>{t("mobile_number")}</Text>
-            <View style={styles.inputWithButton}>
+            <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>{t("mobile_number")}</Text>
+            <View style={[styles.inputWithButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
               <Ionicons name="call-outline" size={20} color={theme.colors.textSecondary} style={{ marginRight: 8 }} />
               <TextInput
-                style={styles.textInput}
+                style={[styles.textInput, { color: theme.colors.textPrimary }]}
                 value={mobileNumber}
                 onChangeText={setMobileNumber}
                 placeholder="10 अंकी मोबाईल क्रमांक..."
@@ -574,11 +574,11 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
           {/* Exact Address */}
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>{t("exact_address")}</Text>
-            <View style={styles.textAreaContainer}>
+            <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>{t("exact_address")}</Text>
+            <View style={[styles.textAreaContainer, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
               <Ionicons name="navigate-outline" size={20} color={theme.colors.textSecondary} style={{ marginRight: 8, marginTop: 4 }} />
               <TextInput
-                style={[styles.textInput, { height: 60, textAlignVertical: "top" }]}
+                style={[styles.textInput, { color: theme.colors.textPrimary, height: 60, textAlignVertical: "top" }]}
                 value={address}
                 onChangeText={setAddress}
                 placeholder="घर क्रमांक, वाडा, परिसर..."
@@ -594,13 +594,13 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
           {/* Social & Professional Demographics - Editable by User & Admin */}
           <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>सामाजिक व व्यावसायिक माहिती (Social & Details)</Text>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textPrimary }]}>सामाजिक व व्यावसायिक माहिती (Social & Details)</Text>
 
             <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>धर्म (Religion)</Text>
+                <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>धर्म (Religion)</Text>
                 <TextInput
-                  style={styles.fieldInput}
+                  style={[styles.fieldInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                   value={religion}
                   onChangeText={setReligion}
                   placeholder="उदा. हिंदू, मुस्लिम..."
@@ -608,9 +608,9 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>जात (Caste)</Text>
+                <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>जात (Caste)</Text>
                 <TextInput
-                  style={styles.fieldInput}
+                  style={[styles.fieldInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                   value={caste}
                   onChangeText={setCaste}
                   placeholder="उदा. मराठा, बौद्ध..."
@@ -621,9 +621,9 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
             <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>पद / हुद्दा (Designation)</Text>
+                <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>पद / हुद्दा (Designation)</Text>
                 <TextInput
-                  style={styles.fieldInput}
+                  style={[styles.fieldInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                   value={designation}
                   onChangeText={setDesignation}
                   placeholder="उदा. ग्रामपंचायत सदस्य..."
@@ -631,9 +631,9 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>व्यवसाय (Profession)</Text>
+                <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>व्यवसाय (Profession)</Text>
                 <TextInput
-                  style={styles.fieldInput}
+                  style={[styles.fieldInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                   value={profession}
                   onChangeText={setProfession}
                   placeholder="उदा. शेती, नोकरी..."
@@ -700,10 +700,10 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 </View>
               ))
             ) : (
-              <View style={styles.emptyBox}>
+              <View style={[styles.emptyBox, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
                 <Ionicons name="people-outline" size={28} color={theme.colors.textMuted} />
-                <Text style={styles.emptyBoxText}>कुटुंब सदस्य अद्याप जोडलेले नाहीत</Text>
-                <Text style={styles.emptyBoxSubText}>+ बटणावर क्लिक करून नवीन सदस्य जोडा</Text>
+                <Text style={[styles.emptyBoxText, { color: theme.colors.textPrimary }]}>कुटुंब सदस्य अद्याप जोडलेले नाहीत</Text>
+                <Text style={[styles.emptyBoxSubText, { color: theme.colors.textMuted }]}>+ बटणावर क्लिक करून नवीन सदस्य जोडा</Text>
               </View>
             )}
           </View>
@@ -713,7 +713,7 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
       {/* Add Family Member Modal */}
       <Modal visible={familyModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <View style={[styles.modalContent, { backgroundColor: isDark ? "#111827" : "#FFFFFF", borderColor: theme.colors.border }]}>
             <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
               <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>नवीन कुटुंब सदस्य जोडा</Text>
               <TouchableOpacity onPress={() => setFamilyModalVisible(false)}>
@@ -722,16 +722,16 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
             </View>
 
             <ScrollView style={{ marginVertical: 12 }}>
-              <Text style={styles.inputLabel}>पूर्ण नाव (मराठी):</Text>
+              <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>पूर्ण नाव (मराठी):</Text>
               <TextInput
-                style={styles.fieldInput}
+                style={[styles.fieldInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                 placeholder="उदा. पोक्षे अनिता दिगंबर"
                 placeholderTextColor={theme.colors.textMuted}
                 value={newFamilyName}
                 onChangeText={setNewFamilyName}
               />
 
-              <Text style={[styles.inputLabel, { marginTop: 10 }]}>नातेसंबंध (Relation):</Text>
+              <Text style={[styles.inputLabel, { color: theme.colors.textSecondary, marginTop: 10 }]}>नातेसंबंध (Relation):</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
                 {["Wife (पत्नी)", "Son (मुलगा)", "Daughter (मुलगी)", "Brother (भाऊ)", "Mother (आई)", "Father (वडील)", "Other (इतर)"].map((rel) => {
                   const val = rel.split(" ")[0];
@@ -739,10 +739,10 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
                   return (
                     <TouchableOpacity
                       key={rel}
-                      style={[styles.relChip, isSel && styles.relChipActive]}
+                      style={[styles.relChip, { backgroundColor: isDark ? "rgba(255, 255, 255, 0.08)" : "#F1F5F9" }, isSel && styles.relChipActive]}
                       onPress={() => setNewFamilyRelation(val)}
                     >
-                      <Text style={[styles.relChipText, isSel && styles.relChipTextActive]}>{rel}</Text>
+                      <Text style={[styles.relChipText, { color: isDark ? theme.colors.textSecondary : "#475569" }, isSel && styles.relChipTextActive]}>{rel}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -750,9 +750,9 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
               <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>अनुक्रमांक (Serial No.):</Text>
+                  <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>अनुक्रमांक (Serial No.):</Text>
                   <TextInput
-                    style={styles.fieldInput}
+                    style={[styles.fieldInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                     placeholder="उदा. 42"
                     placeholderTextColor={theme.colors.textMuted}
                     keyboardType="number-pad"
@@ -761,9 +761,9 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>महाक्रमांक (EPIC No.):</Text>
+                  <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>महाक्रमांक (EPIC No.):</Text>
                   <TextInput
-                    style={styles.fieldInput}
+                    style={[styles.fieldInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                     placeholder="उदा. ABC1234567"
                     placeholderTextColor={theme.colors.textMuted}
                     autoCapitalize="characters"
@@ -773,7 +773,7 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 </View>
               </View>
 
-              <Text style={[styles.inputLabel, { marginTop: 10 }]}>लिंग (Gender):</Text>
+              <Text style={[styles.inputLabel, { color: theme.colors.textSecondary, marginTop: 10 }]}>लिंग (Gender):</Text>
               <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
                 {[
                   { label: "पुरुष (Male)", val: "Male" },
@@ -784,10 +784,10 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
                   return (
                     <TouchableOpacity
                       key={g.val}
-                      style={[styles.relChip, isSel && styles.relChipActive, { flex: 1, alignItems: "center" }]}
+                      style={[styles.relChip, { backgroundColor: isDark ? "rgba(255, 255, 255, 0.08)" : "#F1F5F9", flex: 1, alignItems: "center" }, isSel && styles.relChipActive]}
                       onPress={() => setNewFamilyGender(g.val)}
                     >
-                      <Text style={[styles.relChipText, isSel && styles.relChipTextActive]}>{g.label}</Text>
+                      <Text style={[styles.relChipText, { color: isDark ? theme.colors.textSecondary : "#475569" }, isSel && styles.relChipTextActive]}>{g.label}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -795,9 +795,9 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
               <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>वय (Age):</Text>
+                  <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>वय (Age):</Text>
                   <TextInput
-                    style={styles.fieldInput}
+                    style={[styles.fieldInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                     placeholder="उदा. 24"
                     placeholderTextColor={theme.colors.textMuted}
                     keyboardType="number-pad"
@@ -806,9 +806,9 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>मोबाईल नंबर:</Text>
+                  <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>मोबाईल नंबर:</Text>
                   <TextInput
-                    style={styles.fieldInput}
+                    style={[styles.fieldInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                     placeholder="10 अंकी क्रमांक"
                     placeholderTextColor={theme.colors.textMuted}
                     keyboardType="phone-pad"
@@ -820,7 +820,7 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
             </ScrollView>
 
             <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 10 }}>
-              <TouchableOpacity style={[styles.modalCancelBtn, { backgroundColor: theme.colors.cardElevated }]} onPress={() => setFamilyModalVisible(false)}>
+              <TouchableOpacity style={[styles.modalCancelBtn, { backgroundColor: isDark ? "rgba(255, 255, 255, 0.08)" : "#E2E8F0" }]} onPress={() => setFamilyModalVisible(false)}>
                 <Text style={{ color: theme.colors.textPrimary }}>रद्द करा</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -842,7 +842,7 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
       {/* Edit Voter Details Modal */}
       <Modal visible={editModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: "90%", backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <View style={[styles.modalContent, { maxHeight: "90%", backgroundColor: isDark ? "#111827" : "#FFFFFF", borderColor: theme.colors.border }]}>
             <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
               <View style={{ flexDirection: "row", alignItems: "center" }}>
                 <Ionicons name="create" size={20} color="#60A5FA" style={{ marginRight: 8 }} />
@@ -854,18 +854,18 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
             </View>
 
             <ScrollView style={{ marginVertical: 10 }} keyboardShouldPersistTaps="handled">
-              <Text style={styles.inputLabel}>पूर्ण नाव (मराठी) * :</Text>
+              <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>पूर्ण नाव (मराठी) * :</Text>
               <TextInput
-                style={styles.fieldInput}
+                style={[styles.fieldInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                 placeholder="उदा. भंडारे सोनाली वनिता"
                 placeholderTextColor={theme.colors.textMuted}
                 value={editFullNameMr}
                 onChangeText={setEditFullNameMr}
               />
 
-              <Text style={[styles.inputLabel, { marginTop: 10 }]}>पूर्ण नाव (English):</Text>
+              <Text style={[styles.inputLabel, { color: theme.colors.textSecondary, marginTop: 10 }]}>पूर्ण नाव (English):</Text>
               <TextInput
-                style={styles.fieldInput}
+                style={[styles.fieldInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                 placeholder="उदा. Bhandare Sonali Vanita"
                 placeholderTextColor={theme.colors.textMuted}
                 value={editFullNameEn}
@@ -874,9 +874,9 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
               <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>अनुक्रमांक (Serial No.):</Text>
+                  <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>अनुक्रमांक (Serial No.):</Text>
                   <TextInput
-                    style={styles.fieldInput}
+                    style={[styles.fieldInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                     placeholder="उदा. 12"
                     placeholderTextColor={theme.colors.textMuted}
                     keyboardType="number-pad"
@@ -885,9 +885,9 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>ओळखपत्र क्र. (EPIC):</Text>
+                  <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>ओळखपत्र क्र. (EPIC):</Text>
                   <TextInput
-                    style={styles.fieldInput}
+                    style={[styles.fieldInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                     placeholder="उदा. ABC1234567"
                     placeholderTextColor={theme.colors.textMuted}
                     autoCapitalize="characters"
@@ -899,9 +899,9 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
               <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>वय (Age):</Text>
+                  <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>वय (Age):</Text>
                   <TextInput
-                    style={styles.fieldInput}
+                    style={[styles.fieldInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                     placeholder="उदा. 35"
                     placeholderTextColor={theme.colors.textMuted}
                     keyboardType="number-pad"
@@ -910,9 +910,9 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>घर क्र. (House No.):</Text>
+                  <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>घर क्र. (House No.):</Text>
                   <TextInput
-                    style={styles.fieldInput}
+                    style={[styles.fieldInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                     placeholder="उदा. 45/A"
                     placeholderTextColor={theme.colors.textMuted}
                     value={editHouseNo}
@@ -921,7 +921,7 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 </View>
               </View>
 
-              <Text style={[styles.inputLabel, { marginTop: 10 }]}>लिंग (Gender):</Text>
+              <Text style={[styles.inputLabel, { color: theme.colors.textSecondary, marginTop: 10 }]}>लिंग (Gender):</Text>
               <View style={{ flexDirection: "row", gap: 8, marginBottom: 4 }}>
                 {[
                   { key: "Male", label: "पुरुष (Male)" },
@@ -932,18 +932,18 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
                   return (
                     <TouchableOpacity
                       key={g.key}
-                      style={[styles.relChip, isSel && styles.relChipActive]}
+                      style={[styles.relChip, { backgroundColor: isDark ? "rgba(255, 255, 255, 0.08)" : "#F1F5F9" }, isSel && styles.relChipActive]}
                       onPress={() => setEditGender(g.key)}
                     >
-                      <Text style={[styles.relChipText, isSel && styles.relChipTextActive]}>{g.label}</Text>
+                      <Text style={[styles.relChipText, { color: isDark ? theme.colors.textSecondary : "#475569" }, isSel && styles.relChipTextActive]}>{g.label}</Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
 
-              <Text style={[styles.inputLabel, { marginTop: 10 }]}>मोबाईल नंबर:</Text>
+              <Text style={[styles.inputLabel, { color: theme.colors.textSecondary, marginTop: 10 }]}>मोबाईल नंबर:</Text>
               <TextInput
-                style={styles.fieldInput}
+                style={[styles.fieldInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                 placeholder="10 अंकी मोबाईल क्रमांक"
                 placeholderTextColor={theme.colors.textMuted}
                 keyboardType="phone-pad"
@@ -951,9 +951,9 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 onChangeText={setEditMobile}
               />
 
-              <Text style={[styles.inputLabel, { marginTop: 10 }]}>पत्ता (Address):</Text>
+              <Text style={[styles.inputLabel, { color: theme.colors.textSecondary, marginTop: 10 }]}>पत्ता (Address):</Text>
               <TextInput
-                style={[styles.fieldInput, { height: 60, textAlignVertical: "top" }]}
+                style={[styles.fieldInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.textPrimary, height: 60, textAlignVertical: "top" }]}
                 placeholder="घर क्रमांक, गल्ली, वाडा, परिसर..."
                 placeholderTextColor={theme.colors.textMuted}
                 multiline
@@ -964,7 +964,7 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
             <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: 4 }}>
               <TouchableOpacity
-                style={[styles.modalCancelBtn, { backgroundColor: theme.colors.cardElevated }]}
+                style={[styles.modalCancelBtn, { backgroundColor: isDark ? "rgba(255, 255, 255, 0.08)" : "#E2E8F0" }]}
                 onPress={() => setEditModalVisible(false)}
               >
                 <Text style={{ color: theme.colors.textPrimary }}>रद्द करा</Text>

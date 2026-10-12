@@ -188,17 +188,128 @@ async def upload_and_process_pdf(
         "message": "PDF import job created. Processing initiated in background."
     }
 
+def process_excel_import_job_worker(
+    job_id: str,
+    file_path: Path,
+    village_id: str,
+    village_name: str,
+    booth_number_from_filename: str,
+    uploaded_by: str,
+    file_name: str
+):
+    """Background worker for parsing and committing Excel/CSV voter records."""
+    from app.database.mongodb import get_sync_mongo_db
+    from app.pdf_processing.pipeline import update_mongo_job_stage
+    db = get_sync_mongo_db()
+    try:
+        update_mongo_job_stage(db, job_id, "Reading file data", 15, status="PROCESSING")
+        raw_rows = ExcelReader.read_file(file_path)
+
+        update_mongo_job_stage(db, job_id, "Mapping columns", 35, status="PROCESSING")
+        mapper = FieldMapper()
+        import_records = []
+        valid_count = 0
+        invalid_count = 0
+
+        for idx, row in enumerate(raw_rows):
+            mapped = mapper.map_record(row)
+            if not mapped.get("booth_part_number"):
+                mapped["booth_part_number"] = booth_number_from_filename
+            if not mapped.get("village_mr"):
+                mapped["village_mr"] = village_name
+
+            is_valid = bool(mapped.get("epic_number") or mapped.get("full_name_mr") or mapped.get("full_name_en"))
+            if is_valid:
+                valid_count += 1
+            else:
+                invalid_count += 1
+
+            import_records.append({
+                "jobId": job_id,
+                "rowIndex": idx + 1,
+                "parsedData": mapped,
+                "rawData": row,
+                "status": "VALID" if is_valid else "INVALID",
+                "isDuplicate": False
+            })
+
+        if import_records:
+            update_mongo_job_stage(db, job_id, "Storing parsed records", 55, status="PROCESSING")
+            CHUNK_SIZE = 1000
+            for i in range(0, len(import_records), CHUNK_SIZE):
+                db.import_records.insert_many(import_records[i:i + CHUNK_SIZE])
+
+        db.import_jobs.update_one(
+            {"_id": ObjectId(job_id) if ObjectId.is_valid(job_id) else job_id},
+            {"$set": {
+                "metrics.totalRecords": len(raw_rows),
+                "metrics.validRecords": valid_count,
+                "metrics.invalidRecords": invalid_count,
+            }}
+        )
+
+        update_mongo_job_stage(db, job_id, "Committing voters to database", 75, status="PROCESSING")
+        imported_count = commit_mongo_job_records(job_id, duplicate_strategy="UPDATE")
+
+        # Update village metrics
+        try:
+            total_v = db.members.count_documents({"village.id": village_id})
+            active_v = db.members.count_documents({"village.id": village_id, "status": "ACTIVE"})
+            oid_q = {"_id": ObjectId(village_id)} if ObjectId.is_valid(village_id) else {"_id": village_id}
+            db.villages.update_one(
+                oid_q,
+                {"$set": {
+                    "stats.totalVoters": total_v,
+                    "stats.activeMembers": active_v,
+                    "updatedAt": datetime.utcnow()
+                }}
+            )
+        except Exception:
+            pass
+
+        update_mongo_job_stage(
+            db, job_id,
+            stage_name="Completed ✓",
+            progress=100,
+            status="COMPLETED",
+            extra={
+                "metrics.importedRecords": imported_count,
+                "completedAt": datetime.utcnow()
+            }
+        )
+
+        log_activity(
+            user_id="admin",
+            action="UPLOAD_EXCEL",
+            entity_type="IMPORT_JOB",
+            entity_id=job_id,
+            details=f"Uploaded {file_name} (Booth: {booth_number_from_filename}) with {imported_count} live records for {village_name}",
+            username=uploaded_by
+        )
+    except Exception as e:
+        update_mongo_job_stage(
+            db, job_id,
+            stage_name="Processing failed",
+            progress=100,
+            status="FAILED",
+            extra={
+                "errorSummary": str(e),
+                "completedAt": datetime.utcnow()
+            }
+        )
+
 @router.post("/excel")
 async def upload_and_process_excel(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     village_id: str = Form(...),
     clear_previous: bool = Form(False),
     db = Depends(get_mongo_db),
     admin: AuthUser = Depends(require_admin)
 ):
-    """Admin uploads Excel or CSV for a village with automatic record commitment.
+    """Admin uploads Excel or CSV for a village with asynchronous background processing.
     The filename number (e.g., 61.xlsx) is used as the matdan kendra (polling booth) number.
-    Required Marathi fields: मतदार ओळखपत्र क्र., मतदाराचे पूर्ण नाव, वडिलाचे / पतीचे नाव, घर क्रमांक, वय, लिंग.
+    Returns in < 150ms while worker commits records in background.
     """
     import re as _re
     ext = Path(file.filename).suffix.lower()
@@ -213,7 +324,6 @@ async def upload_and_process_excel(
         shutil.copyfileobj(file.file, buffer)
 
     file_size = file_path.stat().st_size
-    raw_rows = ExcelReader.read_file(file_path)
 
     # Extract booth/part number from filename (e.g., "61.xlsx" => "61", "booth_62.csv" => "62")
     stem = Path(file.filename).stem
@@ -223,9 +333,8 @@ async def upload_and_process_excel(
     v_query = {"_id": ObjectId(village_id)} if ObjectId.is_valid(village_id) else {"_id": village_id}
     village = await db.villages.find_one(v_query)
     village_name = village.get("nameMarathi", "साखराळे") if village else "साखराळे"
-    village_name_en = village.get("name", "Sakharele") if village else "Sakharele"
 
-    # Create job in MongoDB
+    # Create job in MongoDB with QUEUED status
     job_doc = {
         "villageId": village_id,
         "villageName": village_name,
@@ -234,11 +343,11 @@ async def upload_and_process_excel(
         "fileType": "EXCEL" if ext != ".csv" else "CSV",
         "fileSize": file_size,
         "totalPages": 1,
-        "status": "PROCESSING",
-        "progress": 50,
-        "currentStage": "Processing records",
+        "status": "QUEUED",
+        "progress": 5,
+        "currentStage": "Queued for processing",
         "metrics": {
-            "totalRecords": len(raw_rows),
+            "totalRecords": 0,
             "validRecords": 0,
             "invalidRecords": 0,
             "duplicateRecords": 0,
@@ -251,102 +360,26 @@ async def upload_and_process_excel(
     res = await db.import_jobs.insert_one(job_doc)
     job_id = str(res.inserted_id)
 
-    # Insert mapped intermediate records with booth number from filename
-    mapper = FieldMapper()
-    import_records = []
-    valid_count = 0
-    invalid_count = 0
-
-    for idx, row in enumerate(raw_rows):
-        mapped = mapper.map_record(row)
-
-        # Inject booth number from filename if not already set from Excel
-        if not mapped.get("booth_part_number"):
-            mapped["booth_part_number"] = booth_number_from_filename
-
-        # Mark the village name from db if not in Excel
-        if not mapped.get("village_mr"):
-            mapped["village_mr"] = village_name
-
-        # A record is valid if it has EPIC number OR full name
-        is_valid = bool(mapped.get("epic_number") or mapped.get("full_name_mr") or mapped.get("full_name_en"))
-        if is_valid:
-            valid_count += 1
-        else:
-            invalid_count += 1
-
-        import_records.append({
-            "jobId": job_id,
-            "rowIndex": idx + 1,
-            "parsedData": mapped,
-            "rawData": row,
-            "status": "VALID" if is_valid else "INVALID",
-            "isDuplicate": False
-        })
-
-    if import_records:
-        await db.import_records.insert_many(import_records)
-
-    # Update job metrics
-    await db.import_jobs.update_one(
-        {"_id": res.inserted_id},
-        {"$set": {
-            "metrics.validRecords": valid_count,
-            "metrics.invalidRecords": invalid_count,
-        }}
-    )
-
-    # Auto-commit to members collection so voters are immediately live
-    imported_count = commit_mongo_job_records(job_id, duplicate_strategy="UPDATE")
-
-    # Final job status update
-    await db.import_jobs.update_one(
-        {"_id": res.inserted_id},
-        {"$set": {
-            "status": "COMPLETED",
-            "progress": 100,
-            "currentStage": "Completed",
-            "metrics.importedRecords": imported_count
-        }}
-    )
-
-    # Update village stats
-    try:
-        total_v = await db.members.count_documents({"village.id": village_id})
-        active_v = await db.members.count_documents({"village.id": village_id, "status": "ACTIVE"})
-        oid_q = {"_id": ObjectId(village_id)} if ObjectId.is_valid(village_id) else {"_id": village_id}
-        await db.villages.update_one(
-            oid_q,
-            {"$set": {
-                "stats.totalVoters": total_v,
-                "stats.activeMembers": active_v,
-                "updatedAt": datetime.utcnow()
-            }}
-        )
-    except Exception:
-        pass
-
-    log_activity(
-        user_id=admin.id,
-        action="UPLOAD_EXCEL",
-        entity_type="IMPORT_JOB",
-        entity_id=job_id,
-        details=f"Uploaded {file.filename} (Booth: {booth_number_from_filename}) with {imported_count} live records for {village_name}",
-        username=admin.username
+    # Launch background task for high-performance non-blocking processing
+    background_tasks.add_task(
+        process_excel_import_job_worker,
+        job_id=job_id,
+        file_path=file_path,
+        village_id=village_id,
+        village_name=village_name,
+        booth_number_from_filename=booth_number_from_filename,
+        uploaded_by=admin.username,
+        file_name=file.filename
     )
 
     return {
         "success": True,
         "job_id": job_id,
         "jobId": job_id,
-        "total": len(raw_rows),
-        "valid": valid_count,
-        "invalid": invalid_count,
-        "importedCount": imported_count,
         "boothPartNumber": booth_number_from_filename,
         "villageName": village_name,
-        "status": "COMPLETED",
-        "message": f"Excel parsed and {imported_count} real voter records added to database (Booth: {booth_number_from_filename})."
+        "status": "QUEUED",
+        "message": f"Excel file '{file.filename}' queued for background processing (Booth: {booth_number_from_filename})."
     }
 
 

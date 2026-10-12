@@ -171,7 +171,11 @@ export const authAPI = {
   }
 };
 
-// ----------------- MEMBER API -----------------
+// ----------------- MEMBER API (With In-Flight Deduplication & Caching) -----------------
+const inFlightMemberRequests = new Map<string, Promise<any>>();
+const memberListCache = new Map<string, { data: any; timestamp: number }>();
+const MEMBER_CACHE_TTL = 6000; // 6 seconds
+
 export const memberAPI = {
   getMembers: async (params?: {
     q?: string;
@@ -181,19 +185,55 @@ export const memberAPI = {
     my_assigned_only?: boolean;
     page?: number;
     limit?: number;
+    forceRefresh?: boolean;
   }) => {
-    try {
-      const res = await apiClient.get("/members", { params });
-      return res.data;
-    } catch (e) {
-      return {
-        total: 0,
-        page: params?.page || 1,
-        limit: params?.limit || 50,
-        total_pages: 1,
-        items: []
-      };
+    const key = JSON.stringify({
+      q: params?.q || "",
+      village_id: params?.village_id || "",
+      category_id: params?.category_id || "",
+      status: params?.status || "",
+      my_assigned_only: params?.my_assigned_only || false,
+      page: params?.page || 1,
+      limit: params?.limit || 50
+    });
+
+    const now = Date.now();
+    if (!params?.forceRefresh && memberListCache.has(key)) {
+      const cached = memberListCache.get(key)!;
+      if (now - cached.timestamp < MEMBER_CACHE_TTL) {
+        return cached.data;
+      }
     }
+
+    if (inFlightMemberRequests.has(key)) {
+      return inFlightMemberRequests.get(key);
+    }
+
+    const reqPromise = (async () => {
+      try {
+        const res = await apiClient.get("/members", { params });
+        const data = res.data;
+        memberListCache.set(key, { data, timestamp: Date.now() });
+        return data;
+      } catch (e) {
+        return {
+          total: 0,
+          page: params?.page || 1,
+          limit: params?.limit || 50,
+          total_pages: 1,
+          items: []
+        };
+      } finally {
+        inFlightMemberRequests.delete(key);
+      }
+    })();
+
+    inFlightMemberRequests.set(key, reqPromise);
+    return reqPromise;
+  },
+
+  invalidateCache: () => {
+    memberListCache.clear();
   },
 
   getMemberDetail: async (id: string) => {
@@ -202,41 +242,70 @@ export const memberAPI = {
   },
 
   updateMember: async (id: string, data: Partial<Member>) => {
+    memberListCache.clear();
     const res = await apiClient.put(`/members/${id}`, data);
     return res.data?.data || res.data;
   },
 
   toggleDeceased: async (id: string, is_deceased: boolean) => {
+    memberListCache.clear();
     const res = await apiClient.patch(`/members/${id}/deceased`, { is_deceased });
     return res.data?.data || res.data;
   },
 
   updateCategory: async (id: string, category_id: string | null) => {
+    memberListCache.clear();
     const res = await apiClient.patch(`/members/${id}/category`, { category_id });
     return res.data?.data || res.data;
   }
 };
 
-// ----------------- VILLAGE & CATEGORY API -----------------
+// ----------------- VILLAGE & CATEGORY API (With High-Speed In-Memory Cache) -----------------
+let cachedVillages: { data: Village[]; timestamp: number } | null = null;
+let cachedCategories: { data: Category[]; timestamp: number } | null = null;
+const MASTER_DATA_CACHE_TTL = 60000; // 60 seconds
+
 export const villageAPI = {
-  getVillages: async (): Promise<Village[]> => {
+  getVillages: async (forceRefresh: boolean = false): Promise<Village[]> => {
+    const now = Date.now();
+    if (!forceRefresh && cachedVillages && now - cachedVillages.timestamp < MASTER_DATA_CACHE_TTL) {
+      return cachedVillages.data;
+    }
     try {
       const res = await apiClient.get("/villages");
-      return Array.isArray(res.data) ? res.data : [];
+      const list = Array.isArray(res.data) ? res.data : [];
+      if (list.length > 0) {
+        cachedVillages = { data: list, timestamp: now };
+      }
+      return list;
     } catch (e) {
-      return [];
+      return cachedVillages ? cachedVillages.data : [];
     }
+  },
+  invalidateCache: () => {
+    cachedVillages = null;
   }
 };
 
 export const categoryAPI = {
-  getCategories: async (): Promise<Category[]> => {
+  getCategories: async (forceRefresh: boolean = false): Promise<Category[]> => {
+    const now = Date.now();
+    if (!forceRefresh && cachedCategories && now - cachedCategories.timestamp < MASTER_DATA_CACHE_TTL) {
+      return cachedCategories.data;
+    }
     try {
       const res = await apiClient.get("/categories");
-      return Array.isArray(res.data) ? res.data : [];
+      const list = Array.isArray(res.data) ? res.data : [];
+      if (list.length > 0) {
+        cachedCategories = { data: list, timestamp: now };
+      }
+      return list;
     } catch (e) {
-      return [];
+      return cachedCategories ? cachedCategories.data : [];
     }
+  },
+  invalidateCache: () => {
+    cachedCategories = null;
   }
 };
 
@@ -312,13 +381,22 @@ export const reportAPI = {
 };
 
 // ----------------- ADMIN API -----------------
+let cachedDashboardStats: { data: DashboardStats; timestamp: number } | null = null;
+const DASHBOARD_CACHE_TTL = 5000; // 5 seconds
+
 export const adminAPI = {
-  getDashboardStats: async (): Promise<DashboardStats> => {
+  getDashboardStats: async (forceRefresh: boolean = false): Promise<DashboardStats> => {
+    const now = Date.now();
+    if (!forceRefresh && cachedDashboardStats && now - cachedDashboardStats.timestamp < DASHBOARD_CACHE_TTL) {
+      return cachedDashboardStats.data;
+    }
     try {
       const res = await apiClient.get("/admin/dashboard");
-      return res.data;
+      const data = res.data;
+      cachedDashboardStats = { data, timestamp: now };
+      return data;
     } catch (e) {
-      return {
+      return cachedDashboardStats ? cachedDashboardStats.data : {
         total_voters: 0,
         active_voters: 0,
         deceased_voters: 0,
@@ -328,6 +406,9 @@ export const adminAPI = {
         recent_activities: []
       } as any;
     }
+  },
+  invalidateDashboardCache: () => {
+    cachedDashboardStats = null;
   },
 
   getUsers: async (is_active?: boolean): Promise<User[]> => {

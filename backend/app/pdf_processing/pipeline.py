@@ -505,8 +505,9 @@ def commit_mongo_job_records(job_id: str, duplicate_strategy: str = "SKIP") -> i
     total_v = db.members.count_documents({"village.id": v_ref["id"]})
     active_v = db.members.count_documents({"village.id": v_ref["id"], "status": "ACTIVE"})
     dead_v = db.members.count_documents({"village.id": v_ref["id"], "status": "DECEASED"})
+    v_up_query = {"_id": ObjectId(v_ref["id"])} if ObjectId.is_valid(v_ref["id"]) else {"_id": v_ref["id"]}
     db.villages.update_one(
-        v_query,
+        v_up_query,
         {"$set": {
             "stats.totalVoters": total_v,
             "stats.activeMembers": active_v,

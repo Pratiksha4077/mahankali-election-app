@@ -1,3 +1,4 @@
+import asyncio
 import re
 import math
 from datetime import datetime
@@ -34,9 +35,7 @@ class MongoMemberService:
     ) -> Dict[str, Any]:
         db = get_mongo_db()
         and_conditions = [
-            {"isDeleted": {"$ne": True}},
-            {"nameMarathi.full": {"$nin": ["चाचणी कुटुंब मतदार", "चाचणी कुटुंब"]}},
-            {"name.full": {"$nin": ["चाचणी कुटुंब मतदार", "चाचणी कुटुंब"]}}
+            {"isDeleted": {"$ne": True}}
         ]
         if village_id:
             vid_variants = [str(village_id)]
@@ -81,12 +80,6 @@ class MongoMemberService:
 
         filter_q: Dict[str, Any] = {"$and": and_conditions} if and_conditions else {}
 
-        # Exact and accurate count documents
-        try:
-            total = await db.members.count_documents(filter_q)
-        except Exception:
-            total = 0
-
         # Lightweight field projection for 10x faster network and parsing speed
         projection = {
             "name": 1,
@@ -123,7 +116,17 @@ class MongoMemberService:
             projection=projection
         ).sort([("serialNumber", 1)]).skip(skip).limit(limit)
 
-        items = [format_member_doc(doc) async for doc in cursor]
+        async def fetch_items():
+            return [format_member_doc(doc) async for doc in cursor]
+
+        async def fetch_total():
+            try:
+                return await db.members.count_documents(filter_q)
+            except Exception:
+                return 0
+
+        # Execute data fetch and count query concurrently for 2x faster response
+        items, total = await asyncio.gather(fetch_items(), fetch_total())
         pages = math.ceil(total / limit) if limit > 0 else 1
 
         return {

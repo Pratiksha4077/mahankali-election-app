@@ -7,9 +7,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
 import { adminAPI } from "../../api/client";
 import { theme } from "../../theme/theme";
+import { useTheme } from "../../context/ThemeContext";
 
 export const UserDetailsScreen: React.FC<{ navigation: any; route: any }> = ({ navigation, route }) => {
   const userId = route.params?.userId || route.params?.user?.id || route.params?.user?._id;
+  const { theme, isDark } = useTheme();
 
   const [user, setUser] = useState<any>(null);
   const [activities, setActivities] = useState<any[]>([]);
@@ -66,7 +68,7 @@ export const UserDetailsScreen: React.FC<{ navigation: any; route: any }> = ({ n
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
       <Header title="User Details & Activity" showBack onBack={() => navigation.goBack()} />
 
       {loading ? (
@@ -76,14 +78,14 @@ export const UserDetailsScreen: React.FC<{ navigation: any; route: any }> = ({ n
       ) : (
         <ScrollView contentContainerStyle={styles.scrollContent}>
           {/* User Profile Card */}
-          <View style={styles.profileCard}>
+          <View style={[styles.profileCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
             <View style={styles.avatarRow}>
-              <View style={styles.avatarCircle}>
+              <View style={[styles.avatarCircle, { backgroundColor: isDark ? theme.colors.primary : "#4F46E5" }]}>
                 <Ionicons name="person" size={32} color="#FFFFFF" />
               </View>
               <View style={{ flex: 1, marginLeft: 14 }}>
-                <Text style={styles.fullName}>{user?.fullName || user?.username}</Text>
-                <Text style={styles.username}>@{user?.username}</Text>
+                <Text style={[styles.fullName, { color: theme.colors.textPrimary }]}>{user?.fullName || user?.username}</Text>
+                <Text style={[styles.username, { color: theme.colors.textMuted }]}>@{user?.username}</Text>
                 <View style={styles.badgeRow}>
                   <View style={[styles.badge, { backgroundColor: user?.role === "ADMIN" ? "#1E3A8A" : "#065F46" }]}>
                     <Text style={styles.badgeText}>{user?.role}</Text>
@@ -98,26 +100,26 @@ export const UserDetailsScreen: React.FC<{ navigation: any; route: any }> = ({ n
             </View>
 
             {/* User Meta Information Grid */}
-            <View style={styles.metaGrid}>
+            <View style={[styles.metaGrid, { borderTopColor: theme.colors.border }]}>
               <View style={styles.metaItem}>
-                <Text style={styles.metaLabel}>Mobile Number</Text>
-                <Text style={styles.metaValue}>{user?.mobileNumber || "N/A"}</Text>
+                <Text style={[styles.metaLabel, { color: theme.colors.textMuted }]}>Mobile Number</Text>
+                <Text style={[styles.metaValue, { color: theme.colors.textPrimary }]}>{user?.mobileNumber || "N/A"}</Text>
               </View>
               <View style={styles.metaItem}>
-                <Text style={styles.metaLabel}>Created Date</Text>
-                <Text style={styles.metaValue}>
+                <Text style={[styles.metaLabel, { color: theme.colors.textMuted }]}>Created Date</Text>
+                <Text style={[styles.metaValue, { color: theme.colors.textPrimary }]}>
                   {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : "N/A"}
                 </Text>
               </View>
               <View style={styles.metaItem}>
-                <Text style={styles.metaLabel}>Last Login</Text>
-                <Text style={styles.metaValue}>
+                <Text style={[styles.metaLabel, { color: theme.colors.textMuted }]}>Last Login</Text>
+                <Text style={[styles.metaValue, { color: theme.colors.textPrimary }]}>
                   {user?.lastLogin ? new Date(user.lastLogin).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Never"}
                 </Text>
               </View>
               <View style={styles.metaItem}>
-                <Text style={styles.metaLabel}>Assigned Villages</Text>
-                <Text style={styles.metaValue}>{user?.assignedVillages?.length || 0} Villages</Text>
+                <Text style={[styles.metaLabel, { color: theme.colors.textMuted }]}>Assigned Villages</Text>
+                <Text style={[styles.metaValue, { color: theme.colors.textPrimary }]}>{user?.assignedVillages?.length || 0} Villages</Text>
               </View>
             </View>
 
@@ -145,28 +147,28 @@ export const UserDetailsScreen: React.FC<{ navigation: any; route: any }> = ({ n
           {/* Section: Application Activity (Non-Surveillance Guarantee) */}
           <View style={styles.activityHeaderRow}>
             <View>
-              <Text style={styles.sectionHeading}>Application Activity</Text>
-              <Text style={styles.privacyNote}>Strictly tracks deliberate actions inside this app (zero device surveillance).</Text>
+              <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>Application Activity</Text>
+              <Text style={[styles.privacyNote, { color: theme.colors.textMuted }]}>Strictly tracks deliberate actions inside this app (zero device surveillance).</Text>
             </View>
           </View>
 
           {activities.length === 0 ? (
             <View style={styles.emptyActivity}>
               <Ionicons name="time-outline" size={36} color={theme.colors.textMuted} />
-              <Text style={styles.emptyActivityText}>No activity recorded yet for this user.</Text>
+              <Text style={[styles.emptyActivityText, { color: theme.colors.textMuted }]}>No activity recorded yet for this user.</Text>
             </View>
           ) : (
             activities.map((act, index) => {
               const icon = formatActionIcon(act.action);
               return (
-                <View key={act.id || index} style={styles.activityItem}>
+                <View key={act.id || index} style={[styles.activityItem, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
                   <View style={[styles.activityIconCircle, { backgroundColor: `${icon.color}20` }]}>
                     <Ionicons name={icon.name as any} size={18} color={icon.color} />
                   </View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={styles.activityAction}>{act.action}</Text>
-                    <Text style={styles.activityDetails}>{act.details || "In-app interaction"}</Text>
-                    <Text style={styles.activityTime}>
+                    <Text style={[styles.activityAction, { color: theme.colors.textPrimary }]}>{act.action}</Text>
+                    <Text style={[styles.activityDetails, { color: theme.colors.textSecondary }]}>{act.details || "In-app interaction"}</Text>
+                    <Text style={[styles.activityTime, { color: theme.colors.textMuted }]}>
                       {act.timestamp ? new Date(act.timestamp).toLocaleString() : ""}
                     </Text>
                   </View>
