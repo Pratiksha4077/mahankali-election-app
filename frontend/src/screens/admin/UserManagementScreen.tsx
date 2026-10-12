@@ -14,7 +14,7 @@ import { useTheme } from "../../context/ThemeContext";
 
 export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { t } = useLanguage();
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
 
   const [users, setUsers] = useState<User[]>([]);
   const [activeTab, setActiveTab] = useState<"all" | "disabled">("all");
@@ -70,34 +70,57 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
   };
 
   const handleSaveModal = async () => {
-    if (!formUsername || !formMobile) {
-      Alert.alert("त्रुटी", "कृपया युझरनेम आणि मोबाईल नंबर भरा.");
+    const cleanUsername = formUsername.trim();
+    const cleanMobile = formMobile.trim();
+    const cleanPassword = formPassword.trim();
+
+    if (!cleanUsername) {
+      Alert.alert("त्रुटी", "कृपया युझरनेम भरा.");
+      return;
+    }
+    if (!cleanMobile || cleanMobile.length < 10) {
+      Alert.alert("त्रुटी", "कृपया वैध 10-अंकी मोबाईल नंबर प्रविष्ट करा.");
       return;
     }
 
-    if (modalMode === "add") {
-      await adminAPI.createUser({
-        fullName: formUsername,
-        username: formUsername,
-        mobileNumber: formMobile,
-        password: formPassword || "user123",
-        role: formRole,
-        is_active: formIsActive
-      });
-      showToast("नवीन वापरकर्ता जोडला गेला!");
-    } else if (currentUserId) {
-      await adminAPI.updateUser(currentUserId, {
-        fullName: formUsername,
-        mobileNumber: formMobile,
-        password: formPassword,
-        role: formRole,
-        accountStatus: formIsActive ? "ACTIVE" : "DISABLED"
-      });
-      showToast("वापरकर्ता माहिती अद्यतनित केली!");
-    }
+    try {
+      if (modalMode === "add") {
+        const newUser = await adminAPI.createUser({
+          fullName: cleanUsername,
+          username: cleanUsername,
+          mobileNumber: cleanMobile,
+          password: cleanPassword || "user123",
+          role: formRole,
+          is_active: formIsActive
+        });
+        if (newUser && newUser.id) {
+          setUsers(prev => [newUser, ...prev.filter(u => u.id !== newUser.id)]);
+        }
+        showToast("नवीन वापरकर्ता यशस्वीरित्या जोडला गेला!");
+      } else if (currentUserId) {
+        const updated = await adminAPI.updateUser(currentUserId, {
+          fullName: cleanUsername,
+          mobileNumber: cleanMobile,
+          ...(cleanPassword ? { password: cleanPassword } : {}),
+          role: formRole,
+          accountStatus: formIsActive ? "ACTIVE" : "DISABLED"
+        });
+        if (updated) {
+          setUsers(prev => prev.map(u => u.id === currentUserId ? { ...u, ...updated } : u));
+        }
+        showToast("वापरकर्ता माहिती अद्यतनित केली!");
+      }
 
-    setModalVisible(false);
-    loadUsers();
+      setModalVisible(false);
+      loadUsers();
+    } catch (err: any) {
+      const errorMsg =
+        err?.response?.data?.detail ||
+        err?.response?.data?.message ||
+        err?.message ||
+        "वापरकर्ता जोडण्यात त्रुटी आली.";
+      Alert.alert("त्रुटी", String(errorMsg));
+    }
   };
 
   const handleToggleStatus = async (user: User) => {
@@ -304,7 +327,7 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
       {/* Add / Edit User Modal Dialog (Matches Screenshot Page 5 & 6) */}
       <Modal visible={modalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
             <View style={styles.modalHeader}>
               <Ionicons
                 name={modalMode === "add" ? "add-circle-outline" : "pencil"}
@@ -312,15 +335,15 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
                 color={theme.colors.primaryLight}
                 style={{ marginRight: 8 }}
               />
-              <Text style={styles.modalTitle}>
+              <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>
                 {modalMode === "add" ? "Add New User / Admin" : "Edit User / Admin"}
               </Text>
             </View>
 
             <View style={styles.modalField}>
-              <Text style={styles.fieldLabel}>User Name</Text>
+              <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>User Name</Text>
               <TextInput
-                style={styles.modalInput}
+                style={[styles.modalInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                 value={formUsername}
                 onChangeText={setFormUsername}
                 placeholder="उदा. रुपेश सर किंवा नाव"
@@ -329,9 +352,9 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
             </View>
 
             <View style={styles.modalField}>
-              <Text style={styles.fieldLabel}>Mobile Number</Text>
+              <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>Mobile Number</Text>
               <TextInput
-                style={styles.modalInput}
+                style={[styles.modalInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                 value={formMobile}
                 onChangeText={setFormMobile}
                 placeholder="10 अंकी नंबर..."
@@ -341,9 +364,9 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
             </View>
 
             <View style={styles.modalField}>
-              <Text style={styles.fieldLabel}>Password</Text>
+              <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>Password</Text>
               <TextInput
-                style={styles.modalInput}
+                style={[styles.modalInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                 value={formPassword}
                 onChangeText={setFormPassword}
                 placeholder="पासवर्ड प्रविष्ट करा..."

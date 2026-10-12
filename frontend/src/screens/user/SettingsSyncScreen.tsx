@@ -12,7 +12,7 @@ import { theme } from "../../theme/theme";
 
 export const SettingsSyncScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { user, isAdmin, activePanel, logout, switchPanel } = useAuth();
-  const { theme, isDark } = useTheme();
+  const { theme, isDark, setThemeMode } = useTheme();
 
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
@@ -85,13 +85,13 @@ export const SettingsSyncScreen: React.FC<{ navigation: any }> = ({ navigation }
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* User Profile Card */}
-        <View style={styles.userCard}>
-          <View style={styles.userAvatar}>
-            <Ionicons name={isAdmin ? "shield-checkmark" : "person"} size={26} color="#FFFFFF" />
+        <View style={[styles.userCard, { backgroundColor: isDark ? "#1E3A8A" : theme.colors.card, borderColor: isDark ? "#3B82F6" : theme.colors.border }]}>
+          <View style={[styles.userAvatar, { backgroundColor: isDark ? "rgba(255,255,255,0.2)" : "rgba(79, 70, 229, 0.15)" }]}>
+            <Ionicons name={isAdmin ? "shield-checkmark" : "person"} size={26} color={isDark ? "#FFFFFF" : theme.colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.userName}>{user?.fullName || user?.username || "User"}</Text>
-            <Text style={styles.userMeta}>
+            <Text style={[styles.userName, { color: isDark ? "#FFFFFF" : theme.colors.textPrimary }]}>{user?.fullName || user?.username || "User"}</Text>
+            <Text style={[styles.userMeta, { color: isDark ? "#93C5FD" : theme.colors.textSecondary }]}>
               मोबाईल: {user?.mobile || "-"}
             </Text>
             <View style={styles.roleTag}>
@@ -194,6 +194,44 @@ export const SettingsSyncScreen: React.FC<{ navigation: any }> = ({ navigation }
           </>
         )}
 
+        {/* Theme Selection Card (Complete Light/Dark Theme Switching) */}
+        <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>थीम निवडा (Appearance / Theme)</Text>
+        <View style={[styles.themeCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+          <TouchableOpacity
+            style={[
+              styles.themeOptionBtn,
+              { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+              isDark && [styles.themeOptionActive, { borderColor: theme.colors.primary, backgroundColor: isDark ? "rgba(99, 102, 241, 0.15)" : theme.colors.surface }]
+            ]}
+            onPress={() => setThemeMode("dark")}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="moon" size={20} color={isDark ? theme.colors.primaryLight : theme.colors.textMuted} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.themeOptionText, { color: theme.colors.textPrimary }]}>डार्क मोड (Dark Theme)</Text>
+              <Text style={{ color: theme.colors.textMuted, fontSize: 11 }}>डार्क पार्श्वभूमी, रात्रीच्या वापरासाठी उत्तम</Text>
+            </View>
+            {isDark && <Ionicons name="checkmark-circle" size={20} color={theme.colors.primaryLight} />}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.themeOptionBtn,
+              { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+              !isDark && [styles.themeOptionActive, { borderColor: theme.colors.primary, backgroundColor: !isDark ? "rgba(99, 102, 241, 0.1)" : theme.colors.surface }]
+            ]}
+            onPress={() => setThemeMode("light")}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="sunny" size={20} color={!isDark ? "#F59E0B" : theme.colors.textMuted} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.themeOptionText, { color: theme.colors.textPrimary }]}>लाइट मोड (Light Theme)</Text>
+              <Text style={{ color: theme.colors.textMuted, fontSize: 11 }}>शुभ्र पार्श्वभूमी, स्पष्ट काळा मजकूर आणि कार्ड्स</Text>
+            </View>
+            {!isDark && <Ionicons name="checkmark-circle" size={20} color={theme.colors.primaryLight} />}
+          </TouchableOpacity>
+        </View>
+
         {/* Logout Button */}
         <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>खाते (Account)</Text>
         <TouchableOpacity
@@ -206,26 +244,26 @@ export const SettingsSyncScreen: React.FC<{ navigation: any }> = ({ navigation }
         </TouchableOpacity>
 
         {/* App Info */}
-        <View style={styles.appInfoCard}>
-          <Text style={styles.appInfoTitle}>निवडणूक व्यवस्थापन अॅप</Text>
-          <Text style={styles.appInfoText}>साखराळे ग्राम • वाळवा तालुका • सांगली जिल्हा</Text>
-          <Text style={styles.appInfoVersion}>Version 2.0 • Powered by FastAPI + MongoDB</Text>
+        <View style={[styles.appInfoCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+          <Text style={[styles.appInfoTitle, { color: theme.colors.textPrimary }]}>निवडणूक व्यवस्थापन अॅप</Text>
+          <Text style={[styles.appInfoText, { color: theme.colors.textSecondary }]}>साखराळे ग्राम • वाळवा तालुका • सांगली जिल्हा</Text>
+          <Text style={[styles.appInfoVersion, { color: theme.colors.textMuted }]}>Version 2.0 • Powered by FastAPI + MongoDB</Text>
         </View>
       </ScrollView>
 
       {/* Admin Profile Edit Modal */}
       <Modal visible={editModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
             <View style={styles.modalHeader}>
-              <Ionicons name="person-circle-outline" size={22} color="#60A5FA" style={{ marginRight: 8 }} />
-              <Text style={styles.modalTitle}>प्रोफाइल अद्यतनित करा (Edit Profile)</Text>
+              <Ionicons name="person-circle-outline" size={22} color={theme.colors.primaryLight} style={{ marginRight: 8 }} />
+              <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>प्रोफाइल अद्यतनित करा (Edit Profile)</Text>
             </View>
 
             <View style={styles.modalField}>
-              <Text style={styles.fieldLabel}>पूर्ण नाव (Full Name)</Text>
+              <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>पूर्ण नाव (Full Name)</Text>
               <TextInput
-                style={styles.modalInput}
+                style={[styles.modalInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                 value={editFullName}
                 onChangeText={setEditFullName}
                 placeholder="पूर्ण नाव प्रविष्ट करा"
@@ -234,9 +272,9 @@ export const SettingsSyncScreen: React.FC<{ navigation: any }> = ({ navigation }
             </View>
 
             <View style={styles.modalField}>
-              <Text style={styles.fieldLabel}>मोबाईल नंबर (Mobile Number)</Text>
+              <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>मोबाईल नंबर (Mobile Number)</Text>
               <TextInput
-                style={styles.modalInput}
+                style={[styles.modalInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                 value={editMobile}
                 onChangeText={setEditMobile}
                 placeholder="10 अंकी मोबाईल नंबर"
@@ -246,9 +284,9 @@ export const SettingsSyncScreen: React.FC<{ navigation: any }> = ({ navigation }
             </View>
 
             <View style={styles.modalField}>
-              <Text style={styles.fieldLabel}>नवीन पासवर्ड (रिकामे ठेवल्यास बदलणार नाही)</Text>
+              <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>नवीन पासवर्ड (रिकामे ठेवल्यास बदलणार नाही)</Text>
               <TextInput
-                style={styles.modalInput}
+                style={[styles.modalInput, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
                 value={editPassword}
                 onChangeText={setEditPassword}
                 placeholder="नवीन पासवर्ड..."

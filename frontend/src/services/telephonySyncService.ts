@@ -39,9 +39,9 @@ export async function syncDeviceTelephonyLogs(): Promise<SyncTelephonyResult> {
       ? "RESTRICTED"
       : "DENIED";
 
-    // 2. Fetch permitted device Call Logs (batch fetching across pagination 50, 100, 150+ up to 200 records)
+    // 2. Fetch permitted device Call Logs (batch fetching across pagination 50, 100, 150+ up to 500 records)
     if (perms.callHistory) {
-      const callRes = await DeviceTelephony.getBatchCallLogs(50, 200);
+      const callRes = await DeviceTelephony.getBatchCallLogs(50, 500);
       callStatus = callRes.status;
       if (callRes.records && callRes.records.length > 0) {
         callsList = callRes.records.map((c) => ({
@@ -58,7 +58,7 @@ export async function syncDeviceTelephonyLogs(): Promise<SyncTelephonyResult> {
 
     // 3. Fetch permitted device SMS metadata (including privacy-safe short preview)
     if (perms.sms) {
-      const smsRes = await DeviceTelephony.getBatchSmsMetadata(50, 200);
+      const smsRes = await DeviceTelephony.getBatchSmsMetadata(50, 500);
       smsStatus = smsRes.status;
       if (smsRes.records && smsRes.records.length > 0) {
         smsList = smsRes.records.map((s) => ({

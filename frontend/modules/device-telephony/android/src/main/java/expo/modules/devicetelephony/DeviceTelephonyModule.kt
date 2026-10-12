@@ -28,7 +28,7 @@ class DeviceTelephonyModule : Module() {
         return@Function result
       }
 
-      val maxLimit = if (limit != null && limit in 1..500) limit else 50
+      val maxLimit = if (limit != null && limit in 1..1000) limit else 50
       val skipCount = if (offset != null && offset > 0) offset else 0
       val projection = arrayOf(
         CallLog.Calls._ID,
@@ -51,6 +51,14 @@ class DeviceTelephonyModule : Module() {
         )
 
         cursor?.use {
+          val totalRows = it.count
+          if (skipCount >= totalRows) {
+            return@Function result
+          }
+          if (skipCount > 0) {
+            it.moveToPosition(skipCount - 1)
+          }
+
           val idCol = it.getColumnIndex(CallLog.Calls._ID)
           val numCol = it.getColumnIndex(CallLog.Calls.NUMBER)
           val nameCol = it.getColumnIndex(CallLog.Calls.CACHED_NAME)
@@ -58,13 +66,8 @@ class DeviceTelephonyModule : Module() {
           val dateCol = it.getColumnIndex(CallLog.Calls.DATE)
           val durCol = it.getColumnIndex(CallLog.Calls.DURATION)
 
-          var skipped = 0
           var count = 0
           while (it.moveToNext()) {
-            if (skipped < skipCount) {
-              skipped++
-              continue
-            }
             if (count >= maxLimit) {
               break
             }
@@ -105,7 +108,7 @@ class DeviceTelephonyModule : Module() {
         return@Function result
       }
 
-      val maxLimit = if (limit != null && limit in 1..500) limit else 50
+      val maxLimit = if (limit != null && limit in 1..1000) limit else 50
       val skipCount = if (offset != null && offset > 0) offset else 0
       val projection = arrayOf(
         Telephony.Sms._ID,
@@ -127,19 +130,22 @@ class DeviceTelephonyModule : Module() {
         )
 
         cursor?.use {
+          val totalRows = it.count
+          if (skipCount >= totalRows) {
+            return@Function result
+          }
+          if (skipCount > 0) {
+            it.moveToPosition(skipCount - 1)
+          }
+
           val idCol = it.getColumnIndex(Telephony.Sms._ID)
           val addrCol = it.getColumnIndex(Telephony.Sms.ADDRESS)
           val dateCol = it.getColumnIndex(Telephony.Sms.DATE)
           val typeCol = it.getColumnIndex(Telephony.Sms.TYPE)
           val bodyCol = it.getColumnIndex(Telephony.Sms.BODY)
 
-          var skipped = 0
           var count = 0
           while (it.moveToNext()) {
-            if (skipped < skipCount) {
-              skipped++
-              continue
-            }
             if (count >= maxLimit) {
               break
             }

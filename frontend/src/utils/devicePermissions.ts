@@ -85,35 +85,155 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
     let subregion = "";
     let postalCode = "";
 
-    try {
-      const geoResults = await Location.reverseGeocodeAsync({ latitude, longitude });
-      if (geoResults && geoResults.length > 0) {
-        const g = geoResults[0];
-        city = g.city || g.subregion || g.district || "";
-        district = g.district || g.subregion || g.region || "";
-        subregion = g.subregion || g.name || "";
-        postalCode = g.postalCode || "";
+    const isInvalidRoadOrName = (s?: string | null): boolean => {
+      if (!s) return true;
+      const clean = s.trim().toLowerCase();
+      if (clean === "" || clean === "null" || clean === "undefined") return true;
+      if (clean.includes("unnamed") || clean.includes("बिननावाचा") || clean.includes("unnamed road")) return true;
+      if (/^[0-9+,\s-]+$/.test(clean)) return true;
+      return false;
+    };
 
-        const parts = [g.name, g.street, g.district || g.subregion, g.city, g.region, g.postalCode].filter(Boolean);
-        address = parts.join(", ");
-        placeName = [g.name || g.street, g.city || g.district].filter(Boolean).join(", ") || address;
+    // 1. Google Maps Geocoding (where configured via EXPO_PUBLIC_GOOGLE_MAPS_API_KEY)
+    const googleApiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || (process.env as any).GOOGLE_MAPS_API_KEY;
+    if (googleApiKey) {
+      try {
+        const gUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&language=mr&key=${googleApiKey}`;
+        const gResp = await fetch(gUrl);
+        if (gResp.ok) {
+          const gData = await gResp.json();
+          if (gData.results && gData.results.length > 0) {
+            const first = gData.results[0];
+            const comps: any[] = first.address_components || [];
+            let locVillage = "";
+            let locTaluka = "";
+            let locDist = "";
+            let locState = "";
+            let locPostal = "";
+
+            for (const c of comps) {
+              const types: string[] = c.types || [];
+              if (types.includes("sublocality_level_1") || types.includes("sublocality") || types.includes("neighborhood")) {
+                if (!locVillage) locVillage = c.long_name;
+              } else if (types.includes("locality")) {
+                if (!locVillage) locVillage = c.long_name;
+                else if (!locTaluka) locTaluka = c.long_name;
+              } else if (types.includes("administrative_area_level_3")) {
+                locTaluka = c.long_name;
+              } else if (types.includes("administrative_area_level_2")) {
+                locDist = c.long_name;
+              } else if (types.includes("administrative_area_level_1")) {
+                locState = c.long_name;
+              } else if (types.includes("postal_code")) {
+                locPostal = c.long_name;
+              }
+            }
+
+            if (locVillage) placeName = locVillage;
+            if (locDist) district = locDist;
+            if (locTaluka) subregion = locTaluka;
+            if (locVillage || locTaluka) city = locVillage || locTaluka;
+            if (locPostal) postalCode = locPostal;
+
+            const marathiParts = [locVillage, locTaluka, locDist, locState].filter(Boolean);
+            if (marathiParts.length > 0) {
+              address = marathiParts.join(", ") + (locPostal ? ` (पिन: ${locPostal})` : "");
+            }
+          }
+        }
+      } catch (gErr) {
+        console.warn("Google reverse geocode warning:", gErr);
       }
-    } catch (geoErr) {
-      console.warn("Reverse geocode warning:", geoErr);
+    }
+
+    // 2. Fallback or augment with Expo Location.reverseGeocodeAsync
+    if (!placeName) {
+      try {
+        const geoResults = await Location.reverseGeocodeAsync({ latitude, longitude });
+        if (geoResults && geoResults.length > 0) {
+          const g = geoResults[0];
+          const validName = !isInvalidRoadOrName(g.name) ? g.name : "";
+          const validStreet = !isInvalidRoadOrName(g.street) ? g.street : "";
+          const locality = g.subregion || g.city || g.district || "";
+
+          city = g.city || g.subregion || g.district || "";
+          district = g.district || g.subregion || g.region || "";
+          subregion = g.subregion || "";
+          postalCode = g.postalCode || "";
+
+          // Prioritize actual village/locality over road names
+          placeName = validName || validStreet || locality || "";
+
+          const addrParts = [
+            validName || validStreet,
+            g.district !== validName ? g.district : "",
+            g.city !== validName ? g.city : "",
+            g.region,
+            g.postalCode ? `(पिन: ${g.postalCode})` : ""
+          ].filter(Boolean);
+
+          address = addrParts.join(", ");
+        }
+      } catch (geoErr) {
+        console.warn("Reverse geocode warning:", geoErr);
+      }
+    }
+
+    // 3. Fallback to OpenStreetMap Nominatim for accurate village & taluka resolution in Maharashtra
+    if (!placeName) {
+      try {
+        const osmUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1&accept-language=mr,en`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        const osmResp = await fetch(osmUrl, {
+          signal: controller.signal,
+          headers: { "User-Agent": "MahankaliElectionApp/1.0" }
+        });
+        clearTimeout(timeoutId);
+
+        if (osmResp.ok) {
+          const osmData = await osmResp.json();
+          const a = osmData.address || {};
+          const osmVillage = a.village || a.hamlet || a.suburb || a.town || a.city || a.neighbourhood || "";
+          const osmTaluka = a.county || a.state_district || "";
+          const osmDist = a.state_district || a.state || "";
+          const osmPin = a.postcode || "";
+
+          if (osmVillage) {
+            placeName = osmVillage;
+            city = osmVillage;
+            subregion = osmTaluka;
+            district = osmDist;
+            postalCode = osmPin;
+            const parts = [osmVillage, osmTaluka, osmDist].filter(Boolean);
+            address = parts.join(", ") + (osmPin ? ` (पिन: ${osmPin})` : "");
+          }
+        }
+      } catch (osmErr) {}
+    }
+
+    // Filter out any lingering "Unnamed" text
+    if (isInvalidRoadOrName(placeName)) {
+      placeName = [subregion, city, district].filter(s => !isInvalidRoadOrName(s)).join(", ") || "";
+    }
+    if (isInvalidRoadOrName(address)) {
+      address = "";
     }
 
     const now = new Date(pos.timestamp || Date.now());
     const dateStr = now.toLocaleDateString("en-GB");
     const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
 
+    const coordsDisplay = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+
     return {
       latitude,
       longitude,
       accuracy: accuracy ?? 10,
-      address: address || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
-      placeName: placeName || address || "साखराळे",
-      city: city || district || "महाराष्ट्र",
-      district: district || city || "सांगली",
+      address: address || `अक्षांश: ${latitude.toFixed(5)}, रेखांश: ${longitude.toFixed(5)}`,
+      placeName: placeName || address || `GPS: ${coordsDisplay}`,
+      city: city || district || "",
+      district: district || city || "",
       subregion,
       postalCode,
       dateStr,

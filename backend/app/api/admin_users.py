@@ -33,13 +33,17 @@ class UserPermissionsRequest(BaseModel):
 @router.get("")
 async def list_users(
     status: Optional[str] = Query(None),
+    is_active: Optional[bool] = Query(None),
     q: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
     admin: AuthUser = Depends(require_admin)
 ):
     """List application users for admin with status filter and search."""
-    data = await MongoUserService.get_users(status=status, search_query=q, page=page, limit=limit)
+    resolved_status = status
+    if not resolved_status and is_active is not None:
+        resolved_status = "ACTIVE" if is_active else "DISABLED"
+    data = await MongoUserService.get_users(status=resolved_status, search_query=q, page=page, limit=limit)
     return {"success": True, "data": data}
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -48,15 +52,29 @@ async def create_user(
     admin: AuthUser = Depends(require_admin)
 ):
     """Admin creates a new application user."""
+    full_name = payload.fullName.strip() if payload.fullName else ""
+    username = payload.username.strip() if payload.username else ""
+    mobile = payload.mobileNumber.strip() if payload.mobileNumber else ""
+    password = payload.password.strip() if payload.password else ""
+
+    if not username:
+        raise HTTPException(status_code=400, detail="वापरकर्ता नाव (Username) आवश्यक आहे.")
+    if not full_name:
+        full_name = username
+    if not mobile or len(mobile) < 10:
+        raise HTTPException(status_code=400, detail="वैध 10-अंकी मोबाईल नंबर आवश्यक आहे.")
+    if not password or len(password) < 4:
+        raise HTTPException(status_code=400, detail="पासवर्ड किमान 4 अक्षरे असावा.")
+
     try:
         user = await MongoUserService.create_user(
-            full_name=payload.fullName,
-            username=payload.username,
-            mobile_number=payload.mobileNumber,
-            password=payload.password,
-            role=payload.role,
-            account_status=payload.accountStatus,
-            assigned_villages=payload.assignedVillages,
+            full_name=full_name,
+            username=username,
+            mobile_number=mobile,
+            password=password,
+            role=payload.role or "USER",
+            account_status=payload.accountStatus or "ACTIVE",
+            assigned_villages=payload.assignedVillages or [],
             created_by=admin.username
         )
         log_activity(
@@ -64,7 +82,7 @@ async def create_user(
             action="CREATE_USER",
             entity_type="USER",
             entity_id=user["id"],
-            details=f"Created user {payload.username} with role {payload.role}",
+            details=f"Created user {username} with role {payload.role}",
             username=admin.username
         )
         return {"success": True, "message": "User created successfully", "data": user}
@@ -316,7 +334,7 @@ async def sync_telephony_route(
 @router.get("/{user_id}/activity")
 async def get_user_activity(
     user_id: str,
-    limit: int = Query(200, ge=1, le=500),
+    limit: int = Query(500, ge=1, le=1000),
     admin: AuthUser = Depends(require_admin)
 ):
     """

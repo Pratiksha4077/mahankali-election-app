@@ -3,6 +3,7 @@ import { View, TextInput, StyleSheet, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { theme } from "../theme/theme";
 import { useLanguage } from "../context/LanguageContext";
+import { useTheme } from "../context/ThemeContext";
 
 interface SearchBarProps {
   value: string;
@@ -18,6 +19,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   placeholder
 }) => {
   const { t } = useLanguage();
+  const { theme } = useTheme();
   const [internalVal, setInternalVal] = useState(value);
 
   useEffect(() => {
@@ -31,10 +33,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
       <Ionicons name="search-outline" size={20} color={theme.colors.textSecondary} style={styles.searchIcon} />
       <TextInput
-        style={styles.input}
+        style={[styles.input, { color: theme.colors.textPrimary }]}
         value={internalVal}
         onChangeText={(txt) => {
           setInternalVal(txt);

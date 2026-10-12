@@ -332,7 +332,12 @@ export const adminAPI = {
 
   getUsers: async (is_active?: boolean): Promise<User[]> => {
     try {
-      const res = await apiClient.get("/admin/users", { params: { is_active } });
+      const params: any = { limit: 200 };
+      if (is_active !== undefined) {
+        params.is_active = is_active;
+        params.status = is_active ? "ACTIVE" : "DISABLED";
+      }
+      const res = await apiClient.get("/admin/users", { params });
       const raw = res.data?.data?.items || res.data?.data || res.data?.items || res.data || [];
       if (Array.isArray(raw)) {
         return raw.map((u: any) => ({
@@ -501,7 +506,7 @@ export const adminAPI = {
 
   getUserActivity: async (user_id?: string, username?: string) => {
     try {
-      const res = await apiClient.get(`/admin/users/${user_id}/activity`);
+      const res = await apiClient.get(`/admin/users/${user_id}/activity`, { params: { limit: 500 } });
       const payload = res.data?.data || res.data;
       if (payload) {
         console.log(

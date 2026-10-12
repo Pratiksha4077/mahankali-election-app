@@ -18,7 +18,7 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
   const { memberId } = route.params || { memberId: "m-1" };
   const { t } = useLanguage();
   const { user } = useAuth();
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
 
   const [member, setMember] = useState<Member | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -441,7 +441,7 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
       <Header
         title={member ? `${member.full_name_mr || member.full_name_en}` : t("voter_profile")}
         showBack
@@ -482,16 +482,16 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
           </View>
 
           {/* Profile Card with all member data */}
-          <View style={styles.profileCard}>
-            <View style={styles.profileHeader}>
-              <View style={styles.avatarCircle}>
-                <Ionicons name="person" size={24} color="#93C5FD" />
+          <View style={[styles.profileCard, { backgroundColor: isDark ? "#1E3A8A" : theme.colors.card, borderColor: isDark ? "#2563EB" : theme.colors.border }]}>
+            <View style={[styles.profileHeader, { borderBottomColor: isDark ? "rgba(255,255,255,0.1)" : theme.colors.border }]}>
+              <View style={[styles.avatarCircle, { backgroundColor: isDark ? "rgba(255,255,255,0.15)" : "rgba(79, 70, 229, 0.15)" }]}>
+                <Ionicons name="person" size={24} color={isDark ? "#93C5FD" : theme.colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.cardSublabel}>पूर्ण नाव (Full Name)</Text>
-                <Text style={styles.cardName}>{member.full_name_mr || member.full_name_en || "-"}</Text>
+                <Text style={[styles.cardSublabel, { color: isDark ? "#93C5FD" : theme.colors.textMuted }]}>पूर्ण नाव (Full Name)</Text>
+                <Text style={[styles.cardName, { color: isDark ? "#FFFFFF" : theme.colors.textPrimary }]}>{member.full_name_mr || member.full_name_en || "-"}</Text>
                 {member.full_name_en && member.full_name_mr && (
-                  <Text style={styles.cardNameEn}>{member.full_name_en}</Text>
+                  <Text style={[styles.cardNameEn, { color: isDark ? "#BFDBFE" : theme.colors.textSecondary }]}>{member.full_name_en}</Text>
                 )}
               </View>
               {isDeceased && (
@@ -503,11 +503,11 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
             {/* All Voter Data Fields */}
             {getVoterFields().map((field, idx) => (
-              <View key={idx} style={styles.detailRow}>
-                <Ionicons name={field.icon as any} size={16} color="#93C5FD" style={{ marginRight: 10 }} />
+              <View key={idx} style={[styles.detailRow, { borderBottomColor: isDark ? "rgba(255,255,255,0.07)" : theme.colors.border }]}>
+                <Ionicons name={field.icon as any} size={16} color={isDark ? "#93C5FD" : theme.colors.primary} style={{ marginRight: 10 }} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.cardSublabel}>{field.label}</Text>
-                  <Text style={styles.cardValue}>{field.value}</Text>
+                  <Text style={[styles.cardSublabel, { color: isDark ? "#93C5FD" : theme.colors.textMuted }]}>{field.label}</Text>
+                  <Text style={[styles.cardValue, { color: isDark ? "#F8FAFC" : theme.colors.textPrimary }]}>{field.value}</Text>
                 </View>
               </View>
             ))}

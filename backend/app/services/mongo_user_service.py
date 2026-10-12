@@ -80,11 +80,12 @@ class MongoUserService:
     ) -> Dict[str, Any]:
         db = get_mongo_db()
 
-        # Check existing username
-        existing = await db.users.find_one({"username": username})
+        # Check existing username (case-insensitive)
+        existing = await db.users.find_one({"username": {"$regex": f"^{re.escape(username.strip())}$", "$options": "i"}, "isDeleted": {"$ne": True}})
         if existing:
-            raise ValueError(f"Username '{username}' already exists")
+            raise ValueError(f"वापरकर्ता नाव '{username}' आधीच अस्तित्वात आहे (Username '{username}' already exists)")
 
+        is_active = (account_status.upper() == "ACTIVE")
         new_user = {
             "username": username.strip(),
             "fullName": full_name.strip(),
@@ -92,6 +93,10 @@ class MongoUserService:
             "hashedPassword": get_password_hash(password),
             "role": role.upper(),
             "accountStatus": account_status.upper(),
+            "is_active": is_active,
+            "admin_access_allowed": is_active,
+            "admin_access_denied": not is_active,
+            "permissions_granted": False,
             "assignedVillages": assigned_villages or [],
             "createdAt": datetime.utcnow(),
             "lastLogin": None,
@@ -279,24 +284,31 @@ class MongoUserService:
                 {"metadata.username": {"$in": possible_usernames}}
             ]
         }
-        cursor = db.app_activities.find(match_q).sort("timestamp", -1).limit(limit)
+        # Dedicated cursors for each activity type up to limit so 51-150+ calls and SMS are fully returned
+        call_q = {**match_q, "action": {"$regex": "CALL", "$options": "i"}}
+        sms_q = {**match_q, "action": {"$regex": "SMS|WHATSAPP", "$options": "i"}}
+        loc_q = {**match_q, "action": {"$regex": "LOCATION|VILLAGE|CHECKIN|BOOTH", "$options": "i"}}
 
         calls = []
-        sms = []
-        locations = []
-
-        async for doc in cursor:
+        async for doc in db.app_activities.find(call_q).sort("timestamp", -1).limit(limit):
             doc["id"] = str(doc.get("_id", ""))
             if "_id" in doc:
                 del doc["_id"]
+            calls.append(doc)
 
-            act = doc.get("action", "").upper()
-            if "CALL" in act:
-                calls.append(doc)
-            elif "SMS" in act or "WHATSAPP" in act:
-                sms.append(doc)
-            elif "LOCATION" in act or "VILLAGE" in act or "CHECKIN" in act or "BOOTH" in act:
-                locations.append(doc)
+        sms = []
+        async for doc in db.app_activities.find(sms_q).sort("timestamp", -1).limit(limit):
+            doc["id"] = str(doc.get("_id", ""))
+            if "_id" in doc:
+                del doc["_id"]
+            sms.append(doc)
+
+        locations = []
+        async for doc in db.app_activities.find(loc_q).sort("timestamp", -1).limit(limit):
+            doc["id"] = str(doc.get("_id", ""))
+            if "_id" in doc:
+                del doc["_id"]
+            locations.append(doc)
 
         call_status = "UNKNOWN"
         sms_status = "UNKNOWN"

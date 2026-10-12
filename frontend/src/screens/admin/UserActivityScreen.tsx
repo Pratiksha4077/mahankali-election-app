@@ -13,7 +13,7 @@ import { theme } from "../../theme/theme";
 export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
   const user = route.params?.user;
   const { t } = useLanguage();
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
 
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
@@ -302,7 +302,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
   const displayMobile = currentUser?.mobileNumber || currentUser?.mobile || user.mobileNumber || user.mobile || "-";
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
       <Header
         title={displayName}
         showBack
@@ -314,13 +314,13 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.primaryLight} />}
       >
         {/* User Badge Card */}
-        <View style={styles.userBadgeCard}>
-          <View style={styles.avatarCircle}>
-            <Ionicons name="person" size={26} color="#FFFFFF" />
+        <View style={[styles.userBadgeCard, { backgroundColor: isDark ? "#1E3A8A" : theme.colors.card, borderColor: isDark ? "#3B82F6" : theme.colors.border }]}>
+          <View style={[styles.avatarCircle, { backgroundColor: isDark ? "rgba(255,255,255,0.2)" : "rgba(79, 70, 229, 0.15)" }]}>
+            <Ionicons name="person" size={26} color={isDark ? "#FFFFFF" : theme.colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.userName}>{displayName}</Text>
-            <Text style={styles.userMobile}>मोबाईल: {displayMobile}</Text>
+            <Text style={[styles.userName, { color: isDark ? "#FFFFFF" : theme.colors.textPrimary }]}>{displayName}</Text>
+            <Text style={[styles.userMobile, { color: isDark ? "#93C5FD" : theme.colors.textSecondary }]}>मोबाईल: {displayMobile}</Text>
 
             {/* Granular Device Permissions Display */}
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
@@ -892,7 +892,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                     const lat = loc.metadata?.latitude ?? loc.latitude;
                     const lon = loc.metadata?.longitude ?? loc.longitude;
                     const hasCoords = lat !== undefined && lon !== undefined;
-                    const placeName = loc.metadata?.placeName || loc.metadata?.village || loc.metadata?.city || (loc.details?.includes(":") ? loc.details.split(":")[1]?.trim() : loc.details) || "साखराळे";
+                    const placeName = loc.metadata?.placeName || loc.metadata?.village || loc.metadata?.city || (loc.details?.includes(":") ? loc.details.split(":")[1]?.trim() : loc.details) || (hasCoords ? `GPS (${typeof lat === 'number' ? lat.toFixed(4) : lat}, ${typeof lon === 'number' ? lon.toFixed(4) : lon})` : "नोंदवलेले स्थान");
                     const locTitle = placeName;
                     const dateStr = loc.metadata?.date || (loc.timestamp ? new Date(loc.timestamp).toLocaleDateString("en-GB") : "-");
                     const timeStr = loc.metadata?.time || (loc.timestamp ? new Date(loc.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }) : "-");

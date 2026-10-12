@@ -100,7 +100,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
       const loc = await getRealtimeDeviceLocation();
       if (!loc) return;
 
-      const placeName = loc.placeName || loc.address || "साखराळे";
+      const placeName = loc.placeName || loc.address || `GPS: ${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`;
       const now = new Date();
       const dateStr = loc.dateStr || now.toLocaleDateString("en-GB");
       const timeStr = loc.timeStr || now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
@@ -120,7 +120,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
           district: loc.district,
           subregion: loc.subregion,
           postalCode: loc.postalCode,
-          village: loc.city || loc.district || "साखराळे",
+          village: loc.placeName || loc.city || loc.district || "",
           date: dateStr,
           time: timeStr,
           formattedDateTime: `${dateStr}, ${timeStr}`,
@@ -183,6 +183,12 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
 
       let items: Member[] = res.items || [];
       let total: number = res.total ?? items.length;
+
+      // Filter out test records defensively
+      items = items.filter(m => {
+        const name = String(m.full_name_mr || m.full_name_en || "");
+        return !name.includes("चाचणी कुटुंब मतदार") && !name.includes("चाचणी कुटुंब");
+      });
 
       // Filter by mobile if quick filter is active
       if (filterMode === "mobile") {
@@ -250,8 +256,8 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
         return;
       }
 
-      const addressStr = loc.address || `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`;
-      const areaName = loc.city || loc.district || "महाराष्ट्र";
+      const addressStr = loc.placeName ? `${loc.placeName} (${loc.address})` : (loc.address || `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`);
+      const areaName = loc.placeName || loc.city || loc.district || "";
 
       await logUserActivity({
         action: "LOCATION_CHECKIN",
@@ -428,11 +434,11 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
                 const isActive = (selectedVillageId || villages[0]?.id) === v.id;
                 return (
                   <TouchableOpacity
-                    style={[styles.villageChip, isActive && styles.villageChipActive]}
+                    style={[styles.villageChip, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, isActive && styles.villageChipActive]}
                     onPress={() => setSelectedVillageId(v.id)}
                     activeOpacity={0.7}
                   >
-                    <Text style={[styles.villageChipText, isActive && styles.villageChipTextActive]}>
+                    <Text style={[styles.villageChipText, { color: theme.colors.textSecondary }, isActive && styles.villageChipTextActive]}>
                       {v.name_mr || v.name_en}
                     </Text>
                   </TouchableOpacity>
@@ -453,7 +459,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
 
             {/* Count Summary */}
             <View style={styles.summaryBar}>
-              <Text style={styles.summaryText}>
+              <Text style={[styles.summaryText, { color: theme.colors.textMuted }]}>
                 {searchQuery
                   ? `"${searchQuery}" साठी: ${members.length} निकाल`
                   : `एकूण मतदार: ${totalCount}`}
@@ -469,24 +475,24 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
             {loading && !refreshing ? (
               <View style={styles.loaderContainer}>
                 <ActivityIndicator size="large" color={theme.colors.primaryLight} />
-                <Text style={styles.loadingText}>मतदार माहिती जलद लोड होत आहे...</Text>
+                <Text style={[styles.loadingText, { color: theme.colors.textMuted }]}>मतदार माहिती जलद लोड होत आहे...</Text>
               </View>
             ) : members.length === 0 ? (
               <View style={styles.emptyContainer}>
-                <View style={styles.emptyIconCircle}>
+                <View style={[styles.emptyIconCircle, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
                   <Ionicons name="folder-open-outline" size={42} color={theme.colors.textMuted} />
                 </View>
-                <Text style={styles.emptyTitle}>
+                <Text style={[styles.emptyTitle, { color: theme.colors.textPrimary }]}>
                   {searchQuery ? "कोणतेही जुळणारे मतदार आढळले नाहीत" : "सध्या कोणताही मतदार डेटा उपलब्ध नाही"}
                 </Text>
-                <Text style={styles.emptySubtitle}>
+                <Text style={[styles.emptySubtitle, { color: theme.colors.textMuted }]}>
                   {searchQuery
                     ? `'${searchQuery}' साठी कोणताही मतदार सापडला नाही.`
                     : "Admin Panel च्या Upload Studio मधून Excel किंवा CSV फाईल अपलोड केल्यानंतर येथे मतदार यादी दिसेल."}
                 </Text>
-                <TouchableOpacity style={styles.reloadBtn} onPress={handleRefresh} activeOpacity={0.7}>
-                  <Ionicons name="refresh" size={16} color="#60A5FA" style={{ marginRight: 6 }} />
-                  <Text style={styles.reloadBtnText}>ताजे करा (Refresh)</Text>
+                <TouchableOpacity style={[styles.reloadBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={handleRefresh} activeOpacity={0.7}>
+                  <Ionicons name="refresh" size={16} color={theme.colors.primaryLight} style={{ marginRight: 6 }} />
+                  <Text style={[styles.reloadBtnText, { color: theme.colors.primaryLight }]}>ताजे करा (Refresh)</Text>
                 </TouchableOpacity>
               </View>
             ) : (

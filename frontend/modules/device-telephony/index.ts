@@ -88,7 +88,7 @@ export const DeviceTelephony = {
     }
   },
 
-  async getBatchCallLogs(batchSize: number = 50, maxTotal: number = 200): Promise<{
+  async getBatchCallLogs(batchSize: number = 50, maxTotal: number = 500): Promise<{
     status: TelephonyStatus;
     records: NativeCallRecord[];
   }> {
@@ -155,7 +155,7 @@ export const DeviceTelephony = {
     }
   },
 
-  async getBatchSmsMetadata(batchSize: number = 50, maxTotal: number = 200): Promise<{
+  async getBatchSmsMetadata(batchSize: number = 50, maxTotal: number = 500): Promise<{
     status: TelephonyStatus;
     records: NativeSmsRecord[];
   }> {

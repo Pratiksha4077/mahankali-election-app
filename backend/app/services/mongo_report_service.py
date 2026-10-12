@@ -2,11 +2,18 @@ from typing import Optional, Dict, Any, List
 from bson import ObjectId
 from app.database.mongodb import get_mongo_db
 
+EXCLUDED_TEST_NAMES = ["चाचणी कुटुंब मतदार", "चाचणी कुटुंब"]
+TEST_EXCLUSION_QUERY = {
+    "nameMarathi.full": {"$nin": EXCLUDED_TEST_NAMES},
+    "name.full": {"$nin": EXCLUDED_TEST_NAMES}
+}
+
 class MongoReportService:
     @staticmethod
     async def get_summary_report(village_id: Optional[str] = None) -> Dict[str, Any]:
         db = get_mongo_db()
         match_stage = {"village.id": village_id} if village_id else {}
+        match_stage.update(TEST_EXCLUSION_QUERY)
 
         total = await db.members.count_documents(match_stage)
         match_active = dict(match_stage)
@@ -33,6 +40,7 @@ class MongoReportService:
     async def get_alphabetical_report(village_id: Optional[str] = None, letter: Optional[str] = None) -> List[Dict[str, Any]]:
         db = get_mongo_db()
         filter_q: Dict[str, Any] = {"status": "ACTIVE"}
+        filter_q.update(TEST_EXCLUSION_QUERY)
         if village_id:
             filter_q["village.id"] = village_id
 
@@ -61,6 +69,7 @@ class MongoReportService:
     async def get_membership_report(village_id: Optional[str] = None) -> List[Dict[str, Any]]:
         db = get_mongo_db()
         base_filter: Dict[str, Any] = {"status": "ACTIVE"}
+        base_filter.update(TEST_EXCLUSION_QUERY)
         if village_id:
             base_filter["village.id"] = village_id
 
@@ -85,7 +94,11 @@ class MongoReportService:
     @staticmethod
     async def get_surname_report(village_id: Optional[str] = None) -> List[Dict[str, Any]]:
         db = get_mongo_db()
-        match_stage = {"$match": {"village.id": village_id, "status": "ACTIVE", "nameMarathi.surname": {"$nin": ["", None, "-"]}}} if village_id else {"$match": {"status": "ACTIVE", "nameMarathi.surname": {"$nin": ["", None, "-"]}}}
+        match_dict: Dict[str, Any] = {"status": "ACTIVE", "nameMarathi.surname": {"$nin": ["", None, "-"]}}
+        match_dict.update(TEST_EXCLUSION_QUERY)
+        if village_id:
+            match_dict["village.id"] = village_id
+        match_stage = {"$match": match_dict}
 
         pipeline = [
             match_stage,
@@ -108,7 +121,11 @@ class MongoReportService:
     @staticmethod
     async def get_category_report(village_id: Optional[str] = None) -> List[Dict[str, Any]]:
         db = get_mongo_db()
-        match_stage = {"$match": {"village.id": village_id, "status": "ACTIVE"}} if village_id else {"$match": {"status": "ACTIVE"}}
+        match_dict: Dict[str, Any] = {"status": "ACTIVE"}
+        match_dict.update(TEST_EXCLUSION_QUERY)
+        if village_id:
+            match_dict["village.id"] = village_id
+        match_stage = {"$match": match_dict}
 
         pipeline = [
             match_stage,
@@ -132,7 +149,9 @@ class MongoReportService:
     @staticmethod
     async def get_village_report() -> List[Dict[str, Any]]:
         db = get_mongo_db()
+        match_stage = {"$match": dict(TEST_EXCLUSION_QUERY)}
         pipeline = [
+            match_stage,
             {
                 "$group": {
                     "_id": "$village.id",
@@ -160,6 +179,7 @@ class MongoReportService:
     async def get_religion_report(village_id: Optional[str] = None) -> List[Dict[str, Any]]:
         db = get_mongo_db()
         base_match: Dict[str, Any] = {"status": "ACTIVE"}
+        base_match.update(TEST_EXCLUSION_QUERY)
         if village_id:
             base_match["village.id"] = str(village_id)
 
@@ -187,6 +207,7 @@ class MongoReportService:
     async def get_caste_report(village_id: Optional[str] = None) -> List[Dict[str, Any]]:
         db = get_mongo_db()
         base_match: Dict[str, Any] = {"status": "ACTIVE"}
+        base_match.update(TEST_EXCLUSION_QUERY)
         if village_id:
             base_match["village.id"] = str(village_id)
 
@@ -225,11 +246,18 @@ class MongoReportService:
             async for fdoc in fam_cursor:
                 fid = str(fdoc["_id"])
                 head = (fdoc.get("familyHeadName") or "कुटुंब").strip()
+                if any(t in head for t in EXCLUDED_TEST_NAMES):
+                    continue
                 count = await db.members.count_documents({
-                    "$or": [
-                        {"familyId": fid},
-                        {"familyId": fdoc["_id"]},
-                        {"_id": {"$in": [ObjectId(m) for m in fdoc.get("memberIds", []) if ObjectId.is_valid(m)]}}
+                    "$and": [
+                        TEST_EXCLUSION_QUERY,
+                        {
+                            "$or": [
+                                {"familyId": fid},
+                                {"familyId": fdoc["_id"]},
+                                {"_id": {"$in": [ObjectId(m) for m in fdoc.get("memberIds", []) if ObjectId.is_valid(m)]}}
+                            ]
+                        }
                     ]
                 })
                 if count == 0:
@@ -249,8 +277,10 @@ class MongoReportService:
 
         # 2. Check members with familyId
         try:
+            match_cond = {"status": "ACTIVE", "familyId": {"$nin": ["", None]}}
+            match_cond.update(TEST_EXCLUSION_QUERY)
             fam_m_pipe = [
-                {"$match": {"status": "ACTIVE", "familyId": {"$nin": ["", None]}}},
+                {"$match": match_cond},
                 {"$group": {"_id": "$familyId", "count": {"$sum": 1}, "sample": {"$first": "$nameMarathi.full"}}}
             ]
             if village_id:
@@ -259,6 +289,8 @@ class MongoReportService:
                 fid = str(doc["_id"])
                 if f"fam_{fid}" not in seen_keys:
                     head = (doc.get("sample") or "कुटुंब").strip()
+                    if any(t in head for t in EXCLUDED_TEST_NAMES):
+                        continue
                     families.append({
                         "name": f"कुटुंब (प्रमुख: {head})",
                         "count": doc.get("count", 1),
@@ -277,6 +309,7 @@ class MongoReportService:
     async def get_deceased_report(village_id: Optional[str] = None) -> List[Dict[str, Any]]:
         db = get_mongo_db()
         filter_q = {"status": "DECEASED"}
+        filter_q.update(TEST_EXCLUSION_QUERY)
         if village_id:
             filter_q["village.id"] = village_id
 
@@ -300,6 +333,7 @@ class MongoReportService:
     async def get_profession_report(village_id: Optional[str] = None) -> List[Dict[str, Any]]:
         db = get_mongo_db()
         base_match: Dict[str, Any] = {"status": "ACTIVE"}
+        base_match.update(TEST_EXCLUSION_QUERY)
         if village_id:
             base_match["village.id"] = str(village_id)
 
@@ -327,6 +361,7 @@ class MongoReportService:
     async def get_designation_report(village_id: Optional[str] = None) -> List[Dict[str, Any]]:
         db = get_mongo_db()
         base_match: Dict[str, Any] = {"status": "ACTIVE"}
+        base_match.update(TEST_EXCLUSION_QUERY)
         if village_id:
             base_match["village.id"] = str(village_id)
 
@@ -378,6 +413,7 @@ class MongoReportService:
     async def get_drilldown_members(report_type: str, key: str, village_id: Optional[str] = None) -> List[Dict[str, Any]]:
         db = get_mongo_db()
         filter_q: Dict[str, Any] = {"status": "ACTIVE"}
+        filter_q.update(TEST_EXCLUSION_QUERY)
         if village_id:
             filter_q["village.id"] = village_id
 

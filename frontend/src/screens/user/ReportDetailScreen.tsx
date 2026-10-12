@@ -10,11 +10,13 @@ import { Member, Village } from "../../models/types";
 import { theme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
 import { useAuth } from "../../context/AuthContext";
+import { useTheme } from "../../context/ThemeContext";
 
 export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
   const { reportType, titleKey } = route.params || { reportType: "alphabetical", titleKey: "rep_alphabetical" };
   const { t } = useLanguage();
   const { isAdmin, activePanel } = useAuth();
+  const { theme, isDark } = useTheme();
   const isUserPanel = !isAdmin || activePanel !== "ADMIN";
 
   const [villages, setVillages] = useState<Village[]>([]);
@@ -49,32 +51,39 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
     setVillages(vList);
   };
 
+  const isTestVoter = (m: any) => {
+    const name = String(m?.full_name_mr || m?.name_mr || m?.full_name_en || m?.name || "");
+    return name.includes("चाचणी कुटुंब मतदार") || name.includes("चाचणी कुटुंब");
+  };
+
   const loadReportData = async () => {
     setLoading(true);
     try {
       if (reportType === "alphabetical") {
         const res = await reportAPI.getAlphabetical(selectedVillageId || undefined, selectedLetter || undefined);
-        const items = res?.items || res?.data || (Array.isArray(res) ? res : []);
+        const rawItems = res?.items || res?.data || (Array.isArray(res) ? res : []);
+        const items = rawItems.filter((m: any) => !isTestVoter(m));
         setVoters(items);
         setTotalCount(res?.total ?? items.length);
       } else if (reportType === "village") {
         const res: any = await reportAPI.getVillageReport();
-        const groups = Array.isArray(res) ? res : res?.data || [];
+        const groups = (Array.isArray(res) ? res : res?.data || []).filter((g: any) => !isTestVoter(g));
         setSummaryGroups(groups);
         setTotalCount(groups.reduce((acc: number, curr: any) => acc + (curr.total_voters || curr.count || 0), 0));
       } else if (reportType === "deceased") {
         const res: any = await reportAPI.getDeceasedReport(selectedVillageId || undefined);
-        const items = res?.items || res?.data || (Array.isArray(res) ? res : []);
+        const rawItems = res?.items || res?.data || (Array.isArray(res) ? res : []);
+        const items = rawItems.filter((m: any) => !isTestVoter(m));
         setVoters(items);
         setTotalCount(res?.total ?? items.length);
       } else if (reportType === "mobile-status") {
         const res: any = await reportAPI.getMobileStatusReport(selectedVillageId || undefined);
-        const groups = Array.isArray(res) ? res : res?.data || [];
+        const groups = (Array.isArray(res) ? res : res?.data || []).filter((g: any) => !isTestVoter(g));
         setSummaryGroups(groups);
         setTotalCount(groups.reduce((acc: number, curr: any) => acc + (curr.count || 0), 0));
       } else {
         const res = await reportAPI.getGroupedReport(reportType as any, selectedVillageId || undefined);
-        const groups = Array.isArray(res) ? res : res?.items || res?.data || [];
+        const groups = (Array.isArray(res) ? res : res?.items || res?.data || []).filter((g: any) => !isTestVoter(g));
         setSummaryGroups(groups);
         setTotalCount(groups.reduce((acc: number, curr: any) => acc + (curr.count || curr.total_voters || 0), 0));
       }
@@ -105,8 +114,9 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
     setLoadingGroupKey(groupKey);
     try {
-      const members = await reportAPI.getDrilldownMembers(reportType, groupKey, selectedVillageId || undefined);
-      setGroupMembersMap(prev => ({ ...prev, [groupKey]: members || [] }));
+      const rawMembers = await reportAPI.getDrilldownMembers(reportType, groupKey, selectedVillageId || undefined);
+      const members = (rawMembers || []).filter((m: any) => !isTestVoter(m));
+      setGroupMembersMap(prev => ({ ...prev, [groupKey]: members }));
     } catch (err) {
       console.error("Failed to load drilldown members", err);
       setGroupMembersMap(prev => ({ ...prev, [groupKey]: [] }));
@@ -169,7 +179,7 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
   const isVoterListReport = reportType === "alphabetical" || reportType === "deceased";
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
       <Header
         title={t(titleKey as any)}
         showBack
@@ -177,27 +187,27 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
       />
 
       {/* Village Dropdown Filter Bar */}
-      <View style={styles.villageSelectorCard}>
-        <Text style={styles.villageSelectorLabel}>
+      <View style={[styles.villageSelectorCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+        <Text style={[styles.villageSelectorLabel, { color: theme.colors.textMuted }]}>
           गाव निवडा (Filter by Village):
         </Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.villageChipsScroll}>
           <TouchableOpacity
-            style={[styles.smallChip, selectedVillageId === null && styles.activeSmallChip]}
+            style={[styles.smallChip, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, selectedVillageId === null && styles.activeSmallChip]}
             onPress={() => setSelectedVillageId(null)}
           >
             <Ionicons name="home-outline" size={14} color={selectedVillageId === null ? "#FFFFFF" : theme.colors.textSecondary} style={{ marginRight: 4 }} />
-            <Text style={[styles.smallChipText, selectedVillageId === null && styles.activeSmallChipText]}>
+            <Text style={[styles.smallChipText, { color: theme.colors.textSecondary }, selectedVillageId === null && styles.activeSmallChipText]}>
               All Villages
             </Text>
           </TouchableOpacity>
           {villages.map((v) => (
             <TouchableOpacity
               key={v.id}
-              style={[styles.smallChip, selectedVillageId === v.id && styles.activeSmallChip]}
+              style={[styles.smallChip, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, selectedVillageId === v.id && styles.activeSmallChip]}
               onPress={() => setSelectedVillageId(v.id)}
             >
-              <Text style={[styles.smallChipText, selectedVillageId === v.id && styles.activeSmallChipText]}>
+              <Text style={[styles.smallChipText, { color: theme.colors.textSecondary }, selectedVillageId === v.id && styles.activeSmallChipText]}>
                 {v.name_mr || v.name_en}
               </Text>
             </TouchableOpacity>
@@ -206,33 +216,33 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
       </View>
 
       {/* Blue Summary Banner */}
-      <View style={styles.summaryCard}>
+      <View style={[styles.summaryCard, { backgroundColor: isDark ? "#1E3A8A" : theme.colors.card, borderColor: isDark ? "#3B82F6" : theme.colors.border }]}>
         <View>
-          <Text style={styles.summaryTitle}>{t(titleKey as any)}</Text>
-          <Text style={styles.summarySubtitle}>Total Voters Found</Text>
+          <Text style={[styles.summaryTitle, { color: isDark ? "#FFFFFF" : theme.colors.textPrimary }]}>{t(titleKey as any)}</Text>
+          <Text style={[styles.summarySubtitle, { color: isDark ? "#93C5FD" : theme.colors.textSecondary }]}>Total Voters Found</Text>
         </View>
-        <View style={styles.countPill}>
-          <Text style={styles.countPillText}>{totalCount}</Text>
+        <View style={[styles.countPill, { backgroundColor: isDark ? "#1E293B" : theme.colors.surface, borderColor: isDark ? "#38BDF8" : theme.colors.border }]}>
+          <Text style={[styles.countPillText, { color: isDark ? "#FFFFFF" : theme.colors.primary }]}>{totalCount}</Text>
         </View>
       </View>
 
       {/* Alphabet Filter Bar for Alphabetical List */}
       {reportType === "alphabetical" && (
-        <View style={styles.alphabetBarWrapper}>
+        <View style={[styles.alphabetBarWrapper, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.alphabetBar}>
             <TouchableOpacity
-              style={[styles.letterBtn, selectedLetter === null && styles.activeLetterBtn]}
+              style={[styles.letterBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, selectedLetter === null && styles.activeLetterBtn]}
               onPress={() => setSelectedLetter(null)}
             >
-              <Text style={[styles.letterText, selectedLetter === null && styles.activeLetterText]}>All</Text>
+              <Text style={[styles.letterText, { color: theme.colors.textSecondary }, selectedLetter === null && styles.activeLetterText]}>All</Text>
             </TouchableOpacity>
             {marathiAlphabet.map((ch) => (
               <TouchableOpacity
                 key={ch}
-                style={[styles.letterBtn, selectedLetter === ch && styles.activeLetterBtn]}
+                style={[styles.letterBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, selectedLetter === ch && styles.activeLetterBtn]}
                 onPress={() => setSelectedLetter(ch)}
               >
-                <Text style={[styles.letterText, selectedLetter === ch && styles.activeLetterText]}>{ch}</Text>
+                <Text style={[styles.letterText, { color: theme.colors.textSecondary }, selectedLetter === ch && styles.activeLetterText]}>{ch}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -250,15 +260,15 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <TouchableOpacity
-              style={styles.voterRow}
+              style={[styles.voterRow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
               onPress={() => navigation.navigate("VoterProfile", { memberId: item.id })}
             >
-              <View style={styles.voterAvatar}>
-                <Ionicons name="person" size={20} color="#93C5FD" />
+              <View style={[styles.voterAvatar, { backgroundColor: isDark ? "#1E293B" : theme.colors.surface }]}>
+                <Ionicons name="person" size={20} color={isDark ? "#93C5FD" : theme.colors.primaryLight} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.voterName}>{item.full_name_mr || item.full_name_en}</Text>
-                <Text style={styles.voterIdText}>
+                <Text style={[styles.voterName, { color: theme.colors.textPrimary }]}>{item.full_name_mr || item.full_name_en}</Text>
+                <Text style={[styles.voterIdText, { color: theme.colors.textSecondary }]}>
                   ID: {item.epic_number || `voter_${item.serial_number}`} | {item.village_name_mr || "साखराळे"}
                 </Text>
               </View>
@@ -304,7 +314,7 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
             const isLoadingMembers = loadingGroupKey === groupKey;
 
             return (
-              <View style={[styles.groupContainer, isExpanded && styles.groupContainerExpanded]}>
+              <View style={[styles.groupContainer, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }, isExpanded && [styles.groupContainerExpanded, { backgroundColor: isDark ? "#161E2E" : theme.colors.surface }]]}>
                 <TouchableOpacity
                   style={styles.groupCardHeader}
                   onPress={() => toggleGroup(item)}
@@ -318,45 +328,45 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
                         color={isExpanded ? theme.colors.primaryLight : theme.colors.textMuted}
                         style={{ marginRight: 8 }}
                       />
-                      <Text style={styles.groupName}>{item.name || item.name_mr}</Text>
+                      <Text style={[styles.groupName, { color: theme.colors.textPrimary }]}>{item.name || item.name_mr}</Text>
                     </View>
                     {item.active_voters !== undefined && (
-                      <Text style={styles.groupSub}>
+                      <Text style={[styles.groupSub, { color: theme.colors.textMuted }]}>
                         सक्रिय: {item.active_voters} • मयत: {item.deceased_voters}
                       </Text>
                     )}
                   </View>
-                  <View style={styles.groupBadge}>
-                    <Text style={styles.groupBadgeText}>{item.count || item.total_voters}</Text>
+                  <View style={[styles.groupBadge, { backgroundColor: theme.colors.cardElevated, borderColor: theme.colors.borderLight }]}>
+                    <Text style={[styles.groupBadgeText, { color: theme.colors.primaryLight }]}>{item.count || item.total_voters}</Text>
                   </View>
                 </TouchableOpacity>
 
                 {isExpanded && (
-                  <View style={styles.drilldownListWrapper}>
+                  <View style={[styles.drilldownListWrapper, { backgroundColor: isDark ? "rgba(15, 23, 42, 0.6)" : theme.colors.surface, borderTopColor: theme.colors.border }]}>
                     {isLoadingMembers ? (
                       <View style={styles.drilldownLoading}>
                         <ActivityIndicator size="small" color={theme.colors.primaryLight} />
-                        <Text style={styles.drilldownLoadingText}>मतदार माहिती लोड होत आहे...</Text>
+                        <Text style={[styles.drilldownLoadingText, { color: theme.colors.textMuted }]}>मतदार माहिती लोड होत आहे...</Text>
                       </View>
                     ) : members.length === 0 ? (
                       <View style={styles.drilldownEmpty}>
-                        <Text style={styles.drilldownEmptyText}>या वर्गात कोणतेही मतदार सापडले नाहीत.</Text>
+                        <Text style={[styles.drilldownEmptyText, { color: theme.colors.textMuted }]}>या वर्गात कोणतेही मतदार सापडले नाहीत.</Text>
                       </View>
                     ) : (
                       members.map((m: any, mIdx: number) => (
                         <TouchableOpacity
                           key={m.id || mIdx}
-                          style={styles.drilldownVoterRow}
+                          style={[styles.drilldownVoterRow, { borderBottomColor: theme.colors.border }]}
                           onPress={() => navigation.navigate("VoterProfile", { memberId: m.id })}
                         >
-                          <View style={styles.smallVoterAvatar}>
-                            <Ionicons name="person" size={14} color="#93C5FD" />
+                          <View style={[styles.smallVoterAvatar, { backgroundColor: isDark ? "#1E293B" : theme.colors.cardElevated }]}>
+                            <Ionicons name="person" size={14} color={isDark ? "#93C5FD" : theme.colors.primaryLight} />
                           </View>
                           <View style={{ flex: 1, paddingRight: 8 }}>
-                            <Text style={styles.drilldownVoterName} numberOfLines={1}>
+                            <Text style={[styles.drilldownVoterName, { color: theme.colors.textPrimary }]} numberOfLines={1}>
                               {m.full_name_mr || m.full_name_en}
                             </Text>
-                            <Text style={styles.drilldownVoterSub} numberOfLines={1}>
+                            <Text style={[styles.drilldownVoterSub, { color: theme.colors.textSecondary }]} numberOfLines={1}>
                               {m.epic_number ? `EPIC: ${m.epic_number}` : `SR: ${m.serial_number}`}
                               {m.age ? ` • वय: ${m.age}` : ""}
                               {m.gender ? ` • ${m.gender}` : ""}

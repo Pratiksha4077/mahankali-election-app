@@ -298,11 +298,12 @@ async def delete_family_member(
     if not target:
         raise HTTPException(status_code=404, detail="Target family member not found")
 
-    # If it was a manually added pseudo-member without serialNumber or epicNumber, delete document
-    if not target.get("serialNumber") and not target.get("epicNumber"):
+    t_name_mr = target.get("nameMarathi", {}).get("full", "") if isinstance(target.get("nameMarathi"), dict) else str(target.get("nameMarathi") or "")
+    # If it was a test voter or manually added family member, delete document permanently
+    if "चाचणी" in t_name_mr or target.get("epicNumber") == "TEST9999999" or (not target.get("serialNumber") and not target.get("epicNumber")) or (target.get("source", {}).get("fileType") == "MANUAL"):
         await db.members.delete_one(t_query)
     else:
-        # Otherwise just unlink from family
+        # Otherwise unlink genuine voter from this family unit
         await db.members.update_one(t_query, {"$set": {"familyId": None}})
 
     return {"success": True, "message": "Family member removed successfully"}

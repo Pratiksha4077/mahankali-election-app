@@ -72,7 +72,20 @@ export const Header: React.FC<HeaderProps> = ({
       </View>
 
       <View style={styles.rightRow}>
-        {/* Language Switcher */}
+        {/* Theme Switcher */}
+        {showThemeToggle && (
+          <TouchableOpacity
+            onPress={toggleTheme}
+            style={[styles.themeBadge, { backgroundColor: theme.colors.cardElevated, borderColor: theme.colors.borderLight }]}
+            accessibilityLabel={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          >
+            <Ionicons
+              name={isDark ? "sunny-outline" : "moon-outline"}
+              size={18}
+              color={isDark ? "#F59E0B" : theme.colors.textPrimary}
+            />
+          </TouchableOpacity>
+        )}
 
         {/* Language Switcher */}
         {showLanguageToggle && (

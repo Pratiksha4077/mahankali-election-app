@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { View, Platform, AppState, ActivityIndicator } from "react-native";
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
@@ -142,12 +142,36 @@ const MainTabs: React.FC = () => {
 
 export const RootNavigator: React.FC = () => {
   const { isAuthenticated, isAdmin, activePanel } = useAuth();
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
 
   const [hasAllDevicePermissions, setHasAllDevicePermissions] = useState<boolean>(false);
   const [checkingPermissions, setCheckingPermissions] = useState<boolean>(true);
 
   const isAdminView = isAdmin && activePanel === "ADMIN";
+
+  const navTheme = isDark
+    ? {
+        ...DarkTheme,
+        colors: {
+          ...DarkTheme.colors,
+          background: theme.colors.background,
+          card: theme.colors.header,
+          text: theme.colors.textPrimary,
+          border: theme.colors.border,
+          primary: theme.colors.primary,
+        },
+      }
+    : {
+        ...DefaultTheme,
+        colors: {
+          ...DefaultTheme.colors,
+          background: theme.colors.background,
+          card: theme.colors.header,
+          text: theme.colors.textPrimary,
+          border: theme.colors.border,
+          primary: theme.colors.primary,
+        },
+      };
 
   /**
    * Directly verify hardware/OS permissions on physical device.
@@ -203,7 +227,7 @@ export const RootNavigator: React.FC = () => {
   }, [isAuthenticated, recheckDevicePermissions]);
 
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={navTheme}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!isAuthenticated ? (
           <Stack.Screen name="Login" component={LoginScreen} />

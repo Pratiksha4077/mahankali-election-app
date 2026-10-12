@@ -55,8 +55,8 @@ export const lightColors = {
 
   // Text
   textPrimary: "#0F172A",
-  textSecondary: "#475569",
-  textMuted: "#94A3B8",
+  textSecondary: "#334155",
+  textMuted: "#64748B",
   textInverse: "#FFFFFF",
 
   // Voter 5-Color Category System (Green to Red)

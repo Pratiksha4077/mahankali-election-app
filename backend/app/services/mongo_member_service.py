@@ -34,7 +34,9 @@ class MongoMemberService:
     ) -> Dict[str, Any]:
         db = get_mongo_db()
         and_conditions = [
-            {"isDeleted": {"$ne": True}}
+            {"isDeleted": {"$ne": True}},
+            {"nameMarathi.full": {"$nin": ["चाचणी कुटुंब मतदार", "चाचणी कुटुंब"]}},
+            {"name.full": {"$nin": ["चाचणी कुटुंब मतदार", "चाचणी कुटुंब"]}}
         ]
         if village_id:
             vid_variants = [str(village_id)]
