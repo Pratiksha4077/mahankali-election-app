@@ -1,0 +1,8 @@
+{
+  "name": "device-telephony",
+  "platforms": ["android"],
+  "android": {
+    "package": "expo.modules.devicetelephony",
+    "modules": ["expo.modules.devicetelephony.DeviceTelephonyModule"]
+  }
+}
