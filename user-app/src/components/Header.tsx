@@ -10,7 +10,6 @@ interface HeaderProps {
   showBack?: boolean;
   onBack?: () => void;
   showLanguageToggle?: boolean;
-  showPanelToggle?: boolean;
   showThemeToggle?: boolean;
 }
 
@@ -19,11 +18,10 @@ export const Header: React.FC<HeaderProps> = ({
   showBack = false,
   onBack,
   showLanguageToggle = true,
-  showPanelToggle = true,
   showThemeToggle = true,
 }) => {
   const { language, toggleLanguage, t } = useLanguage();
-  const { isAdmin, activePanel, switchPanel, logout } = useAuth();
+  const { logout } = useAuth();
   const { theme, isDark, toggleTheme } = useTheme();
 
   const handleLogout = () => {
@@ -66,7 +64,7 @@ export const Header: React.FC<HeaderProps> = ({
             {displayTitle}
           </Text>
           <Text style={[styles.subtitleText, { color: theme.colors.textSecondary }]}>
-            {activePanel === "ADMIN" ? "प्रशासक पॅनल (Admin)" : "मतदार यादी २०२६"}
+            मतदार ॲप (User App)
           </Text>
         </View>
       </View>
@@ -97,21 +95,6 @@ export const Header: React.FC<HeaderProps> = ({
             <Text style={[styles.langText, { color: theme.colors.textPrimary }]}>
               {language === "mr" ? "English" : "मराठी"}
             </Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Panel Switcher for Admin */}
-        {showPanelToggle && isAdmin && (
-          <TouchableOpacity
-            onPress={() => switchPanel(activePanel === "ADMIN" ? "USER" : "ADMIN")}
-            style={[styles.iconButton, activePanel === "ADMIN" && { backgroundColor: theme.colors.primary }]}
-            accessibilityLabel={activePanel === "ADMIN" ? "User View" : "Admin Panel"}
-          >
-            <Ionicons
-              name={activePanel === "ADMIN" ? "people-outline" : "shield-checkmark-outline"}
-              size={20}
-              color={activePanel === "ADMIN" ? "#FFFFFF" : theme.colors.textSecondary}
-            />
           </TouchableOpacity>
         )}
 

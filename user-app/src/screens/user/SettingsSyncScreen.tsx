@@ -11,7 +11,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { theme } from "../../theme/theme";
 
 export const SettingsSyncScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
-  const { user, isAdmin, activePanel, logout, switchPanel } = useAuth();
+  const { user, isAdmin, activePanel, logout } = useAuth();
   const { theme, isDark, setThemeMode } = useTheme();
 
   const [toastVisible, setToastVisible] = useState(false);
@@ -155,42 +155,6 @@ export const SettingsSyncScreen: React.FC<{ navigation: any }> = ({ navigation }
                 </View>
               </View>
             </View>
-          </>
-        )}
-
-        {/* Panel Switch (Admin Only) */}
-        {isAdmin && (
-          <>
-            <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>पॅनल नियंत्रण (Panel Switch)</Text>
-            <TouchableOpacity
-              style={[styles.panelSwitchCard, { backgroundColor: theme.colors.card, borderColor: activePanel === "ADMIN" ? "#A78BFA" : "#3B82F6" }]}
-              onPress={() => switchPanel(activePanel === "ADMIN" ? "USER" : "ADMIN")}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.panelIconWrap, { backgroundColor: activePanel === "ADMIN" ? "rgba(167, 139, 250, 0.15)" : "rgba(59, 130, 246, 0.15)" }]}>
-                <Ionicons
-                  name={activePanel === "ADMIN" ? "people" : "shield-checkmark"}
-                  size={26}
-                  color={activePanel === "ADMIN" ? "#A78BFA" : "#60A5FA"}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.panelSwitchTitle, { color: theme.colors.textPrimary }]}>
-                  {activePanel === "ADMIN" ? "👤 User Panel वर जा" : "🛡️ Admin Panel वर जा"}
-                </Text>
-                <Text style={[styles.panelSwitchSubtitle, { color: theme.colors.textMuted }]}>
-                  {activePanel === "ADMIN"
-                    ? "साखराळे मतदार यादी, अहवाल पहा"
-                    : "प्रशासक नियंत्रण, युझर मॅनेजमेंट आणि अपलोड स्टुडिओ"}
-                </Text>
-                <View style={styles.currentPanelBadge}>
-                  <Text style={[styles.currentPanelText, { color: theme.colors.textSecondary }]}>
-                    सध्या: {activePanel === "ADMIN" ? "Admin Panel" : "User Panel"}
-                  </Text>
-                </View>
-              </View>
-              <Ionicons name="arrow-forward-circle" size={28} color={activePanel === "ADMIN" ? "#A78BFA" : "#60A5FA"} />
-            </TouchableOpacity>
           </>
         )}
 

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  SafeAreaView, ActivityIndicator, RefreshControl, Alert
+  SafeAreaView, ActivityIndicator, RefreshControl, Alert,
+  TextInput, FlatList
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
@@ -11,9 +12,15 @@ import { useTheme } from "../../context/ThemeContext";
 import { theme } from "../../theme/theme";
 
 export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
-  const user = route.params?.user;
+  const routeUser = route.params?.user;
   const { t } = useLanguage();
   const { theme, isDark } = useTheme();
+
+  // User selection state: if opened from bottom tab without user, allow selecting any worker
+  const [currentUser, setCurrentUser] = useState<any>(routeUser || null);
+  const [usersList, setUsersList] = useState<any[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState<boolean>(false);
+  const [userSearchText, setUserSearchText] = useState<string>("");
 
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
@@ -26,12 +33,11 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
   // User state synchronized with live database
-  const [currentUser, setCurrentUser] = useState<any>(user || null);
   const [isAccessAllowed, setIsAccessAllowed] = useState<boolean>(
-    user ? (user.is_active !== false && user.accountStatus !== "DISABLED") : true
+    routeUser ? (routeUser.is_active !== false && routeUser.accountStatus !== "DISABLED") : true
   );
   const [hasDevicePerms, setHasDevicePerms] = useState<boolean>(
-    user ? user.permissions_granted === true : false
+    routeUser ? routeUser.permissions_granted === true : false
   );
 
   const [activityData, setActivityData] = useState<{
@@ -56,14 +62,37 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
     last_telephony_sync: null,
   });
 
+  const fetchUsers = useCallback(async () => {
+    setLoadingUsers(true);
+    try {
+      const data = await adminAPI.getUsers();
+      const workers = (Array.isArray(data) ? data : []).filter((u: any) => u.role !== "ADMIN");
+      setUsersList(workers.length > 0 ? workers : data);
+    } catch (e) {
+      console.warn("[UserActivityScreen] Failed to fetch users list:", e);
+      setUsersList([]);
+    } finally {
+      setLoadingUsers(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (route.params?.user) {
+      setCurrentUser(route.params.user);
+    } else if (!currentUser) {
+      fetchUsers();
+    }
+  }, [route.params?.user, fetchUsers]);
+
   const loadUserActivities = useCallback(async () => {
-    if (!user) {
+    if (!currentUser) {
       setLoading(false);
       return;
     }
 
     try {
-      const uid = String(user.id || user._id || "");
+      const uid = String(currentUser.id || currentUser._id || "");
+      const uUsername = currentUser.username || "";
 
       // 1. Fetch live user details to synchronize real-time access and permission status
       let freshUserData: any = null;
@@ -80,7 +109,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
       } catch (ue) {}
 
       // 2. Fetch recorded user real-time activities (Calls, SMS, Locations)
-      const res = await adminAPI.getUserActivity(uid, user.username);
+      const res = await adminAPI.getUserActivity(uid, uUsername);
       const data = res?.data || res;
       if (data) {
         const calls = Array.isArray(data.calls) ? data.calls : [];
@@ -95,7 +124,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
           : (freshUserData?.telephony_status?.smsStatus || (freshUserData?.permissions?.sms ? "GRANTED" : "DENIED"));
 
         console.log(
-          `[UserActivityScreen] User ${uid} (${user.username}) loaded: ${calls.length} calls (call_status: ${cStatus}), ` +
+          `[UserActivityScreen] User ${uid} (${uUsername}) loaded: ${calls.length} calls (call_status: ${cStatus}), ` +
           `${sms.length} SMS (sms_status: ${sStatus}), ${locations.length} locations.`
         );
 
@@ -117,11 +146,13 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user]);
+  }, [currentUser]);
 
   useEffect(() => {
-    loadUserActivities();
-  }, [loadUserActivities]);
+    if (currentUser) {
+      loadUserActivities();
+    }
+  }, [currentUser, loadUserActivities]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -135,7 +166,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
   // Admin denies or restores User Panel access based on real-time history
   const handleToggleUserAccess = async () => {
     if (!currentUser) return;
-    const uid = String(currentUser.id || currentUser._id || user?.id || user?._id || "");
+    const uid = String(currentUser.id || currentUser._id || "");
     const willDeny = isAccessAllowed;
 
     if (willDeny) {
@@ -209,7 +240,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
           text: "हटवा",
           style: "destructive",
           onPress: async () => {
-            const uid = String(currentUser?.id || user?.id || "");
+            const uid = String(currentUser?.id || currentUser?._id || "");
             setIsDeleting(true);
             try {
               await adminAPI.deleteSingleActivity(uid, activityId);
@@ -236,7 +267,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
           text: "हटवा",
           style: "destructive",
           onPress: async () => {
-            const uid = String(currentUser?.id || user?.id || "");
+            const uid = String(currentUser?.id || currentUser?._id || "");
             setIsDeleting(true);
             try {
               await adminAPI.deleteBatchActivities(uid, Array.from(selectedIds));
@@ -265,7 +296,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
           text: "सर्व हटवा",
           style: "destructive",
           onPress: async () => {
-            const uid = String(currentUser?.id || user?.id || "");
+            const uid = String(currentUser?.id || currentUser?._id || "");
             setIsDeleting(true);
             try {
               await adminAPI.clearUserActivities(uid, section.toUpperCase());
@@ -282,37 +313,174 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
     );
   };
 
-  if (!user) {
+  const filteredUsers = usersList.filter((u) => {
+    if (!userSearchText.trim()) return true;
+    const q = userSearchText.toLowerCase().trim();
+    const name = (u.fullName || u.username || "").toLowerCase();
+    const uname = (u.username || "").toLowerCase();
+    const mob = (u.mobileNumber || u.mobile || "").toLowerCase();
+    return name.includes(q) || uname.includes(q) || mob.includes(q);
+  });
+
+  if (!currentUser) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <Header title="User Activity" showBack onBack={() => navigation.goBack()} />
-        <View style={styles.centerContainer}>
-          <Ionicons name="alert-circle-outline" size={48} color={theme.colors.error} />
-          <Text style={styles.emptyTitle}>कोणताही वापरकर्ता निवडलेला नाही</Text>
-          <Text style={styles.emptySubText}>कृपया वापरकर्ता यादीमधून वापरकर्ता निवडा.</Text>
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-            <Text style={styles.backBtnText}>मागे जा (Go Back)</Text>
-          </TouchableOpacity>
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
+        <Header
+          title="कार्यकर्त्यांच्या हालचाली (Worker Activities)"
+          showBack={navigation.canGoBack()}
+          onBack={() => navigation.goBack()}
+        />
+
+        {/* Search Bar for Workers */}
+        <View style={[styles.workerSearchCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+          <Ionicons name="search" size={18} color={theme.colors.textMuted} style={{ marginRight: 8 }} />
+          <TextInput
+            style={[styles.workerSearchInput, { color: theme.colors.textPrimary }]}
+            placeholder="कार्यकर्ता शोधा (नाव, युझरनेम, फोन)..."
+            placeholderTextColor={theme.colors.textMuted}
+            value={userSearchText}
+            onChangeText={setUserSearchText}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {userSearchText.length > 0 && (
+            <TouchableOpacity onPress={() => setUserSearchText("")} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+          )}
         </View>
+
+        {/* Info Banner */}
+        <View style={[styles.workerInfoCard, { backgroundColor: isDark ? "#1E293B" : "#EFF6FF", borderColor: isDark ? "#3B82F6" : "#BFDBFE" }]}>
+          <Ionicons name="pulse" size={20} color={isDark ? "#60A5FA" : "#2563EB"} style={{ marginRight: 10 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.workerInfoTitle, { color: isDark ? "#FFFFFF" : "#1E40AF" }]}>
+              कार्यकर्त्यांची निवड करा
+            </Text>
+            <Text style={[styles.workerInfoSub, { color: isDark ? "#93C5FD" : "#3B82F6" }]}>
+              ज्या कार्यकर्त्याचे कॉल्स, एसएमएस, लोकेशन व परवानग्या पाहायच्या आहेत त्याच्या नावावर टॅप करा.
+            </Text>
+          </View>
+        </View>
+
+        {/* Workers List */}
+        {loadingUsers ? (
+          <View style={styles.centerContainer}>
+            <ActivityIndicator size="large" color={theme.colors.primaryLight} />
+            <Text style={[styles.loadingText, { color: theme.colors.textMuted }]}>कार्यकर्ते लोड होत आहेत...</Text>
+          </View>
+        ) : filteredUsers.length === 0 ? (
+          <View style={styles.centerContainer}>
+            <Ionicons name="people-outline" size={48} color={theme.colors.textMuted} />
+            <Text style={styles.emptyTitle}>कोणताही कार्यकर्ता सापडला नाही</Text>
+            <Text style={styles.emptySubText}>
+              {userSearchText ? `"${userSearchText}" साठी परिणाम नाही.` : "सिस्टममध्ये अद्याप कोणतेही कार्यकर्ते नोंदवलेले नाहीत."}
+            </Text>
+            <TouchableOpacity style={styles.backBtn} onPress={fetchUsers}>
+              <Text style={styles.backBtnText}>रिफ्रेश करा (Refresh)</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredUsers}
+            keyExtractor={(item) => String(item.id || item._id)}
+            renderItem={({ item }) => {
+              const uName = item.fullName || item.username;
+              const uMob = item.mobileNumber || item.mobile || "-";
+              const isActive = item.accountStatus !== "DISABLED" && item.is_active !== false;
+              const hasPerms = Boolean(item.permissions_granted);
+
+              return (
+                <TouchableOpacity
+                  style={[styles.workerRowCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+                  onPress={() => {
+                    setCurrentUser(item);
+                    setIsAccessAllowed(isActive);
+                    setHasDevicePerms(hasPerms);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.workerAvatarCircle, { backgroundColor: isDark ? "#1E3A8A" : "#EEF2FF" }]}>
+                    <Ionicons name="person" size={20} color={isDark ? "#93C5FD" : "#4F46E5"} />
+                  </View>
+
+                  <View style={{ flex: 1, marginHorizontal: 12 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                      <Text style={[styles.workerRowName, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                        {uName}
+                      </Text>
+                      <View style={[styles.statusBadgeSmall, { backgroundColor: isActive ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }]}>
+                        <Text style={[styles.statusBadgeSmallText, { color: isActive ? "#10B981" : "#EF4444" }]}>
+                          {isActive ? "सक्रिय" : "बंद"}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={[styles.workerRowSub, { color: theme.colors.textSecondary }]}>
+                      मोबाईल: {uMob} • {item.username}
+                    </Text>
+
+                    {/* Permissions Mini Row */}
+                    <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <Ionicons name="navigate" size={12} color={item.permissions?.location ? "#10B981" : "#EF4444"} style={{ marginRight: 2 }} />
+                        <Text style={{ fontSize: 11, color: theme.colors.textMuted }}>स्थान</Text>
+                      </View>
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <Ionicons name="call" size={12} color={(item.permissions?.callHistory ?? item.permissions?.phoneCall) ? "#10B981" : "#EF4444"} style={{ marginRight: 2 }} />
+                        <Text style={{ fontSize: 11, color: theme.colors.textMuted }}>कॉल</Text>
+                      </View>
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <Ionicons name="chatbubble" size={12} color={item.permissions?.sms ? "#10B981" : "#EF4444"} style={{ marginRight: 2 }} />
+                        <Text style={{ fontSize: 11, color: theme.colors.textMuted }}>SMS</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
+                </TouchableOpacity>
+              );
+            }}
+            contentContainerStyle={{ paddingBottom: 40 }}
+            refreshControl={<RefreshControl refreshing={loadingUsers} onRefresh={fetchUsers} tintColor={theme.colors.primaryLight} />}
+          />
+        )}
       </SafeAreaView>
     );
   }
 
-  const displayName = currentUser?.fullName || currentUser?.username || user.fullName || user.username;
-  const displayMobile = currentUser?.mobileNumber || currentUser?.mobile || user.mobileNumber || user.mobile || "-";
+  const displayName = currentUser?.fullName || currentUser?.username || "-";
+  const displayMobile = currentUser?.mobileNumber || currentUser?.mobile || "-";
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
       <Header
         title={displayName}
         showBack
-        onBack={() => navigation.goBack()}
+        onBack={() => {
+          if (route.params?.user && navigation.canGoBack()) {
+            navigation.goBack();
+          } else {
+            setCurrentUser(null);
+          }
+        }}
       />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.primaryLight} />}
       >
+        {/* Switch Worker Button */}
+        <TouchableOpacity
+          style={[styles.switchWorkerBtn, { backgroundColor: isDark ? "#1E293B" : "#F1F5F9", borderColor: theme.colors.border }]}
+          onPress={() => setCurrentUser(null)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="people-outline" size={16} color={theme.colors.primaryLight} style={{ marginRight: 6 }} />
+          <Text style={[styles.switchWorkerBtnText, { color: theme.colors.primaryLight }]}>
+            ← सर्व कार्यकर्ते / दुसरा कार्यकर्ता निवडा (Change Worker)
+          </Text>
+        </TouchableOpacity>
         {/* User Badge Card */}
         <View style={[styles.userBadgeCard, { backgroundColor: isDark ? "#1E3A8A" : "#FFFFFF", borderColor: isDark ? "#3B82F6" : "#E2E8F0" }]}>
           <View style={[styles.avatarCircle, { backgroundColor: isDark ? "rgba(255,255,255,0.2)" : "rgba(79, 70, 229, 0.12)" }]}>
@@ -380,7 +548,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
             </View>
           </View>
           <View style={[styles.roleBadge, { backgroundColor: isDark ? "#334155" : "#F1F5F9" }]}>
-            <Text style={[styles.roleBadgeText, { color: isDark ? "#FFFFFF" : "#334155" }]}>{currentUser?.role || user.role}</Text>
+            <Text style={[styles.roleBadgeText, { color: isDark ? "#FFFFFF" : "#334155" }]}>{currentUser?.role || "USER"}</Text>
           </View>
         </View>
 
@@ -1459,6 +1627,94 @@ const styles = StyleSheet.create({
     padding: 6,
     marginLeft: 6,
     alignSelf: "center",
+  },
+  workerSearchCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  workerSearchInput: {
+    flex: 1,
+    fontSize: 14,
+    paddingVertical: 4,
+  },
+  workerInfoCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginBottom: 10,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  workerInfoTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  workerInfoSub: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  workerRowCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginVertical: 4,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  workerAvatarCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  workerRowName: {
+    fontSize: 15,
+    fontWeight: "700",
+    flex: 1,
+  },
+  workerRowSub: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  statusBadgeSmall: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: 6,
+  },
+  statusBadgeSmallText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  switchWorkerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  switchWorkerBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  loadingText: {
+    fontSize: 13,
+    marginTop: 10,
   },
 });
 

@@ -18,13 +18,12 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [activePanel, setActivePanel] = useState<"ADMIN" | "USER">("USER");
+  const activePanel: "ADMIN" | "USER" = "USER";
 
   useEffect(() => {
     (async () => {
       try {
         const savedUser = await appStorage.getItem("election_user_info");
-        const savedPanel = await appStorage.getItem("election_active_panel");
         if (savedUser) {
           const parsed = JSON.parse(savedUser);
           if (parsed.role === "ADMIN") {
@@ -32,7 +31,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return;
           }
           setUser(parsed);
-          setActivePanel("USER");
         }
       } catch (e) {
         console.warn("Auth init warning:", e);
@@ -53,7 +51,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error("ॲडमिनने आपला प्रवेश नाकारला आहे. आपण ॲपमध्ये प्रवेश करू शकत नाही. (Access Denied: The administrator has disabled your account.)");
       }
       setUser(res.user);
-      setActivePanel("USER");
       await appStorage.setItem("election_user_info", JSON.stringify(res.user));
       await appStorage.setItem("election_active_panel", "USER");
       return true;
@@ -65,16 +62,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     setUser(null);
     await setAuthToken(null);
-    setActivePanel("USER");
     await appStorage.removeItem("election_user_info");
     await appStorage.removeItem("election_active_panel");
     await appStorage.removeItem("election_auth_token");
   };
 
-  const switchPanel = async (panel: "ADMIN" | "USER") => {
-    setActivePanel(panel);
-    await appStorage.setItem("election_active_panel", panel);
-  };
+  const switchPanel = () => {};
 
   const updateUserPermissions = async (granted: boolean) => {
     if (!user) return;
