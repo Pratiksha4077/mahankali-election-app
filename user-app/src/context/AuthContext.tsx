@@ -27,12 +27,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const savedPanel = await appStorage.getItem("election_active_panel");
         if (savedUser) {
           const parsed = JSON.parse(savedUser);
-          setUser(parsed);
-          if (savedPanel === "ADMIN" || savedPanel === "USER") {
-            setActivePanel(savedPanel);
-          } else {
-            setActivePanel(parsed.role === "ADMIN" ? "ADMIN" : "USER");
+          if (parsed.role === "ADMIN") {
+            await logout();
+            return;
           }
+          setUser(parsed);
+          setActivePanel("USER");
         }
       } catch (e) {
         console.warn("Auth init warning:", e);
@@ -44,6 +44,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await authAPI.login(username, password);
       if (!res?.user) return false;
+      if (res.user.role === "ADMIN") {
+        await setAuthToken(null);
+        throw new Error("हे ॲप फक्त कार्यकर्त्यांसाठी (Users) आहे. ॲडमिनसाठी कृपया Admin App वापरा. (Access Denied: Only normal USER accounts can access this application. Please use Admin App.)");
+      }
       if (res.user.accountStatus === "DISABLED" || res.user.is_active === false) {
         await setAuthToken(null);
         throw new Error("ॲडमिनने आपला प्रवेश नाकारला आहे. आपण ॲपमध्ये प्रवेश करू शकत नाही. (Access Denied: The administrator has disabled your account.)");

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  ScrollView, SafeAreaView, ActivityIndicator, Alert, Linking
+  ScrollView, SafeAreaView, ActivityIndicator, Alert, Linking,
+  TextInput
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
@@ -28,7 +29,14 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
   const [totalCount, setTotalCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Drilldown state for expandable groups (Surname, Family, Religion, etc.)
+  // Surname dedicated view & search state
+  const [selectedSurname, setSelectedSurname] = useState<string | null>(null);
+  const [surnameSearchQuery, setSurnameSearchQuery] = useState<string>("");
+  const [surnameGroupSearch, setSurnameGroupSearch] = useState<string>("");
+  const [surnameVoters, setSurnameVoters] = useState<Member[]>([]);
+  const [loadingSurnameVoters, setLoadingSurnameVoters] = useState<boolean>(false);
+
+  // Drilldown state for expandable groups (Family, Religion, Caste, etc.)
   const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
   const [groupMembersMap, setGroupMembersMap] = useState<Record<string, Member[]>>({});
   const [loadingGroupKey, setLoadingGroupKey] = useState<string | null>(null);
@@ -41,6 +49,10 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
   }, []);
 
   useEffect(() => {
+    setSelectedSurname(null);
+    setSurnameSearchQuery("");
+    setSurnameGroupSearch("");
+    setSurnameVoters([]);
     setExpandedGroupKey(null);
     setGroupMembersMap({});
     loadReportData();
@@ -124,6 +136,54 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
       setLoadingGroupKey(null);
     }
   };
+
+  const handleSelectSurname = async (surname: string) => {
+    setSelectedSurname(surname);
+    setSurnameSearchQuery("");
+    setLoadingSurnameVoters(true);
+    try {
+      const rawMembers = await reportAPI.getDrilldownMembers("surname", surname, selectedVillageId || undefined);
+      const members = (rawMembers || []).filter((m: any) => !isTestVoter(m));
+      setSurnameVoters(members);
+    } catch (err) {
+      console.error("Failed to load voters for surname", err);
+      setSurnameVoters([]);
+    } finally {
+      setLoadingSurnameVoters(false);
+    }
+  };
+
+  const handleBackToSurnames = () => {
+    setSelectedSurname(null);
+    setSurnameSearchQuery("");
+    setSurnameVoters([]);
+  };
+
+  const filteredSurnameVoters = surnameVoters.filter((m) => {
+    if (!surnameSearchQuery.trim()) return true;
+    const q = surnameSearchQuery.toLowerCase().trim();
+    const nameMr = (m.full_name_mr || (m as any).name_mr || "").toLowerCase();
+    const nameEn = (m.full_name_en || (m as any).name || "").toLowerCase();
+    const epic = (m.epic_number || "").toLowerCase();
+    const serial = String(m.serial_number || "");
+    const mobile = (m.mobile_number || (m as any).mobileNumber || "");
+    const house = (m.house_number || (m as any).houseNumber || "").toLowerCase();
+    return (
+      nameMr.includes(q) ||
+      nameEn.includes(q) ||
+      epic.includes(q) ||
+      serial.includes(q) ||
+      mobile.includes(q) ||
+      house.includes(q)
+    );
+  });
+
+  const filteredSummaryGroups = summaryGroups.filter((g) => {
+    if (!surnameGroupSearch.trim() || reportType !== "surname") return true;
+    const q = surnameGroupSearch.toLowerCase().trim();
+    const name = (g.name || g.name_mr || g.surname || g.key || "").toLowerCase();
+    return name.includes(q);
+  });
 
   const handleExport = (fmt: "excel" | "csv") => {
     Alert.alert(
@@ -254,6 +314,130 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
         <View style={styles.loaderCenter}>
           <ActivityIndicator size="large" color={theme.colors.primaryLight} />
         </View>
+      ) : reportType === "surname" && selectedSurname !== null ? (
+        <View style={{ flex: 1 }}>
+          {/* Header Bar for Selected Surname */}
+          <View style={[styles.surnameTopHeader, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <TouchableOpacity
+              style={[styles.backToSurnamesBtn, { backgroundColor: isDark ? "#1E293B" : theme.colors.surface, borderColor: theme.colors.border }]}
+              onPress={handleBackToSurnames}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="arrow-back" size={16} color={theme.colors.primaryLight} style={{ marginRight: 6 }} />
+              <Text style={[styles.backToSurnamesText, { color: theme.colors.primaryLight }]}>सर्व आडनावे</Text>
+            </TouchableOpacity>
+
+            <View style={{ flex: 1, marginHorizontal: 8 }}>
+              <Text style={[styles.selectedSurnameTitle, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                {selectedSurname}
+              </Text>
+              <Text style={[styles.selectedSurnameSub, { color: theme.colors.textMuted }]}>
+                {filteredSurnameVoters.length} मतदार सापडले
+              </Text>
+            </View>
+
+            <View style={[styles.countPillSmall, { backgroundColor: isDark ? "#1E3A8A" : "#DBEAFE" }]}>
+              <Text style={[styles.countPillSmallText, { color: isDark ? "#93C5FD" : "#1D4ED8" }]}>
+                {filteredSurnameVoters.length}
+              </Text>
+            </View>
+          </View>
+
+          {/* Search Bar for Selected Surname */}
+          <View style={[styles.searchBarCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <Ionicons name="search" size={18} color={theme.colors.textMuted} style={{ marginRight: 8 }} />
+            <TextInput
+              style={[styles.searchInput, { color: theme.colors.textPrimary }]}
+              placeholder={`${selectedSurname} मधील मतदार शोधा (नाव, EPIC)...`}
+              placeholderTextColor={theme.colors.textMuted}
+              value={surnameSearchQuery}
+              onChangeText={setSurnameSearchQuery}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {surnameSearchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSurnameSearchQuery("")} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Voters List for Selected Surname */}
+          {loadingSurnameVoters ? (
+            <View style={styles.loaderCenter}>
+              <ActivityIndicator size="large" color={theme.colors.primaryLight} />
+              <Text style={[styles.drilldownLoadingText, { color: theme.colors.textMuted, marginTop: 10 }]}>
+                {selectedSurname} आडनावातील मतदार लोड होत आहेत...
+              </Text>
+            </View>
+          ) : filteredSurnameVoters.length === 0 ? (
+            <View style={styles.drilldownEmpty}>
+              <Ionicons name="people-outline" size={42} color={theme.colors.textMuted} style={{ marginBottom: 8 }} />
+              <Text style={[styles.drilldownEmptyText, { color: theme.colors.textMuted }]}>
+                {surnameSearchQuery ? `"${surnameSearchQuery}" साठी मतदार सापडले नाहीत.` : "या आडनावात कोणतेही मतदार सापडले नाहीत."}
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={filteredSurnameVoters}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[styles.voterRow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+                  onPress={() => navigation.navigate("VoterProfile", { memberId: item.id })}
+                >
+                  <View style={[styles.voterAvatar, { backgroundColor: isDark ? "#1E293B" : theme.colors.surface }]}>
+                    <Ionicons name="person" size={20} color={isDark ? "#93C5FD" : theme.colors.primaryLight} />
+                  </View>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={[styles.voterName, { color: theme.colors.textPrimary }]}>{item.full_name_mr || item.full_name_en}</Text>
+                    <Text style={[styles.voterIdText, { color: theme.colors.textSecondary }]}>
+                      {item.epic_number ? `EPIC: ${item.epic_number}` : `SR: ${item.serial_number}`}
+                      {item.age ? ` • वय: ${item.age}` : ""}
+                      {item.gender ? ` • ${item.gender}` : ""}
+                      {item.house_number ? ` • घर: ${item.house_number}` : ""}
+                    </Text>
+                    {item.village_name_mr && (
+                      <Text style={[styles.voterVillageText, { color: theme.colors.textMuted }]}>
+                        {item.village_name_mr}
+                      </Text>
+                    )}
+                  </View>
+
+                  {item.status === "DECEASED" && (
+                    <View style={styles.decTag}>
+                      <Text style={styles.decTagText}>Deceased</Text>
+                    </View>
+                  )}
+
+                  {!!item.mobile_number && (
+                    <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+                      <TouchableOpacity
+                        style={styles.callCircle}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleCall(item);
+                        }}
+                      >
+                        <Ionicons name="call" size={15} color="#10B981" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.callCircle, { backgroundColor: "#1E3A8A" }]}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleSMS(item);
+                        }}
+                      >
+                        <Ionicons name="chatbubble" size={13} color="#60A5FA" />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              )}
+              contentContainerStyle={{ paddingBottom: 40 }}
+            />
+          )}
+        </View>
       ) : isVoterListReport ? (
         <FlatList
           data={voters}
@@ -303,6 +487,66 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
           )}
           contentContainerStyle={{ paddingBottom: 40 }}
         />
+      ) : reportType === "surname" ? (
+        <View style={{ flex: 1 }}>
+          {/* Surname Search Bar */}
+          <View style={[styles.searchBarCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <Ionicons name="search" size={18} color={theme.colors.textMuted} style={{ marginRight: 8 }} />
+            <TextInput
+              style={[styles.searchInput, { color: theme.colors.textPrimary }]}
+              placeholder="आडनाव शोधा (उदा. पाटील, कदम)..."
+              placeholderTextColor={theme.colors.textMuted}
+              value={surnameGroupSearch}
+              onChangeText={setSurnameGroupSearch}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {surnameGroupSearch.length > 0 && (
+              <TouchableOpacity onPress={() => setSurnameGroupSearch("")} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <FlatList
+            data={filteredSummaryGroups}
+            keyExtractor={(item, idx) => (item.key || item.name || item.name_mr || idx).toString()}
+            renderItem={({ item }) => {
+              const surnameName = item.name || item.name_mr || item.surname;
+              return (
+                <TouchableOpacity
+                  style={[styles.surnameCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+                  onPress={() => handleSelectSurname(surnameName)}
+                  activeOpacity={0.7}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                    <View style={[styles.surnameIconCircle, { backgroundColor: isDark ? "#1E293B" : "#E0F2FE" }]}>
+                      <Ionicons name="person" size={18} color={theme.colors.primaryLight} />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={[styles.surnameCardTitle, { color: theme.colors.textPrimary }]}>
+                        {surnameName}
+                      </Text>
+                      <Text style={[styles.surnameCardSub, { color: theme.colors.textMuted }]}>
+                        या आडनावातील मतदार पाहण्यासाठी टॅप करा
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <View style={[styles.groupBadge, { backgroundColor: theme.colors.cardElevated, borderColor: theme.colors.borderLight }]}>
+                      <Text style={[styles.groupBadgeText, { color: theme.colors.primaryLight }]}>
+                        {item.count || item.total_voters}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+            contentContainerStyle={{ paddingBottom: 40 }}
+          />
+        </View>
       ) : (
         <FlatList
           data={summaryGroups}
@@ -721,5 +965,88 @@ const styles = StyleSheet.create({
     color: theme.colors.textPrimary,
     fontSize: 12,
     fontWeight: "700",
+  },
+  surnameTopHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  backToSurnamesBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  backToSurnamesText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  selectedSurnameTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  selectedSurnameSub: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  countPillSmall: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  countPillSmallText: {
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  searchBarCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 13,
+    paddingVertical: 4,
+  },
+  surnameCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginHorizontal: 16,
+    marginVertical: 4,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  surnameIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  surnameCardTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  surnameCardSub: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  voterVillageText: {
+    fontSize: 11,
+    marginTop: 2,
   }
 });

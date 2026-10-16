@@ -27,12 +27,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const savedPanel = await appStorage.getItem("election_active_panel");
         if (savedUser) {
           const parsed = JSON.parse(savedUser);
-          setUser(parsed);
-          if (savedPanel === "ADMIN" || savedPanel === "USER") {
-            setActivePanel(savedPanel);
-          } else {
-            setActivePanel(parsed.role === "ADMIN" ? "ADMIN" : "USER");
+          if (parsed.role !== "ADMIN") {
+            await logout();
+            return;
           }
+          setUser(parsed);
+          setActivePanel("ADMIN");
         }
       } catch (e) {
         console.warn("Auth init warning:", e);

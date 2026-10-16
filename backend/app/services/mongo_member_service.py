@@ -254,9 +254,12 @@ class MongoMemberService:
             set_data["relative.nameMarathi"] = f_clean
             set_data["father_name"] = f_clean
 
-        for extra in ["religion", "caste", "designation", "profession"]:
+        for extra in ["religion", "caste", "designation", "profession", "organization", "org"]:
             if extra in update_fields and update_fields[extra] is not None:
-                set_data[extra] = str(update_fields[extra]).strip()
+                val = str(update_fields[extra]).strip()
+                set_data[extra] = val
+                if extra in ("organization", "org"):
+                    set_data["organization"] = val
 
         # 7. Category update if requested
         cat_id = update_fields.get("category_id") or update_fields.get("categoryId")

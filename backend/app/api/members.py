@@ -59,6 +59,7 @@ def enrich_member_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     res["caste"] = res.get("caste", "")
     res["designation"] = res.get("designation", "")
     res["profession"] = res.get("profession", "")
+    res["organization"] = res.get("organization", "")
     res["family_id"] = str(res.get("familyId") or "")
 
     res["mobile_number"] = res.get("mobileNumber", "")
@@ -82,6 +83,8 @@ class MemberUpdatePayload(BaseModel):
     caste: Optional[str] = None
     designation: Optional[str] = None
     profession: Optional[str] = None
+    organization: Optional[str] = None
+    org: Optional[str] = None
     father_name: Optional[str] = None
     fatherName: Optional[str] = None
     relative_name_mr: Optional[str] = None

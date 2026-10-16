@@ -117,8 +117,7 @@ class MongoReportService:
                     "count": {"$sum": 1}
                 }
             },
-            {"$sort": {"count": -1}},
-            {"$limit": 100}
+            {"$sort": {"count": -1}}
         ]
 
         cursor = db.members.aggregate(pipeline)
@@ -427,7 +426,13 @@ class MongoReportService:
         k = (key or "").strip()
 
         if rtype == "surname":
-            filter_q["nameMarathi.surname"] = k
+            filter_q["$or"] = [
+                {"nameMarathi.surname": k},
+                {"name.surname": k},
+                {"nameMarathi.surname": {"$regex": f"^{re.escape(k)}$", "$options": "i"}},
+                {"name.surname": {"$regex": f"^{re.escape(k)}$", "$options": "i"}},
+                {"nameMarathi.full": {"$regex": f"(^|\\s){re.escape(k)}(\\s|$)", "$options": "i"}}
+            ]
         elif rtype == "family":
             if k.startswith("fam_"):
                 real_fid = k[4:]
