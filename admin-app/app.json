@@ -11,7 +11,6 @@
     },
     "android": {
       "package": "com.mahankali.admin",
-      "versionCode": 1,
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#0F172A",
@@ -28,6 +27,11 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "owner": "mahakali_app"
+    "owner": "mahakali_app",
+    "extra": {
+      "eas": {
+        "projectId": "6cb00bff-07fe-4c37-9e5f-033136b3c5e5"
+      }
+    }
   }
 }
