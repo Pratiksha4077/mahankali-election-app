@@ -1,4 +1,5 @@
 import asyncio
+import re
 from typing import Optional, Dict, Any, List
 from bson import ObjectId
 from app.database.mongodb import get_mongo_db
@@ -48,12 +49,18 @@ class MongoReportService:
         if village_id:
             filter_q["village.id"] = village_id
 
-        if letter:
-            filter_q["nameMarathi.full"] = {"$regex": f"^{letter}"}
-        else:
-            filter_q["nameMarathi.full"] = {"$regex": "^[\u0900-\u097F]"}
+        if letter and letter.strip():
+            esc = re.escape(letter.strip())
+            filter_q["$or"] = [
+                {"nameMarathi.full": {"$regex": f"^{esc}"}},
+                {"nameEnglish.full": {"$regex": f"^{esc}", "$options": "i"}},
+                {"fullName": {"$regex": f"^{esc}", "$options": "i"}}
+            ]
 
-        cursor = db.members.find(filter_q).sort("nameMarathi.full", 1).limit(2500)
+        cursor = db.members.find(filter_q, {
+            "_id": 1, "nameMarathi": 1, "nameEnglish": 1, "fullName": 1,
+            "epicNumber": 1, "serialNumber": 1, "village": 1, "mobileNumber": 1, "status": 1
+        }).sort("nameMarathi.full", 1).limit(25000)
         voters = []
         async for doc in cursor:
             voters.append({
@@ -426,12 +433,16 @@ class MongoReportService:
         k = (key or "").strip()
 
         if rtype == "surname":
+            esc = re.escape(k)
             filter_q["$or"] = [
                 {"nameMarathi.surname": k},
+                {"surname": k},
                 {"name.surname": k},
-                {"nameMarathi.surname": {"$regex": f"^{re.escape(k)}$", "$options": "i"}},
-                {"name.surname": {"$regex": f"^{re.escape(k)}$", "$options": "i"}},
-                {"nameMarathi.full": {"$regex": f"(^|\\s){re.escape(k)}(\\s|$)", "$options": "i"}}
+                {"nameMarathi.surname": {"$regex": f"^{esc}$", "$options": "i"}},
+                {"surname": {"$regex": f"^{esc}$", "$options": "i"}},
+                {"name.surname": {"$regex": f"^{esc}$", "$options": "i"}},
+                {"nameMarathi.full": {"$regex": f"(^|\\s){esc}(\\s|$)", "$options": "i"}},
+                {"fullName": {"$regex": f"(^|\\s){esc}(\\s|$)", "$options": "i"}}
             ]
         elif rtype == "family":
             if k.startswith("fam_"):
@@ -462,7 +473,6 @@ class MongoReportService:
                     {"nameMarathi.full": clean_head}
                 ]
         elif rtype == "membership":
-            import re
             nums = [int(n) for n in re.findall(r'\d+', k)]
             if len(nums) >= 2:
                 filter_q["serialNumber"] = {"$gte": nums[0], "$lte": nums[1]}
@@ -515,7 +525,7 @@ class MongoReportService:
         cursor = db.members.find(filter_q, {
             "_id": 1, "nameMarathi": 1, "nameEnglish": 1, "fullName": 1,
             "epicNumber": 1, "serialNumber": 1, "village": 1, "mobileNumber": 1, "status": 1
-        }).sort("serialNumber", 1).limit(500)
+        }).sort("serialNumber", 1).limit(5000)
 
         voters = []
         async for doc in cursor:

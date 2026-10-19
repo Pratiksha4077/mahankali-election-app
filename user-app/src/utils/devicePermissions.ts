@@ -66,10 +66,16 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
     let pos: Location.LocationObject | null = null;
     try {
       pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
+        accuracy: Location.Accuracy.High,
       });
     } catch (currErr) {
-      pos = await Location.getLastKnownPositionAsync({});
+      try {
+        pos = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+      } catch (balErr) {
+        pos = await Location.getLastKnownPositionAsync({});
+      }
     }
 
     if (!pos || !pos.coords) {
@@ -90,6 +96,9 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
       const clean = s.trim().toLowerCase();
       if (clean === "" || clean === "null" || clean === "undefined") return true;
       if (clean.includes("unnamed") || clean.includes("बिननावाचा") || clean.includes("unnamed road")) return true;
+      if (clean === "road" || clean === "street" || clean === "lane" || clean === "rasta" || clean === "मार्ग" || clean === "रस्ता") return true;
+      if (clean.includes("division") || clean.includes("विभाग")) return true;
+      if (clean === "maharashtra" || clean === "india" || clean === "महाराष्ट्र" || clean === "भारत") return true;
       if (/^[0-9+,\s-]+$/.test(clean)) return true;
       return false;
     };
@@ -114,14 +123,14 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
             for (const c of comps) {
               const types: string[] = c.types || [];
               if (types.includes("sublocality_level_1") || types.includes("sublocality") || types.includes("neighborhood")) {
-                if (!locVillage) locVillage = c.long_name;
+                if (!locVillage && !isInvalidRoadOrName(c.long_name)) locVillage = c.long_name;
               } else if (types.includes("locality")) {
-                if (!locVillage) locVillage = c.long_name;
-                else if (!locTaluka) locTaluka = c.long_name;
+                if (!locVillage && !isInvalidRoadOrName(c.long_name)) locVillage = c.long_name;
+                else if (!locTaluka && !isInvalidRoadOrName(c.long_name)) locTaluka = c.long_name;
               } else if (types.includes("administrative_area_level_3")) {
-                locTaluka = c.long_name;
+                if (!isInvalidRoadOrName(c.long_name)) locTaluka = c.long_name;
               } else if (types.includes("administrative_area_level_2")) {
-                locDist = c.long_name;
+                if (!isInvalidRoadOrName(c.long_name)) locDist = c.long_name;
               } else if (types.includes("administrative_area_level_1")) {
                 locState = c.long_name;
               } else if (types.includes("postal_code")) {
@@ -146,41 +155,8 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
       }
     }
 
-    // 2. Fallback or augment with Expo Location.reverseGeocodeAsync
-    if (!placeName) {
-      try {
-        const geoResults = await Location.reverseGeocodeAsync({ latitude, longitude });
-        if (geoResults && geoResults.length > 0) {
-          const g = geoResults[0];
-          const validName = !isInvalidRoadOrName(g.name) ? g.name : "";
-          const validStreet = !isInvalidRoadOrName(g.street) ? g.street : "";
-          const locality = g.subregion || g.city || g.district || "";
-
-          city = g.city || g.subregion || g.district || "";
-          district = g.district || g.subregion || g.region || "";
-          subregion = g.subregion || "";
-          postalCode = g.postalCode || "";
-
-          // Prioritize actual village/locality over road names
-          placeName = validName || validStreet || locality || "";
-
-          const addrParts = [
-            validName || validStreet,
-            g.district !== validName ? g.district : "",
-            g.city !== validName ? g.city : "",
-            g.region,
-            g.postalCode ? `(पिन: ${g.postalCode})` : ""
-          ].filter(Boolean);
-
-          address = addrParts.join(", ");
-        }
-      } catch (geoErr) {
-        console.warn("Reverse geocode warning:", geoErr);
-      }
-    }
-
-    // 3. Fallback to OpenStreetMap Nominatim for accurate village & taluka resolution in Maharashtra
-    if (!placeName) {
+    // 2. OpenStreetMap Nominatim for accurate village & taluka resolution in Maharashtra
+    if (!placeName || isInvalidRoadOrName(placeName)) {
       try {
         const osmUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1&accept-language=mr,en`;
         const controller = new AbortController();
@@ -199,7 +175,7 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
           const osmDist = a.state_district || a.state || "";
           const osmPin = a.postcode || "";
 
-          if (osmVillage) {
+          if (osmVillage && !isInvalidRoadOrName(osmVillage)) {
             placeName = osmVillage;
             city = osmVillage;
             subregion = osmTaluka;
@@ -210,6 +186,40 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
           }
         }
       } catch (osmErr) {}
+    }
+
+    // 3. Fallback or augment with Expo Location.reverseGeocodeAsync
+    if (!placeName || isInvalidRoadOrName(placeName)) {
+      try {
+        const geoResults = await Location.reverseGeocodeAsync({ latitude, longitude });
+        if (geoResults && geoResults.length > 0) {
+          const g = geoResults[0];
+          const validName = !isInvalidRoadOrName(g.name) ? g.name : "";
+          const validStreet = !isInvalidRoadOrName(g.street) ? g.street : "";
+          const locality = (!isInvalidRoadOrName(g.subregion) ? g.subregion : "") ||
+                           (!isInvalidRoadOrName(g.city) ? g.city : "") ||
+                           (!isInvalidRoadOrName(g.district) ? g.district : "") || "";
+
+          city = g.city || g.subregion || g.district || "";
+          district = g.district || g.subregion || g.region || "";
+          subregion = g.subregion || "";
+          postalCode = g.postalCode || "";
+
+          placeName = validName || validStreet || locality || "";
+
+          const addrParts = [
+            validName || validStreet || locality,
+            g.district !== validName && !isInvalidRoadOrName(g.district) ? g.district : "",
+            g.city !== validName && !isInvalidRoadOrName(g.city) ? g.city : "",
+            g.region && !isInvalidRoadOrName(g.region) ? g.region : "",
+            g.postalCode ? `(पिन: ${g.postalCode})` : ""
+          ].filter(Boolean);
+
+          address = addrParts.join(", ");
+        }
+      } catch (geoErr) {
+        console.warn("Reverse geocode warning:", geoErr);
+      }
     }
 
     // Filter out any lingering "Unnamed" text

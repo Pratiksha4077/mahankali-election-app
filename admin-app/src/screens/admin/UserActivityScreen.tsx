@@ -1175,12 +1175,38 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                     const isSelected = selectedIds.has(lid);
                     const lat = loc.metadata?.latitude ?? loc.latitude;
                     const lon = loc.metadata?.longitude ?? loc.longitude;
-                    const hasCoords = lat !== undefined && lon !== undefined;
-                    const placeName = loc.metadata?.placeName || loc.metadata?.village || loc.metadata?.city || (loc.details?.includes(":") ? loc.details.split(":")[1]?.trim() : loc.details) || (hasCoords ? `GPS (${typeof lat === 'number' ? lat.toFixed(4) : lat}, ${typeof lon === 'number' ? lon.toFixed(4) : lon})` : "नोंदवलेले स्थान");
+                    const isGenericName = (s?: string | null): boolean => {
+                      if (!s) return true;
+                      const clean = s.trim().toLowerCase();
+                      if (clean === "" || clean === "null" || clean === "undefined") return true;
+                      if (clean === "road" || clean === "street" || clean === "lane" || clean === "rasta" || clean === "मार्ग" || clean === "रस्ता") return true;
+                      if (clean.includes("division") || clean.includes("विभाग")) return true;
+                      if (clean.includes("unnamed") || clean.includes("बिननावाचा")) return true;
+                      if (clean === "maharashtra" || clean === "india" || clean === "महाराष्ट्र" || clean === "भारत") return true;
+                      return false;
+                    };
+
+                    const rawPlace = loc.metadata?.placeName || loc.metadata?.village || loc.metadata?.city;
+                    const fullAddress = loc.metadata?.address;
+                    let displayPlace = "";
+
+                    if (rawPlace && !isGenericName(rawPlace)) {
+                      displayPlace = rawPlace;
+                    } else if (fullAddress) {
+                      const parts = fullAddress.split(",").map(p => p.trim()).filter(p => !isGenericName(p) && !p.includes("पिन:") && !p.toLowerCase().includes("maharashtra") && !p.toLowerCase().includes("महाराष्ट्र"));
+                      if (parts.length > 0) {
+                        displayPlace = parts[0];
+                      }
+                    }
+
+                    if (!displayPlace || isGenericName(displayPlace)) {
+                      displayPlace = (loc.details?.includes(":") ? loc.details.split(":")[1]?.trim() : loc.details) || (hasCoords ? `GPS (${typeof lat === 'number' ? lat.toFixed(4) : lat}, ${typeof lon === 'number' ? lon.toFixed(4) : lon})` : "नोंदवलेले स्थान");
+                    }
+
+                    const placeName = displayPlace;
                     const locTitle = placeName;
                     const dateStr = loc.metadata?.date || (loc.timestamp ? new Date(loc.timestamp).toLocaleDateString("en-GB") : "-");
                     const timeStr = loc.metadata?.time || (loc.timestamp ? new Date(loc.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }) : "-");
-                    const fullAddress = loc.metadata?.address;
 
                     return (
                       <View
