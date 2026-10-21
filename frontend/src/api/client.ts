@@ -14,16 +14,20 @@ import { appStorage } from "../utils/storage";
 // Production API URL
 export const PRODUCTION_API_URL = "https://mahankali-election-app.onrender.com/api";
 
+const isLocalWeb = Platform.OS === "web" && typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
 // Environment variable or default production API URL
 export const DEFAULT_API_BASE_URL = Platform.OS === "android"
   ? PRODUCTION_API_URL
-  : (process.env.EXPO_PUBLIC_API_URL
-      ? (
-        process.env.EXPO_PUBLIC_API_URL.endsWith("/api")
-          ? process.env.EXPO_PUBLIC_API_URL
-          : `${process.env.EXPO_PUBLIC_API_URL.replace(/\/+$/, "")}/api`
-      )
-      : (Platform.OS === "web" ? "http://localhost:8000/api" : PRODUCTION_API_URL));
+  : (isLocalWeb
+      ? "http://localhost:8000/api"
+      : (process.env.EXPO_PUBLIC_API_URL
+          ? (
+            process.env.EXPO_PUBLIC_API_URL.endsWith("/api")
+              ? process.env.EXPO_PUBLIC_API_URL
+              : `${process.env.EXPO_PUBLIC_API_URL.replace(/\/+$/, "")}/api`
+          )
+          : PRODUCTION_API_URL));
 
 export let API_BASE_URL = DEFAULT_API_BASE_URL;
 
