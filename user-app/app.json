@@ -34,10 +34,10 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "owner": "mahakali_app",
+    "owner": "mahakali_app2",
     "extra": {
       "eas": {
-        "projectId": "4f0f098d-765f-440b-8cdb-72cc15909ef3"
+        "projectId": "4c19fba0-0cfc-40c5-b55a-16e1e16b4100"
       }
     }
   }
