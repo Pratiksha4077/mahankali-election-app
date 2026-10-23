@@ -62,6 +62,17 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
     last_telephony_sync: null,
   });
 
+  // Dedicated pagination state per category (50 records per page, up to ~250 max)
+  const [paginationState, setPaginationState] = useState<{
+    calls: { page: number; hasMore: boolean; loading: boolean };
+    sms: { page: number; hasMore: boolean; loading: boolean };
+    locations: { page: number; hasMore: boolean; loading: boolean };
+  }>({
+    calls: { page: 1, hasMore: false, loading: false },
+    sms: { page: 1, hasMore: false, loading: false },
+    locations: { page: 1, hasMore: false, loading: false },
+  });
+
   const fetchUsers = useCallback(async () => {
     setLoadingUsers(true);
     try {
@@ -108,8 +119,8 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
         }
       } catch (ue) {}
 
-      // 2. Fetch recorded user real-time activities (Calls, SMS, Locations)
-      const res = await adminAPI.getUserActivity(uid, uUsername);
+      // 2. Fetch recorded user real-time activities with initial 50-item page per category
+      const res = await adminAPI.getUserActivity(uid, uUsername, { page: 1, limit: 50, max_total: 250 });
       const data = res?.data || res;
       if (data) {
         const calls = Array.isArray(data.calls) ? data.calls : [];
@@ -123,21 +134,44 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
           ? data.sms_status
           : (freshUserData?.telephony_status?.smsStatus || (freshUserData?.permissions?.sms ? "GRANTED" : "DENIED"));
 
+        const callTotal = data.call_count ?? calls.length;
+        const smsTotal = data.sms_count ?? sms.length;
+        const locTotal = data.location_count ?? locations.length;
+        const maxCap = 250;
+
         console.log(
-          `[UserActivityScreen] User ${uid} (${uUsername}) loaded: ${calls.length} calls (call_status: ${cStatus}), ` +
-          `${sms.length} SMS (sms_status: ${sStatus}), ${locations.length} locations.`
+          `[UserActivityScreen] User ${uid} (${uUsername}) loaded: ${calls.length}/${callTotal} calls (call_status: ${cStatus}), ` +
+          `${sms.length}/${smsTotal} SMS (sms_status: ${sStatus}), ${locations.length}/${locTotal} locations.`
         );
 
         setActivityData({
           calls,
           sms,
           locations,
-          call_count: data.call_count ?? calls.length,
-          sms_count: data.sms_count ?? sms.length,
-          location_count: data.location_count ?? locations.length,
+          call_count: callTotal,
+          sms_count: smsTotal,
+          location_count: locTotal,
           call_status: cStatus,
           sms_status: sStatus,
           last_telephony_sync: data.last_telephony_sync || null,
+        });
+
+        setPaginationState({
+          calls: {
+            page: 1,
+            hasMore: calls.length < Math.min(maxCap, callTotal),
+            loading: false,
+          },
+          sms: {
+            page: 1,
+            hasMore: sms.length < Math.min(maxCap, smsTotal),
+            loading: false,
+          },
+          locations: {
+            page: 1,
+            hasMore: locations.length < Math.min(maxCap, locTotal),
+            loading: false,
+          },
         });
       }
     } catch (err) {
@@ -147,6 +181,73 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
       setRefreshing(false);
     }
   }, [currentUser]);
+
+  // Load next 50 records for a specific section (calls, sms, or locations) without re-fetching everything
+  const loadNextPage = async (section: "calls" | "sms" | "locations") => {
+    if (!currentUser) return;
+    const pState = paginationState[section];
+    if (pState.loading || !pState.hasMore) return;
+
+    setPaginationState(prev => ({
+      ...prev,
+      [section]: { ...prev[section], loading: true }
+    }));
+
+    try {
+      const uid = String(currentUser.id || currentUser._id || "");
+      const uUsername = currentUser.username || "";
+      const nextPage = pState.page + 1;
+
+      const res = await adminAPI.getUserActivity(uid, uUsername, {
+        type: section,
+        page: nextPage,
+        limit: 50,
+        max_total: 250,
+      });
+      const data = res?.data || res;
+      const newItems = Array.isArray(data?.[section]) ? data[section] : [];
+
+      setActivityData(prev => {
+        const existing = prev[section] || [];
+        const existingIds = new Set(existing.map((item: any, i: number) => String(item.id || item._id || `${section}_${i}`)));
+        const uniqueNew = newItems.filter((item: any, i: number) => {
+          const key = String(item.id || item._id || `${section}_p${nextPage}_${i}`);
+          if (existingIds.has(key)) return false;
+          existingIds.add(key);
+          return true;
+        });
+        return {
+          ...prev,
+          [section]: [...existing, ...uniqueNew]
+        };
+      });
+
+      const maxAllowed = 250;
+      const totalCount = section === "calls"
+        ? (activityData.call_count || 0)
+        : section === "sms"
+        ? (activityData.sms_count || 0)
+        : (activityData.location_count || 0);
+
+      const totalLoaded = (activityData[section]?.length || 0) + newItems.length;
+      const hasMore = newItems.length >= 50 && totalLoaded < Math.min(maxAllowed, totalCount);
+
+      setPaginationState(prev => ({
+        ...prev,
+        [section]: {
+          page: nextPage,
+          hasMore,
+          loading: false,
+        }
+      }));
+    } catch (e) {
+      console.warn(`[UserActivityScreen] Failed to load more ${section}:`, e);
+      setPaginationState(prev => ({
+        ...prev,
+        [section]: { ...prev[section], loading: false }
+      }));
+    }
+  };
 
   useEffect(() => {
     if (currentUser) {
@@ -893,6 +994,44 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                     );
                   })
                 )}
+
+                {/* Call History Pagination Controls */}
+                {activityData.calls.length > 0 && (
+                  <View style={styles.paginationBox}>
+                    <Text style={[styles.paginationCountText, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>
+                      दाखवले: {activityData.calls.length} / {activityData.call_count > 250 ? `250 (एकूण ${activityData.call_count})` : activityData.call_count} कॉल
+                    </Text>
+                    {paginationState.calls.loading ? (
+                      <View style={styles.paginationLoadingRow}>
+                        <ActivityIndicator size="small" color="#10B981" />
+                        <Text style={[styles.paginationLoadingText, { color: isDark ? "#34D399" : "#059669" }]}>
+                          पुढील ५० कॉल लोड होत आहेत...
+                        </Text>
+                      </View>
+                    ) : paginationState.calls.hasMore ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.loadMoreBtn,
+                          {
+                            borderColor: isDark ? "#34D399" : "#10B981",
+                            backgroundColor: isDark ? "rgba(16, 185, 129, 0.15)" : "#ECFDF5"
+                          }
+                        ]}
+                        onPress={() => loadNextPage("calls")}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="arrow-down-circle-outline" size={16} color={isDark ? "#34D399" : "#059669"} style={{ marginRight: 6 }} />
+                        <Text style={[styles.loadMoreBtnText, { color: isDark ? "#34D399" : "#059669" }]}>
+                          आणखी ५० कॉल दाखवा (Load Next 50)
+                        </Text>
+                      </TouchableOpacity>
+                    ) : activityData.call_count > 50 ? (
+                      <Text style={[styles.paginationAllLoadedText, { color: isDark ? theme.colors.textMuted : "#94A3B8" }]}>
+                        ✓ सर्व कॉल नोंदी लोड झाल्या आहेत
+                      </Text>
+                    ) : null}
+                  </View>
+                )}
               </View>
             )}
 
@@ -1092,6 +1231,44 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                     );
                   })
                 )}
+
+                {/* SMS & WhatsApp History Pagination Controls */}
+                {activityData.sms.length > 0 && (
+                  <View style={styles.paginationBox}>
+                    <Text style={[styles.paginationCountText, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>
+                      दाखवले: {activityData.sms.length} / {activityData.sms_count > 250 ? `250 (एकूण ${activityData.sms_count})` : activityData.sms_count} मेसेज
+                    </Text>
+                    {paginationState.sms.loading ? (
+                      <View style={styles.paginationLoadingRow}>
+                        <ActivityIndicator size="small" color="#3B82F6" />
+                        <Text style={[styles.paginationLoadingText, { color: isDark ? "#60A5FA" : "#2563EB" }]}>
+                          पुढील ५० संदेश लोड होत आहेत...
+                        </Text>
+                      </View>
+                    ) : paginationState.sms.hasMore ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.loadMoreBtn,
+                          {
+                            borderColor: isDark ? "#60A5FA" : "#3B82F6",
+                            backgroundColor: isDark ? "rgba(59, 130, 246, 0.15)" : "#EFF6FF"
+                          }
+                        ]}
+                        onPress={() => loadNextPage("sms")}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="arrow-down-circle-outline" size={16} color={isDark ? "#60A5FA" : "#2563EB"} style={{ marginRight: 6 }} />
+                        <Text style={[styles.loadMoreBtnText, { color: isDark ? "#60A5FA" : "#2563EB" }]}>
+                          आणखी ५० संदेश दाखवा (Load Next 50)
+                        </Text>
+                      </TouchableOpacity>
+                    ) : activityData.sms_count > 50 ? (
+                      <Text style={[styles.paginationAllLoadedText, { color: isDark ? theme.colors.textMuted : "#94A3B8" }]}>
+                        ✓ सर्व संदेश लोड झाले आहेत
+                      </Text>
+                    ) : null}
+                  </View>
+                )}
               </View>
             )}
 
@@ -1171,13 +1348,20 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                   </View>
                 ) : (
                   activityData.locations.map((loc, idx) => {
-                    const lid = loc.id || `loc_${idx}`;
+                    const lid = loc.id || loc._id || `loc_${idx}`;
                     const isSelected = selectedIds.has(lid);
                     const lat = loc.metadata?.latitude ?? loc.latitude;
                     const lon = loc.metadata?.longitude ?? loc.longitude;
+                    const hasCoords = Boolean(
+                      lat !== undefined && lat !== null &&
+                      lon !== undefined && lon !== null &&
+                      !isNaN(Number(lat)) && !isNaN(Number(lon)) &&
+                      Number(lat) !== 0 && Number(lon) !== 0
+                    );
+
                     const isGenericName = (s?: string | null): boolean => {
                       if (!s) return true;
-                      const clean = s.trim().toLowerCase();
+                      const clean = String(s).trim().toLowerCase();
                       if (clean === "" || clean === "null" || clean === "undefined") return true;
                       if (clean === "road" || clean === "street" || clean === "lane" || clean === "rasta" || clean === "मार्ग" || clean === "रस्ता") return true;
                       if (clean.includes("division") || clean.includes("विभाग")) return true;
@@ -1191,16 +1375,17 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                     let displayPlace = "";
 
                     if (rawPlace && !isGenericName(rawPlace)) {
-                      displayPlace = rawPlace;
+                      displayPlace = String(rawPlace);
                     } else if (fullAddress) {
-                      const parts = fullAddress.split(",").map(p => p.trim()).filter(p => !isGenericName(p) && !p.includes("पिन:") && !p.toLowerCase().includes("maharashtra") && !p.toLowerCase().includes("महाराष्ट्र"));
+                      const parts = String(fullAddress).split(",").map(p => p.trim()).filter(p => !isGenericName(p) && !p.includes("पिन:") && !p.toLowerCase().includes("maharashtra") && !p.toLowerCase().includes("महाराष्ट्र"));
                       if (parts.length > 0) {
                         displayPlace = parts[0];
                       }
                     }
 
                     if (!displayPlace || isGenericName(displayPlace)) {
-                      displayPlace = (loc.details?.includes(":") ? loc.details.split(":")[1]?.trim() : loc.details) || (hasCoords ? `GPS (${typeof lat === 'number' ? lat.toFixed(4) : lat}, ${typeof lon === 'number' ? lon.toFixed(4) : lon})` : "नोंदवलेले स्थान");
+                      const detailText = typeof loc.details === "string" ? loc.details : "";
+                      displayPlace = (detailText.includes(":") ? detailText.split(":")[1]?.trim() : detailText) || (hasCoords ? `GPS (${typeof lat === 'number' ? lat.toFixed(4) : lat}, ${typeof lon === 'number' ? lon.toFixed(4) : lon})` : "नोंदवलेले स्थान");
                     }
 
                     const placeName = displayPlace;
@@ -1273,6 +1458,44 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                       </View>
                     );
                   })
+                )}
+
+                {/* Location History Pagination Controls */}
+                {activityData.locations.length > 0 && (
+                  <View style={styles.paginationBox}>
+                    <Text style={[styles.paginationCountText, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>
+                      दाखवले: {activityData.locations.length} / {activityData.location_count > 250 ? `250 (एकूण ${activityData.location_count})` : activityData.location_count} स्थाने
+                    </Text>
+                    {paginationState.locations.loading ? (
+                      <View style={styles.paginationLoadingRow}>
+                        <ActivityIndicator size="small" color="#F59E0B" />
+                        <Text style={[styles.paginationLoadingText, { color: isDark ? "#FBBF24" : "#D97706" }]}>
+                          पुढील ५० लोकेशन नोंदी लोड होत आहेत...
+                        </Text>
+                      </View>
+                    ) : paginationState.locations.hasMore ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.loadMoreBtn,
+                          {
+                            borderColor: isDark ? "#FBBF24" : "#F59E0B",
+                            backgroundColor: isDark ? "rgba(245, 158, 11, 0.15)" : "#FEF3C7"
+                          }
+                        ]}
+                        onPress={() => loadNextPage("locations")}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="arrow-down-circle-outline" size={16} color={isDark ? "#FBBF24" : "#D97706"} style={{ marginRight: 6 }} />
+                        <Text style={[styles.loadMoreBtnText, { color: isDark ? "#FBBF24" : "#D97706" }]}>
+                          आणखी ५० स्थाने दाखवा (Load Next 50)
+                        </Text>
+                      </TouchableOpacity>
+                    ) : activityData.location_count > 50 ? (
+                      <Text style={[styles.paginationAllLoadedText, { color: isDark ? theme.colors.textMuted : "#94A3B8" }]}>
+                        ✓ सर्व लोकेशन नोंदी लोड झाल्या आहेत
+                      </Text>
+                    ) : null}
+                  </View>
                 )}
               </View>
             )}
@@ -1742,5 +1965,47 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 10,
   },
+  paginationBox: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(148, 163, 184, 0.2)",
+    alignItems: "center",
+    gap: 8,
+  },
+  paginationCountText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  paginationLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    gap: 8,
+  },
+  paginationLoadingText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  loadMoreBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 9,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    width: "100%",
+  },
+  loadMoreBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  paginationAllLoadedText: {
+    fontSize: 11,
+    fontWeight: "600",
+    paddingVertical: 4,
+  },
 });
+
 

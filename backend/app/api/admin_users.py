@@ -334,15 +334,24 @@ async def sync_telephony_route(
 @router.get("/{user_id}/activity")
 async def get_user_activity(
     user_id: str,
-    limit: int = Query(500, ge=1, le=1000),
+    type: Optional[str] = Query(None, description="Filter specific activity section: calls, sms, locations, or all"),
+    page: int = Query(1, ge=1, description="Page number for pagination"),
+    limit: int = Query(50, ge=1, le=100, description="Items per page (default 50)"),
+    max_total: int = Query(250, ge=1, le=500, description="Maximum total items to expose per category (default 250)"),
     admin: AuthUser = Depends(require_admin)
 ):
     """
     Retrieve categorized in-app activity timeline for a user (Call History, SMS History,
-    Location History, and Application Events).
+    Location History) with database pagination, field projection, and user_id filtering.
     """
-    data = await MongoUserService.get_user_activity(user_id, limit=limit)
-    print(f"[AdminUsersAPI] GET /{user_id}/activity queried by admin={admin.username}: found calls={data.get('call_count', 0)}, sms={data.get('sms_count', 0)}, locations={data.get('location_count', 0)}, call_status={data.get('call_status')}, sms_status={data.get('sms_status')}")
+    data = await MongoUserService.get_user_activity(
+        user_id,
+        activity_type=type,
+        page=page,
+        limit=limit,
+        max_total=max_total
+    )
+    print(f"[AdminUsersAPI] GET /{user_id}/activity (type={type}, page={page}, limit={limit}) queried by admin={admin.username}: found calls={data.get('call_count', 0)}, sms={data.get('sms_count', 0)}, locations={data.get('location_count', 0)}")
     return {"success": True, "data": data}
 
 class BatchDeleteActivitiesRequest(BaseModel):

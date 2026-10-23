@@ -589,9 +589,21 @@ export const adminAPI = {
     }
   },
 
-  getUserActivity: async (user_id?: string, username?: string) => {
+  getUserActivity: async (
+    user_id?: string,
+    username?: string,
+    options?: { type?: "all" | "calls" | "sms" | "locations"; page?: number; limit?: number; max_total?: number }
+  ) => {
     try {
-      const res = await apiClient.get(`/admin/users/${user_id}/activity`, { params: { limit: 500 } });
+      const params: any = {
+        limit: options?.limit ?? 50,
+        page: options?.page ?? 1,
+        max_total: options?.max_total ?? 250,
+      };
+      if (options?.type && options.type !== "all") {
+        params.type = options.type;
+      }
+      const res = await apiClient.get(`/admin/users/${user_id}/activity`, { params });
       const payload = res.data?.data || res.data;
       if (payload) {
         console.log(
@@ -604,7 +616,15 @@ export const adminAPI = {
     } catch (e: any) {
       console.warn(`[adminAPI.getUserActivity] HTTP Error for user_id=${user_id}:`, e?.response?.status, e?.message || e);
     }
-    return { calls: [], sms: [], locations: [], call_count: 0, sms_count: 0, location_count: 0 };
+    return {
+      calls: [],
+      sms: [],
+      locations: [],
+      call_count: 0,
+      sms_count: 0,
+      location_count: 0,
+      pagination: {}
+    };
   },
 
   deleteSingleActivity: async (userId: string, activityId: string) => {

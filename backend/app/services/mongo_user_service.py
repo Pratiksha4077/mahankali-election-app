@@ -225,9 +225,10 @@ class MongoUserService:
     ) -> Dict[str, Any]:
         """
         Logs deliberate in-app user interactions (CALL_INITIATED, SMS_INITIATED, LOCATION_CHECKIN, etc.)
-        strictly without covert device monitoring.
+        strictly into MongoDB app_activities and asynchronously mirrors to Supabase PostgreSQL.
         """
         db = get_mongo_db()
+        now = datetime.utcnow()
         activity = {
             "userId": user_id,
             "username": username,
@@ -236,19 +237,48 @@ class MongoUserService:
             "targetMemberName": target_member_name,
             "details": details,
             "metadata": metadata or {},
-            "timestamp": datetime.utcnow()
+            "timestamp": now,
+            "createdAt": now
         }
         res = await db.app_activities.insert_one(activity)
         activity["id"] = str(res.inserted_id)
         if "_id" in activity:
             del activity["_id"]
+
+        # Asynchronous non-blocking mirror to Supabase PostgreSQL activity_logs
+        try:
+            import asyncio
+            from app.services.supabase_service import SupabaseActivityService
+            loop = asyncio.get_running_loop()
+            loop.run_in_executor(
+                None,
+                SupabaseActivityService.log_activity_sync,
+                user_id,
+                username,
+                action,
+                details,
+                "MEMBER" if target_member_id else "ACTIVITY",
+                target_member_id,
+                metadata,
+                now
+            )
+        except Exception:
+            pass
+
         return activity
 
     @staticmethod
-    async def get_user_activity(user_id: str, limit: int = 300) -> Dict[str, Any]:
+    async def get_user_activity(
+        user_id: str,
+        activity_type: Optional[str] = None,
+        page: int = 1,
+        limit: int = 50,
+        max_total: int = 250
+    ) -> Dict[str, Any]:
         """
-        Retrieves in-app user activity categorized strictly into Call History, SMS History,
-        and Location History. No timeline section.
+        Retrieves in-app user activity with database pagination, field projection,
+        and user_id filtering. Loads only necessary records per page (default 50)
+        up to max_total (default 250) to prevent memory crashes and network lag.
         """
         db = get_mongo_db()
         user_doc = None
@@ -284,31 +314,101 @@ class MongoUserService:
                 {"metadata.username": {"$in": possible_usernames}}
             ]
         }
-        # Dedicated cursors for each activity type up to limit so 51-150+ calls and SMS are fully returned
+
         call_q = {**match_q, "action": {"$regex": "CALL", "$options": "i"}}
         sms_q = {**match_q, "action": {"$regex": "SMS|WHATSAPP", "$options": "i"}}
         loc_q = {**match_q, "action": {"$regex": "LOCATION|VILLAGE|CHECKIN|BOOTH", "$options": "i"}}
 
+        # Field projection: Return ONLY what the UI needs, avoiding bulky nested debug data
+        projection = {
+            "_id": 1,
+            "userId": 1,
+            "username": 1,
+            "action": 1,
+            "details": 1,
+            "targetMemberId": 1,
+            "targetMemberName": 1,
+            "metadata": 1,
+            "timestamp": 1,
+            "createdAt": 1
+        }
+
+        limit = max(1, min(limit, 100))
+        page = max(1, page)
+        skip = (page - 1) * limit
+
+        # Ensure indexes exist on MongoDB collection
+        if not getattr(MongoUserService, "_activities_indexed", False):
+            try:
+                await db.app_activities.create_index([("userId", 1), ("action", 1), ("timestamp", -1)])
+                await db.app_activities.create_index([("username", 1), ("action", 1), ("timestamp", -1)])
+                MongoUserService._activities_indexed = True
+            except Exception:
+                pass
+
         calls = []
-        async for doc in db.app_activities.find(call_q).sort("timestamp", -1).limit(limit):
-            doc["id"] = str(doc.get("_id", ""))
-            if "_id" in doc:
-                del doc["_id"]
-            calls.append(doc)
-
         sms = []
-        async for doc in db.app_activities.find(sms_q).sort("timestamp", -1).limit(limit):
-            doc["id"] = str(doc.get("_id", ""))
-            if "_id" in doc:
-                del doc["_id"]
-            sms.append(doc)
-
         locations = []
-        async for doc in db.app_activities.find(loc_q).sort("timestamp", -1).limit(limit):
-            doc["id"] = str(doc.get("_id", ""))
-            if "_id" in doc:
-                del doc["_id"]
-            locations.append(doc)
+        call_total = 0
+        sms_total = 0
+        loc_total = 0
+
+        # Query counts and paginated items based on requested activity_type
+        req_type = (activity_type or "").lower().strip()
+
+        if req_type in ["call", "calls"]:
+            call_total = await db.app_activities.count_documents(call_q)
+            if skip < min(call_total, max_total):
+                fetch_limit = min(limit, max_total - skip)
+                async for doc in db.app_activities.find(call_q, projection).sort("timestamp", -1).skip(skip).limit(fetch_limit):
+                    doc["id"] = str(doc.get("_id", ""))
+                    if "_id" in doc:
+                        del doc["_id"]
+                    calls.append(doc)
+        elif req_type in ["sms", "whatsapp"]:
+            sms_total = await db.app_activities.count_documents(sms_q)
+            if skip < min(sms_total, max_total):
+                fetch_limit = min(limit, max_total - skip)
+                async for doc in db.app_activities.find(sms_q, projection).sort("timestamp", -1).skip(skip).limit(fetch_limit):
+                    doc["id"] = str(doc.get("_id", ""))
+                    if "_id" in doc:
+                        del doc["_id"]
+                    sms.append(doc)
+        elif req_type in ["location", "locations"]:
+            loc_total = await db.app_activities.count_documents(loc_q)
+            if skip < min(loc_total, max_total):
+                fetch_limit = min(limit, max_total - skip)
+                async for doc in db.app_activities.find(loc_q, projection).sort("timestamp", -1).skip(skip).limit(fetch_limit):
+                    doc["id"] = str(doc.get("_id", ""))
+                    if "_id" in doc:
+                        del doc["_id"]
+                    locations.append(doc)
+        else:
+            # Full initial dashboard load: query total counts and initial page 1 (up to limit) for each section
+            import asyncio
+            call_total, sms_total, loc_total = await asyncio.gather(
+                db.app_activities.count_documents(call_q),
+                db.app_activities.count_documents(sms_q),
+                db.app_activities.count_documents(loc_q)
+            )
+
+            # Parallel fetch initial records (up to limit, max_total capped)
+            async def fetch_slice(query, count):
+                items = []
+                if skip < min(count, max_total):
+                    fetch_limit = min(limit, max_total - skip)
+                    async for doc in db.app_activities.find(query, projection).sort("timestamp", -1).skip(skip).limit(fetch_limit):
+                        doc["id"] = str(doc.get("_id", ""))
+                        if "_id" in doc:
+                            del doc["_id"]
+                        items.append(doc)
+                return items
+
+            calls, sms, locations = await asyncio.gather(
+                fetch_slice(call_q, call_total),
+                fetch_slice(sms_q, sms_total),
+                fetch_slice(loc_q, loc_total)
+            )
 
         call_status = "UNKNOWN"
         sms_status = "UNKNOWN"
@@ -324,17 +424,47 @@ class MongoUserService:
                 sms_status = "GRANTED" if perms.get("sms") else "DENIED"
             last_sync = user_doc.get("last_telephony_sync")
 
+        capped_call_total = min(call_total, max_total)
+        capped_sms_total = min(sms_total, max_total)
+        capped_loc_total = min(loc_total, max_total)
+
         return {
             "calls": calls,
             "sms": sms,
             "locations": locations,
-            "call_count": len(calls),
-            "sms_count": len(sms),
-            "location_count": len(locations),
+            "call_count": call_total,
+            "sms_count": sms_total,
+            "location_count": loc_total,
             "call_status": call_status,
             "sms_status": sms_status,
             "last_telephony_sync": last_sync.isoformat() if hasattr(last_sync, "isoformat") else last_sync,
-            "user": format_user_doc(user_doc) if user_doc else None
+            "user": format_user_doc(user_doc) if user_doc else None,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "max_total": max_total,
+                "calls": {
+                    "page": page,
+                    "limit": limit,
+                    "total": call_total,
+                    "loaded": len(calls),
+                    "has_more": ((page * limit) < capped_call_total)
+                },
+                "sms": {
+                    "page": page,
+                    "limit": limit,
+                    "total": sms_total,
+                    "loaded": len(sms),
+                    "has_more": ((page * limit) < capped_sms_total)
+                },
+                "locations": {
+                    "page": page,
+                    "limit": limit,
+                    "total": loc_total,
+                    "loaded": len(locations),
+                    "has_more": ((page * limit) < capped_loc_total)
+                }
+            }
         }
 
     @staticmethod
