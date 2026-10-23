@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 from bson import ObjectId
 from app.database.mongodb import get_mongo_db
+from app.services.supabase_service import SupabaseMemberService
 
 def to_object_id_query(id_str: str):
     try:
@@ -310,6 +311,12 @@ class MongoMemberService:
             except Exception:
                 pass
 
+        # Sync update to Supabase PostgreSQL members table
+        try:
+            SupabaseMemberService.update_member_sync(member_id, update_fields, updated_by)
+        except Exception:
+            pass
+
         return format_member_doc(result) if result else None
 
     @staticmethod
@@ -348,6 +355,13 @@ class MongoMemberService:
             }},
             return_document=True
         )
+
+        # Sync category update to Supabase PostgreSQL members table
+        try:
+            SupabaseMemberService.update_category_sync(member_id, category_id, updated_by)
+        except Exception:
+            pass
+
         return format_member_doc(result) if result else None
 
     @staticmethod
@@ -366,6 +380,12 @@ class MongoMemberService:
             }},
             return_document=True
         )
+
+        # Sync deceased status to Supabase PostgreSQL members table
+        try:
+            SupabaseMemberService.update_member_sync(member_id, {"status": "DECEASED", "is_deceased": True}, recorded_by)
+        except Exception:
+            pass
 
         if result and result.get("village", {}).get("id"):
             vid = result["village"]["id"]
