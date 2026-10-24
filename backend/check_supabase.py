@@ -2,7 +2,10 @@ import os
 import psycopg2
 from dotenv import load_dotenv
 
-load_dotenv('backend/.env')
+if os.path.exists('.env'):
+    load_dotenv('.env')
+else:
+    load_dotenv('backend/.env')
 conn = psycopg2.connect(os.getenv('DATABASE_URL'))
 cur = conn.cursor()
 

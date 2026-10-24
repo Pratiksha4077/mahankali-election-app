@@ -16,7 +16,7 @@ DEFAULT_FIELD_MAPPINGS = {
                     "वडिलाचे / पतीचे नाव", "वडिलाचे/पतीचे नाव", "वडिलाचे नाव"],
     "membership_number": ["membership number", "membership_number", "membership_no", "membership", "सभासद क्र.", "सभासद नंबर", "सभासद क्रमांक", "सभासद"],
     "epic_number": ["epic", "epic_number", "voter_id", "ओळखपत्र", "कार्ड क्रमांक", "ओळखपत्र क्र.",
-                    "मतदार ओळखपत्र क्र.", "मतदार ओळखपत्र क्र", "ओळखपत्र क्रमांक"],
+                    "मतदार ओळखपत्र क्र.", "मतदार ओळखपत्र क्र", "ओळखपत्र क्रमांक", "मतदार ओळखपत्र क्र. (epic id)", "मतदार ओळखपत्र क्र. (epic)", "epic id"],
     "village_mr": ["village marathi", "village", "village_name", "गाव", "गावाचे नाव",
                    "विभाग नाव"],
     "mobile_number": ["mobile number", "mobile", "mobile_number", "phone", "मोबाईल", "मोबाईल नंबर", "फोन"],

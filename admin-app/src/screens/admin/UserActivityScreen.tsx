@@ -1348,115 +1348,123 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                   </View>
                 ) : (
                   activityData.locations.map((loc, idx) => {
+                    if (!loc) return null;
                     const lid = loc.id || loc._id || `loc_${idx}`;
                     const isSelected = selectedIds.has(lid);
-                    const lat = loc.metadata?.latitude ?? loc.latitude;
-                    const lon = loc.metadata?.longitude ?? loc.longitude;
-                    const hasCoords = Boolean(
-                      lat !== undefined && lat !== null &&
-                      lon !== undefined && lon !== null &&
-                      !isNaN(Number(lat)) && !isNaN(Number(lon)) &&
-                      Number(lat) !== 0 && Number(lon) !== 0
-                    );
 
-                    const isGenericName = (s?: string | null): boolean => {
-                      if (!s) return true;
-                      const clean = String(s).trim().toLowerCase();
-                      if (clean === "" || clean === "null" || clean === "undefined") return true;
-                      if (clean === "road" || clean === "street" || clean === "lane" || clean === "rasta" || clean === "मार्ग" || clean === "रस्ता") return true;
-                      if (clean.includes("division") || clean.includes("विभाग")) return true;
-                      if (clean.includes("unnamed") || clean.includes("बिननावाचा")) return true;
-                      if (clean === "maharashtra" || clean === "india" || clean === "महाराष्ट्र" || clean === "भारत") return true;
-                      return false;
-                    };
+                    try {
+                      const lat = loc.metadata?.latitude ?? loc.latitude;
+                      const lon = loc.metadata?.longitude ?? loc.longitude;
+                      const numLat = Number(lat);
+                      const numLon = Number(lon);
+                      const hasCoords = Boolean(
+                        lat !== undefined && lat !== null &&
+                        lon !== undefined && lon !== null &&
+                        !isNaN(numLat) && !isNaN(numLon) &&
+                        numLat !== 0 && numLon !== 0
+                      );
 
-                    const rawPlace = loc.metadata?.placeName || loc.metadata?.village || loc.metadata?.city;
-                    const fullAddress = loc.metadata?.address;
-                    let displayPlace = "";
+                      const isGenericName = (s?: string | null): boolean => {
+                        if (!s) return true;
+                        const clean = String(s).trim().toLowerCase();
+                        if (clean === "" || clean === "null" || clean === "undefined") return true;
+                        if (clean === "road" || clean === "street" || clean === "lane" || clean === "rasta" || clean === "मार्ग" || clean === "रस्ता") return true;
+                        if (clean.includes("division") || clean.includes("विभाग")) return true;
+                        if (clean.includes("unnamed") || clean.includes("बिननावाचा")) return true;
+                        if (clean === "maharashtra" || clean === "india" || clean === "महाराष्ट्र" || clean === "भारत") return true;
+                        return false;
+                      };
 
-                    if (rawPlace && !isGenericName(rawPlace)) {
-                      displayPlace = String(rawPlace);
-                    } else if (fullAddress) {
-                      const parts = String(fullAddress).split(",").map(p => p.trim()).filter(p => !isGenericName(p) && !p.includes("पिन:") && !p.toLowerCase().includes("maharashtra") && !p.toLowerCase().includes("महाराष्ट्र"));
-                      if (parts.length > 0) {
-                        displayPlace = parts[0];
+                      const rawPlace = loc.metadata?.placeName || loc.metadata?.village || loc.metadata?.city;
+                      const fullAddress = loc.metadata?.address;
+                      let displayPlace = "";
+
+                      if (rawPlace && !isGenericName(rawPlace)) {
+                        displayPlace = String(rawPlace);
+                      } else if (fullAddress) {
+                        const parts = String(fullAddress).split(",").map(p => p.trim()).filter(p => !isGenericName(p) && !p.includes("पिन:") && !p.toLowerCase().includes("maharashtra") && !p.toLowerCase().includes("महाराष्ट्र"));
+                        if (parts.length > 0) {
+                          displayPlace = parts[0];
+                        }
                       }
-                    }
 
-                    if (!displayPlace || isGenericName(displayPlace)) {
-                      const detailText = typeof loc.details === "string" ? loc.details : "";
-                      displayPlace = (detailText.includes(":") ? detailText.split(":")[1]?.trim() : detailText) || (hasCoords ? `GPS (${typeof lat === 'number' ? lat.toFixed(4) : lat}, ${typeof lon === 'number' ? lon.toFixed(4) : lon})` : "नोंदवलेले स्थान");
-                    }
+                      if (!displayPlace || isGenericName(displayPlace)) {
+                        const detailText = typeof loc.details === "string" ? loc.details : "";
+                        displayPlace = (detailText.includes(":") ? detailText.split(":")[1]?.trim() : detailText) || (hasCoords ? `GPS (${numLat.toFixed(4)}, ${numLon.toFixed(4)})` : "नोंदवलेले स्थान");
+                      }
 
-                    const placeName = displayPlace;
-                    const locTitle = placeName;
-                    const dateStr = loc.metadata?.date || (loc.timestamp ? new Date(loc.timestamp).toLocaleDateString("en-GB") : "-");
-                    const timeStr = loc.metadata?.time || (loc.timestamp ? new Date(loc.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }) : "-");
+                      const placeName = displayPlace;
+                      const locTitle = placeName;
+                      const dateStr = loc.metadata?.date || (loc.timestamp ? new Date(loc.timestamp).toLocaleDateString("en-GB") : "-");
+                      const timeStr = loc.metadata?.time || (loc.timestamp ? new Date(loc.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }) : "-");
 
-                    return (
-                      <View
-                        key={lid}
-                        style={[
-                          styles.subListItem,
-                          { borderBottomColor: isDark ? theme.colors.border : "#F1F5F9" },
-                          isSelected && (isDark ? styles.subListItemSelected : { backgroundColor: "#EFF6FF", borderRadius: 6, paddingHorizontal: 6 })
-                        ]}
-                      >
-                        <TouchableOpacity
-                          style={styles.checkboxTouch}
-                          onPress={() => toggleSelectItem(lid)}
+                      return (
+                        <View
+                          key={lid}
+                          style={[
+                            styles.subListItem,
+                            { borderBottomColor: isDark ? theme.colors.border : "#F1F5F9" },
+                            isSelected && (isDark ? styles.subListItemSelected : { backgroundColor: "#EFF6FF", borderRadius: 6, paddingHorizontal: 6 })
+                          ]}
                         >
-                          <Ionicons
-                            name={isSelected ? "checkbox" : "square-outline"}
-                            size={20}
-                            color={isSelected ? "#3B82F6" : (isDark ? theme.colors.textMuted : "#94A3B8")}
-                          />
-                        </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.checkboxTouch}
+                            onPress={() => toggleSelectItem(lid)}
+                          >
+                            <Ionicons
+                              name={isSelected ? "checkbox" : "square-outline"}
+                              size={20}
+                              color={isSelected ? "#3B82F6" : (isDark ? theme.colors.textMuted : "#94A3B8")}
+                            />
+                          </TouchableOpacity>
 
-                        <View style={[styles.itemIconWrap, { backgroundColor: isDark ? "#78350F" : "#FEF3C7" }]}>
-                          <Ionicons name="navigate" size={16} color={isDark ? "#FBBF24" : "#D97706"} />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          {/* Name of Place */}
-                          <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 3 }}>
-                            <Text style={[styles.itemTitle, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>📍 {placeName}</Text>
-                            <View style={{ backgroundColor: isDark ? "rgba(245, 158, 11, 0.2)" : "#FEF3C7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                              <Text style={{ color: isDark ? "#FBBF24" : "#B45309", fontSize: 10, fontWeight: "700" }}>ठिकाण</Text>
+                          <View style={[styles.itemIconWrap, { backgroundColor: isDark ? "#78350F" : "#FEF3C7" }]}>
+                            <Ionicons name="navigate" size={16} color={isDark ? "#FBBF24" : "#D97706"} />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            {/* Name of Place */}
+                            <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 3 }}>
+                              <Text style={[styles.itemTitle, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>📍 {placeName}</Text>
+                              <View style={{ backgroundColor: isDark ? "rgba(245, 158, 11, 0.2)" : "#FEF3C7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                <Text style={{ color: isDark ? "#FBBF24" : "#B45309", fontSize: 10, fontWeight: "700" }}>ठिकाण</Text>
+                              </View>
                             </View>
+
+                            {/* Latitude and Longitude */}
+                            {hasCoords ? (
+                              <Text style={[styles.coordsText, { color: isDark ? "#FBBF24" : "#D97706" }]}>
+                                🌐 अक्षांश: {numLat.toFixed(5)}, रेखांश: {numLon.toFixed(5)}
+                                {loc.metadata?.accuracy ? ` (±${Math.round(loc.metadata.accuracy)} मी.)` : ""}
+                              </Text>
+                            ) : null}
+
+                            {/* Date and Time Correctly */}
+                            <View style={{ flexDirection: "row", alignItems: "center", marginTop: 3 }}>
+                              <Ionicons name="calendar-outline" size={12} color={isDark ? "#94A3B8" : "#64748B"} style={{ marginRight: 4 }} />
+                              <Text style={{ color: isDark ? "#94A3B8" : "#64748B", fontSize: 11, fontWeight: "600" }}>
+                                दिनांक: {dateStr}  •  वेळ: {timeStr}
+                              </Text>
+                            </View>
+
+                            {/* Full address if available */}
+                            {fullAddress && fullAddress !== placeName ? (
+                              <Text style={[styles.itemDetail, { color: isDark ? theme.colors.textSecondary : "#475569" }]}>
+                                🏠 {fullAddress}
+                              </Text>
+                            ) : null}
                           </View>
 
-                          {/* Latitude and Longitude */}
-                          {hasCoords ? (
-                            <Text style={[styles.coordsText, { color: isDark ? "#FBBF24" : "#D97706" }]}>
-                              🌐 अक्षांश: {typeof lat === "number" ? lat.toFixed(5) : lat}, रेखांश: {typeof lon === "number" ? lon.toFixed(5) : lon}
-                              {loc.metadata?.accuracy ? ` (±${Math.round(loc.metadata.accuracy)} मी.)` : ""}
-                            </Text>
-                          ) : null}
-
-                          {/* Date and Time Correctly */}
-                          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 3 }}>
-                            <Ionicons name="calendar-outline" size={12} color={isDark ? "#94A3B8" : "#64748B"} style={{ marginRight: 4 }} />
-                            <Text style={{ color: isDark ? "#94A3B8" : "#64748B", fontSize: 11, fontWeight: "600" }}>
-                              दिनांक: {dateStr}  •  वेळ: {timeStr}
-                            </Text>
-                          </View>
-
-                          {/* Full address if available */}
-                          {fullAddress && fullAddress !== placeName ? (
-                            <Text style={[styles.itemDetail, { color: isDark ? theme.colors.textSecondary : "#475569" }]}>
-                              🏠 {fullAddress}
-                            </Text>
-                          ) : null}
+                          <TouchableOpacity
+                            style={styles.deleteSingleBtn}
+                            onPress={() => handleDeleteSingle(lid, locTitle)}
+                          >
+                            <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                          </TouchableOpacity>
                         </View>
-
-                        <TouchableOpacity
-                          style={styles.deleteSingleBtn}
-                          onPress={() => handleDeleteSingle(lid, locTitle)}
-                        >
-                          <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                        </TouchableOpacity>
-                      </View>
-                    );
+                      );
+                    } catch (err) {
+                      return null;
+                    }
                   })
                 )}
 

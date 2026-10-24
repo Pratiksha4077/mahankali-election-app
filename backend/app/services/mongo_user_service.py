@@ -106,6 +106,43 @@ class MongoUserService:
 
         res = await db.users.insert_one(new_user)
         new_user["_id"] = res.inserted_id
+
+        # Also sync to Supabase public.users
+        try:
+            import psycopg2
+            import uuid
+            from app.config.config import settings
+            db_url = settings.DATABASE_URL
+            if db_url and db_url.startswith("postgres"):
+                conn = psycopg2.connect(db_url, connect_timeout=5)
+                conn.autocommit = True
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO public.users (
+                            id, username, full_name, mobile_number, hashed_password, role, account_status, is_active, permissions_granted
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (username) DO UPDATE SET
+                            full_name = EXCLUDED.full_name,
+                            mobile_number = EXCLUDED.mobile_number,
+                            hashed_password = EXCLUDED.hashed_password,
+                            role = EXCLUDED.role,
+                            account_status = EXCLUDED.account_status,
+                            is_active = EXCLUDED.is_active;
+                    """, (
+                        str(uuid.uuid4()),
+                        username.strip(),
+                        full_name.strip(),
+                        mobile_number.strip(),
+                        new_user["hashedPassword"],
+                        role.upper(),
+                        account_status.upper(),
+                        is_active,
+                        True
+                    ))
+                conn.close()
+        except Exception as se:
+            print(f"[SupabaseSync] Error syncing user to Supabase: {se}")
+
         return format_user_doc(new_user)
 
     @staticmethod

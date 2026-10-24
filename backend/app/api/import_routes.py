@@ -19,7 +19,15 @@ from app.excel_processing.exporter import DataExporter
 router = APIRouter(prefix="/admin/import", tags=["Admin Import Pipeline"])
 
 async def _clear_all_voters_internal(db, admin_username: str = "admin") -> int:
-    """Wipes all voter records, families, and import jobs/records across MongoDB and SQLite."""
+    """Wipes all voter records, families, and import jobs/records across Supabase, MongoDB, and SQLite."""
+    # 1. Clear Supabase PostgreSQL
+    try:
+        from app.services.supabase_service import SupabaseVoterImportService
+        SupabaseVoterImportService.clear_all_voters()
+    except Exception as se:
+        print(f"[ClearVoters] Error clearing Supabase: {se}")
+
+    # 2. Clear MongoDB
     res_m = await db.members.delete_many({})
     await db.families.delete_many({})
     await db.import_records.delete_many({})
@@ -250,6 +258,20 @@ def process_excel_import_job_worker(
 
         update_mongo_job_stage(db, job_id, "Committing voters to database", 75, status="PROCESSING")
         imported_count = commit_mongo_job_records(job_id, duplicate_strategy="UPDATE")
+
+        # Direct Cloudinary & Supabase PostgreSQL Storage
+        try:
+            from app.services.supabase_service import SupabaseVoterImportService
+            supabase_res = SupabaseVoterImportService.import_excel_file(
+                file_path=file_path,
+                file_name=file_name,
+                file_size=file_path.stat().st_size if file_path.exists() else 0,
+                village_id=village_id,
+                uploaded_by=uploaded_by
+            )
+            print(f"[SupabaseWorker] Successfully saved to Cloudinary and Supabase: {supabase_res}")
+        except Exception as se:
+            print(f"[SupabaseWorker] Supabase import error: {se}")
 
         # Update village metrics
         try:

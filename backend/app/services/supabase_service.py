@@ -441,3 +441,300 @@ class SupabaseMemberService:
             logger.error(f"[SupabaseMemberService] Failed to update category in Supabase: {e}")
             return False
 
+
+class SupabaseVoterImportService:
+    SAKHARALE_VILLAGE_ID = "11111111-1111-1111-1111-111111111111"
+
+    @staticmethod
+    def _get_connection():
+        db_url = settings.DATABASE_URL
+        if not db_url or not db_url.startswith("postgres"):
+            return None
+        return psycopg2.connect(db_url, connect_timeout=10)
+
+    @staticmethod
+    def clear_all_voters() -> int:
+        """
+        Wipes all voter records, uploaded files, and import jobs from Supabase.
+        Resets voter counters for Sakharale.
+        """
+        try:
+            conn = SupabaseVoterImportService._get_connection()
+            if not conn:
+                return 0
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM public.voters;")
+                deleted_voters = cur.rowcount
+                cur.execute("DELETE FROM public.uploaded_files;")
+                cur.execute("DELETE FROM public.import_jobs;")
+                cur.execute("DELETE FROM public.families;")
+                cur.execute("DELETE FROM public.activity_logs;")
+                cur.execute("""
+                    UPDATE public.villages 
+                    SET total_voters = 0, active_voters = 0, deceased_voters = 0, total_families = 0,
+                        updated_at = NOW();
+                """)
+            conn.close()
+            logger.info(f"[SupabaseVoterImportService] Cleared {deleted_voters} voters from Supabase.")
+            return deleted_voters
+        except Exception as e:
+            logger.error(f"[SupabaseVoterImportService] Failed to clear voters in Supabase: {e}")
+            return 0
+
+    @staticmethod
+    def import_excel_file(
+        file_path,
+        file_name: str,
+        file_size: int,
+        village_id: Optional[str] = None,
+        uploaded_by: str = "admin"
+    ) -> Dict[str, Any]:
+        """
+        Processes a single Excel or CSV file:
+        1. Uploads the original file to Cloudinary for safe, persistent file storage.
+        2. Records the file in Supabase `public.uploaded_files`.
+        3. Creates/updates an import job in Supabase `public.import_jobs`.
+        4. Parses all voter records, deduplicates, and batch inserts directly into Supabase `public.voters`.
+        5. Updates voter counts for Sakharale in `public.villages`.
+        """
+        import re
+        from pathlib import Path
+        from psycopg2.extras import execute_values
+        from app.services.cloudinary_service import CloudinaryService
+        from app.excel_processing.reader import ExcelReader
+        from app.pdf_processing.mapper import FieldMapper
+
+        target_village_id = SupabaseVoterImportService.SAKHARALE_VILLAGE_ID
+        conn = SupabaseVoterImportService._get_connection()
+        if not conn:
+            raise RuntimeError("Could not connect to Supabase database.")
+        conn.autocommit = True
+
+        # 1. Upload original file to Cloudinary
+        cloudinary_url = None
+        cloudinary_public_id = None
+        try:
+            cld_res = CloudinaryService.upload_file(
+                str(file_path),
+                folder="election_app/voter_lists",
+                resource_type="raw"
+            )
+            if cld_res:
+                cloudinary_url = cld_res.get("secure_url")
+                cloudinary_public_id = cld_res.get("public_id")
+                logger.info(f"[Cloudinary] Successfully uploaded {file_name} -> {cloudinary_url}")
+        except Exception as ce:
+            logger.warning(f"[Cloudinary] Note: Cloudinary upload skipped or failed: {ce}")
+
+        # 2. Extract booth number from filename (e.g. "61_voters.xlsx" -> "61")
+        stem = Path(file_name).stem
+        booth_match = re.search(r'\d+', stem)
+        booth_number = booth_match.group(0) if booth_match else "62"
+
+        # 3. Create entry in public.uploaded_files
+        file_uuid = str(uuid.uuid4())
+        job_uuid = str(uuid.uuid4())
+        file_ext = Path(file_name).suffix.upper().replace(".", "") or "EXCEL"
+
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO public.uploaded_files (
+                    id, file_name, file_type, file_size, cloudinary_url, cloudinary_public_id,
+                    village_id, uploaded_by, total_records, imported_records, status, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            """, (
+                file_uuid,
+                file_name,
+                file_ext,
+                file_size,
+                cloudinary_url or f"local://{file_name}",
+                cloudinary_public_id,
+                target_village_id,
+                uploaded_by,
+                0,
+                0,
+                "PROCESSING"
+            ))
+
+            # 4. Create entry in public.import_jobs
+            cur.execute("""
+                INSERT INTO public.import_jobs (
+                    id, file_id, file_name, file_type, file_size, village_id, village_name,
+                    status, progress, stage, total_records, valid_records, imported_records,
+                    cloudinary_url, created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+            """, (
+                job_uuid,
+                file_uuid,
+                file_name,
+                file_ext,
+                file_size,
+                target_village_id,
+                "साखराळे / Sakharale",
+                "processing",
+                20,
+                "Parsing records from file",
+                0, 0, 0,
+                cloudinary_url
+            ))
+
+        # 5. Read tabular records
+        raw_rows = ExcelReader.read_file(Path(file_path))
+        total_rows = len(raw_rows)
+        mapper = FieldMapper()
+
+        # Get default Green category id from Supabase
+        cat_id = None
+        cat_code = "GREEN"
+        cat_color = "#10B981"
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, code, color FROM public.categories WHERE code = 'GREEN' LIMIT 1;")
+            c_row = cur.fetchone()
+            if c_row:
+                cat_id, cat_code, cat_color = c_row
+
+        voter_records = []
+        valid_count = 0
+
+        for idx, row in enumerate(raw_rows):
+            mapped = mapper.map_record(row)
+
+            full_name_mr = str(mapped.get("full_name_mr") or "").strip()
+            full_name_en = str(mapped.get("full_name_en") or "").strip()
+            epic_num = str(mapped.get("epic_number") or "").strip()
+
+            if not (epic_num or full_name_mr or full_name_en):
+                continue
+
+            valid_count += 1
+            rec_id = str(uuid.uuid4())
+            sr_num = None
+            try:
+                raw_sr = mapped.get("serial_number")
+                if raw_sr is not None and str(raw_sr).strip():
+                    sr_num = int(float(str(raw_sr).strip()))
+            except Exception:
+                sr_num = idx + 1
+
+            age_val = None
+            try:
+                raw_age = mapped.get("age")
+                if raw_age is not None and str(raw_age).strip().lower() not in ["", "nan", "none", "null", "-"]:
+                    age_val = int(float(str(raw_age).strip()))
+            except Exception:
+                age_val = None
+
+            gender_raw = str(mapped.get("gender") or "Male").strip()
+            if gender_raw in ("पुरुष", "पु", "M", "m", "Male"):
+                gender_val = "Male"
+            elif gender_raw in ("महिला", "स्त्री", "F", "f", "Female"):
+                gender_val = "Female"
+            else:
+                gender_val = gender_raw
+
+            row_booth = str(mapped.get("booth_part_number") or booth_number).strip()
+            # If booth has full string, extract number
+            b_match = re.search(r'\d+', row_booth)
+            if b_match:
+                row_booth = b_match.group(0)
+
+            voter_records.append((
+                rec_id,
+                mapped.get("membership_number") or f"M-{sr_num or idx+1}",
+                epic_num or None,
+                sr_num,
+                row_booth,
+                full_name_en or None,
+                full_name_mr or full_name_en or "अनामिक मतदार",
+                mapped.get("first_name") or None,
+                mapped.get("first_name") or None,
+                mapped.get("father_name") or None,
+                mapped.get("father_name") or None,
+                mapped.get("surname") or None,
+                mapped.get("surname") or None,
+                mapped.get("relation_type") or "Father",
+                mapped.get("relative_name_mr") or mapped.get("father_name") or None,
+                mapped.get("relative_name_en") or None,
+                str(mapped.get("house_number") or "").strip() or None,
+                age_val,
+                gender_val,
+                str(mapped.get("mobile_number") or "").strip() or None,
+                mapped.get("address") or None,
+                mapped.get("pin_code") or "415414",
+                target_village_id,
+                "Sakharale",
+                "साखराळे",
+                cat_id,
+                cat_code,
+                cat_color,
+                "ACTIVE",
+                file_uuid,
+                file_name,
+                file_ext,
+                cloudinary_url,
+                uploaded_by
+            ))
+
+        # 6. Batch Insert into public.voters
+        insert_sql = """
+            INSERT INTO public.voters (
+                id, membership_number, epic_number, serial_number, booth_part_number,
+                full_name, full_name_marathi, first_name, first_name_marathi,
+                father_name, father_name_marathi, surname, surname_marathi,
+                relation_type, relative_name_marathi, relative_name_english,
+                house_number, age, gender, mobile_number, address, pin_code,
+                village_id, village_name, village_name_marathi,
+                category_id, category_code, category_color, status,
+                source_file_id, source_file_name, source_file_type, cloudinary_url,
+                updated_by
+            ) VALUES %s
+        """
+
+        imported_count = 0
+        CHUNK_SIZE = 500
+        with conn.cursor() as cur:
+            for i in range(0, len(voter_records), CHUNK_SIZE):
+                chunk = voter_records[i:i + CHUNK_SIZE]
+                execute_values(cur, insert_sql, chunk)
+                imported_count += len(chunk)
+
+            # 7. Update village statistics in public.villages
+            cur.execute("""
+                UPDATE public.villages
+                SET total_voters = (SELECT count(*) FROM public.voters WHERE village_id = public.villages.id AND is_deleted = false),
+                    active_voters = (SELECT count(*) FROM public.voters WHERE village_id = public.villages.id AND status = 'ACTIVE' AND is_deleted = false),
+                    deceased_voters = (SELECT count(*) FROM public.voters WHERE village_id = public.villages.id AND status = 'DECEASED' AND is_deleted = false),
+                    updated_at = NOW()
+                WHERE id = %s;
+            """, (target_village_id,))
+
+            # 8. Update uploaded_files and import_jobs
+            cur.execute("""
+                UPDATE public.uploaded_files
+                SET total_records = %s, imported_records = %s, status = 'COMPLETED'
+                WHERE id = %s;
+            """, (total_rows, imported_count, file_uuid))
+
+            cur.execute("""
+                UPDATE public.import_jobs
+                SET total_records = %s, valid_records = %s, imported_records = %s,
+                    progress = 100, status = 'completed', stage = 'Import completed successfully ✓',
+                    updated_at = NOW()
+                WHERE id = %s;
+            """, (total_rows, valid_count, imported_count, job_uuid))
+
+        conn.close()
+        logger.info(f"[SupabaseVoterImportService] Successfully imported {imported_count}/{total_rows} voters for file {file_name}")
+
+        return {
+            "file_id": file_uuid,
+            "job_id": job_uuid,
+            "file_name": file_name,
+            "cloudinary_url": cloudinary_url,
+            "total_records": total_rows,
+            "imported_records": imported_count,
+            "status": "COMPLETED"
+        }
+
+
