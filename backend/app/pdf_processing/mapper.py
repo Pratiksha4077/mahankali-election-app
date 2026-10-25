@@ -81,14 +81,13 @@ class FieldMapper:
 
         if "full_name_mr" in mapped and mapped["full_name_mr"]:
             mapped["full_name_mr"] = normalize_marathi_text(str(mapped["full_name_mr"]))
-            if not mapped.get("surname") or not mapped.get("first_name"):
-                s, f, fa = parse_marathi_name(mapped["full_name_mr"])
-                if not mapped.get("surname") and s:
-                    mapped["surname"] = s
-                if not mapped.get("first_name") and f:
-                    mapped["first_name"] = f
-                if not mapped.get("father_name") and fa:
-                    mapped["father_name"] = fa
+            s, f, fa = parse_marathi_name(mapped["full_name_mr"], mapped.get("relative_name_mr") or mapped.get("father_name"))
+            if not mapped.get("surname") and s:
+                mapped["surname"] = s
+            if not mapped.get("first_name") and f:
+                mapped["first_name"] = f
+            if not mapped.get("father_name") and fa:
+                mapped["father_name"] = fa
 
         if "membership_number" in mapped and mapped["membership_number"]:
             mapped["membership_number"] = clean_membership_number(str(mapped["membership_number"]))

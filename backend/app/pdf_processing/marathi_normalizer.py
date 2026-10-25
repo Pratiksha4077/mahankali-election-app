@@ -107,13 +107,14 @@ def clean_membership_number(text: Optional[str]) -> str:
     norm = to_arabic_num(norm)
     return norm.strip()
 
-def parse_marathi_name(full_name: Optional[str]) -> Tuple[str, str, str]:
+def parse_marathi_name(full_name: Optional[str], relative_name: Optional[str] = None) -> Tuple[str, str, str]:
     """
     Splits Marathi full name into (surname, first_name, father_name).
-    In Maharashtra voter lists:
-    Format: 'पाटील सचिन आनंदराव' -> Surname='पाटील', First='सचिन', Father='आनंदराव'
-    If only 2 words: 'पाटील सचिन' -> Surname='पाटील', First='सचिन', Father=''
-    If 1 word: 'सचिन' -> Surname='', First='सचिन', Father=''
+    In Maharashtra voter lists & tabular Excel sheets:
+    Format: 'रफिक जहागीर बारगीर' / 'उदय दिनकर चव्हाण' / 'राहुल सदाशिव चिचोलकर'
+    First word = First Name ('राहुल')
+    Middle word(s) = Father/Husband Name ('सदाशिव')
+    Last word = Family Surname ('चिचोलकर')
     """
     if not full_name:
         return "", "", ""
@@ -122,20 +123,20 @@ def parse_marathi_name(full_name: Optional[str]) -> Tuple[str, str, str]:
     parts = cleaned.split()
     
     if len(parts) >= 3:
-        surname = parts[0]
-        first_name = parts[1]
-        father_name = " ".join(parts[2:])
+        first_name = parts[0]
+        father_name = " ".join(parts[1:-1])
+        surname = parts[-1]
     elif len(parts) == 2:
-        surname = parts[0]
-        first_name = parts[1]
+        first_name = parts[0]
+        surname = parts[1]
         father_name = ""
     elif len(parts) == 1:
-        surname = ""
         first_name = parts[0]
+        surname = ""
         father_name = ""
     else:
-        surname = ""
         first_name = ""
+        surname = ""
         father_name = ""
         
     return surname, first_name, father_name

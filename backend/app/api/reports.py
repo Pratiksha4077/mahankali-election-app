@@ -105,10 +105,22 @@ async def get_report_drilldown(
     report_type: str = Query(...),
     key: str = Query(...),
     village_id: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
     current_user: AuthUser = Depends(get_current_user)
 ):
-    """Fetch members for a clicked group in any report (surname, family, category, etc.)."""
-    members = await MongoReportService.get_drilldown_members(report_type, key, village_id=village_id)
-    return {"success": True, "total": len(members), "items": members, "data": members}
+    """Fetch members for a clicked group in any report (surname, family, category, etc.) with pagination."""
+    res = await MongoReportService.get_drilldown_members(
+        report_type, key, village_id=village_id, page=page, limit=limit
+    )
+    return {
+        "success": True,
+        "total": res.get("total", 0),
+        "items": res.get("items", []),
+        "data": res.get("data", []),
+        "page": res.get("page", page),
+        "pages": res.get("pages", 1),
+        "hasMore": res.get("hasMore", False)
+    }
 
 

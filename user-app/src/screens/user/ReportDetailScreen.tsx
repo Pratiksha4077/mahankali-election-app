@@ -29,12 +29,15 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
   const [totalCount, setTotalCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Surname dedicated view & search state
+  // Surname dedicated view & search state with Pagination
   const [selectedSurname, setSelectedSurname] = useState<string | null>(null);
   const [surnameSearchQuery, setSurnameSearchQuery] = useState<string>("");
   const [surnameGroupSearch, setSurnameGroupSearch] = useState<string>("");
   const [surnameVoters, setSurnameVoters] = useState<Member[]>([]);
   const [loadingSurnameVoters, setLoadingSurnameVoters] = useState<boolean>(false);
+  const [surnamePage, setSurnamePage] = useState<number>(1);
+  const [surnameHasMore, setSurnameHasMore] = useState<boolean>(false);
+  const [loadingMoreSurname, setLoadingMoreSurname] = useState<boolean>(false);
 
   // Drilldown state for expandable groups (Family, Religion, Caste, etc.)
   const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
@@ -140,11 +143,19 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
   const handleSelectSurname = async (surname: string) => {
     setSelectedSurname(surname);
     setSurnameSearchQuery("");
+    setSurnamePage(1);
+    setSurnameHasMore(false);
     setLoadingSurnameVoters(true);
     try {
-      const rawMembers = await reportAPI.getDrilldownMembers("surname", surname, selectedVillageId || undefined);
+      const res: any = await reportAPI.getDrilldownMembers("surname", surname, selectedVillageId || undefined, 1, 50);
+      const rawMembers = Array.isArray(res) ? res : res?.items || res?.data || [];
       const members = (rawMembers || []).filter((m: any) => !isTestVoter(m));
       setSurnameVoters(members);
+      if (!Array.isArray(res) && res?.hasMore !== undefined) {
+        setSurnameHasMore(Boolean(res.hasMore));
+      } else {
+        setSurnameHasMore(members.length >= 50);
+      }
     } catch (err) {
       console.error("Failed to load voters for surname", err);
       setSurnameVoters([]);
@@ -153,10 +164,36 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
     }
   };
 
+  const handleLoadMoreSurname = async () => {
+    if (!selectedSurname || loadingMoreSurname || !surnameHasMore) return;
+    setLoadingMoreSurname(true);
+    const nextPage = surnamePage + 1;
+    try {
+      const res: any = await reportAPI.getDrilldownMembers("surname", selectedSurname, selectedVillageId || undefined, nextPage, 50);
+      const rawMembers = Array.isArray(res) ? res : res?.items || res?.data || [];
+      const newMembers = (rawMembers || []).filter((m: any) => !isTestVoter(m));
+      if (newMembers.length > 0) {
+        setSurnameVoters(prev => [...prev, ...newMembers]);
+        setSurnamePage(nextPage);
+      }
+      if (!Array.isArray(res) && res?.hasMore !== undefined) {
+        setSurnameHasMore(Boolean(res.hasMore));
+      } else {
+        setSurnameHasMore(newMembers.length >= 50);
+      }
+    } catch (err) {
+      console.error("Failed to load more voters for surname", err);
+    } finally {
+      setLoadingMoreSurname(false);
+    }
+  };
+
   const handleBackToSurnames = () => {
     setSelectedSurname(null);
     setSurnameSearchQuery("");
     setSurnameVoters([]);
+    setSurnamePage(1);
+    setSurnameHasMore(false);
   };
 
   const filteredSurnameVoters = surnameVoters.filter((m) => {
@@ -434,6 +471,18 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
                   )}
                 </TouchableOpacity>
               )}
+              onEndReached={handleLoadMoreSurname}
+              onEndReachedThreshold={0.5}
+              ListFooterComponent={
+                loadingMoreSurname ? (
+                  <View style={{ paddingVertical: 16, alignItems: "center", justifyContent: "center" }}>
+                    <ActivityIndicator size="small" color={theme.colors.primaryLight} />
+                    <Text style={{ fontSize: 12, color: theme.colors.textMuted, marginTop: 4 }}>
+                      पुढील मतदार लोड होत आहेत...
+                    </Text>
+                  </View>
+                ) : null
+              }
               contentContainerStyle={{ paddingBottom: 40 }}
             />
           )}

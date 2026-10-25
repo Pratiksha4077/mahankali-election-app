@@ -371,10 +371,10 @@ export const reportAPI = {
     }
   },
 
-  getDrilldownMembers: async (reportType: string, key: string, villageId?: string) => {
+  getDrilldownMembers: async (reportType: string, key: string, villageId?: string, page: number = 1, limit: number = 50) => {
     try {
       const res = await apiClient.get("/reports/drilldown", {
-        params: { report_type: reportType, key, village_id: villageId }
+        params: { report_type: reportType, key, village_id: villageId, page, limit }
       });
       const data = res.data?.items || res.data?.data || res.data;
       return Array.isArray(data) ? data : [];

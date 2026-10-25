@@ -8,8 +8,9 @@ from dotenv import load_dotenv
 
 load_dotenv('backend/.env')
 
-mongo_client = MongoClient(os.getenv('MONGO_URI'))
-mongo_db = mongo_client['election_db']
+mongo_url = os.getenv('MONGODB_URL') or os.getenv('MONGO_URI')
+mongo_client = MongoClient(mongo_url)
+mongo_db = mongo_client[os.getenv('MONGODB_DB_NAME', 'election_db')]
 
 pg_conn = psycopg2.connect(os.getenv('DATABASE_URL'))
 pg_cur = pg_conn.cursor()

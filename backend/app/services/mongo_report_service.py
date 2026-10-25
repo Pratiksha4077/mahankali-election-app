@@ -522,22 +522,44 @@ class MongoReportService:
                 {"nameMarathi.surname": {"$regex": k}}
             ]
 
-        cursor = db.members.find(filter_q, {
-            "_id": 1, "nameMarathi": 1, "nameEnglish": 1, "fullName": 1,
-            "epicNumber": 1, "serialNumber": 1, "village": 1, "mobileNumber": 1, "status": 1
-        }).sort("serialNumber", 1).limit(5000)
+        skip = max(0, (page - 1) * limit)
+        limit = max(1, min(limit, 200))
 
-        voters = []
-        async for doc in cursor:
-            voters.append({
-                "id": str(doc.get("_id", "")),
-                "full_name_mr": doc.get("nameMarathi", {}).get("full", "") or doc.get("fullName", ""),
-                "full_name_en": doc.get("nameEnglish", {}).get("full", "") or doc.get("fullName", ""),
-                "surname": doc.get("nameMarathi", {}).get("surname", "") or doc.get("surname", ""),
-                "epic_number": doc.get("epicNumber", "") or f"voter_{doc.get('serialNumber', 0)}",
-                "serial_number": doc.get("serialNumber", 0),
-                "village_name_mr": doc.get("village", {}).get("nameMarathi", "साखराळे"),
-                "mobile_number": doc.get("mobileNumber", ""),
-                "status": doc.get("status", "ACTIVE")
-            })
-        return voters
+        async def fetch_voters():
+            cursor = db.members.find(filter_q, {
+                "_id": 1, "nameMarathi": 1, "nameEnglish": 1, "fullName": 1,
+                "epicNumber": 1, "serialNumber": 1, "village": 1, "mobileNumber": 1, "status": 1
+            }).sort("serialNumber", 1).skip(skip).limit(limit)
+
+            items = []
+            async for doc in cursor:
+                items.append({
+                    "id": str(doc.get("_id", "")),
+                    "full_name_mr": doc.get("nameMarathi", {}).get("full", "") or doc.get("fullName", ""),
+                    "full_name_en": doc.get("nameEnglish", {}).get("full", "") or doc.get("fullName", ""),
+                    "surname": doc.get("nameMarathi", {}).get("surname", "") or doc.get("surname", ""),
+                    "epic_number": doc.get("epicNumber", "") or f"voter_{doc.get('serialNumber', 0)}",
+                    "serial_number": doc.get("serialNumber", 0),
+                    "village_name_mr": doc.get("village", {}).get("nameMarathi", "साखराळे"),
+                    "mobile_number": doc.get("mobileNumber", ""),
+                    "status": doc.get("status", "ACTIVE")
+                })
+            return items
+
+        async def fetch_total():
+            try:
+                return await db.members.count_documents(filter_q)
+            except Exception:
+                return 0
+
+        voters, total = await asyncio.gather(fetch_voters(), fetch_total())
+        pages = math.ceil(total / limit) if limit > 0 else 1
+
+        return {
+            "items": voters,
+            "data": voters,
+            "total": total,
+            "page": page,
+            "pages": pages,
+            "hasMore": page < pages
+        }

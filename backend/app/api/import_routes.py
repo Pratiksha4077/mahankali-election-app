@@ -550,7 +550,7 @@ async def delete_import_job(
 
     deleted_voters = 0
     if delete_voters:
-        # 3. Delete members created by this specific job
+        # 3. Delete members created by this specific job in MongoDB
         res_m = await db.members.delete_many({
             "$or": [
                 {"source.importJobId": job_id},
@@ -560,7 +560,45 @@ async def delete_import_job(
         })
         deleted_voters = res_m.deleted_count
 
-        # 4. Update village stats
+        # 3b. Cascade delete from Supabase PostgreSQL & Cloudinary
+        try:
+            import psycopg2
+            from app.services.cloudinary_service import CloudinaryService
+            db_url = settings.DATABASE_URL
+            if db_url and db_url.startswith("postgres"):
+                with psycopg2.connect(db_url, connect_timeout=5) as pg_conn:
+                    pg_conn.autocommit = True
+                    with pg_conn.cursor() as cur:
+                        target_file_name = job.get("fileName")
+                        cur.execute(
+                            "SELECT id, cloudinary_public_id FROM public.uploaded_files WHERE file_name = %s OR id = %s LIMIT 1;",
+                            (target_file_name, job_id)
+                        )
+                        row = cur.fetchone()
+                        if row:
+                            f_id, cld_id = row
+                            if cld_id:
+                                try:
+                                    CloudinaryService.delete_file(cld_id, resource_type="raw")
+                                except Exception:
+                                    pass
+                            cur.execute("DELETE FROM public.members WHERE source_file_id = %s OR source_file_name = %s;", (f_id, target_file_name))
+                            cur.execute("DELETE FROM public.import_jobs WHERE file_id = %s OR id = %s;", (f_id, job_id))
+                            cur.execute("DELETE FROM public.uploaded_files WHERE id = %s;", (f_id,))
+                        else:
+                            cur.execute("DELETE FROM public.members WHERE source_file_name = %s;", (target_file_name,))
+                            cur.execute("DELETE FROM public.uploaded_files WHERE file_name = %s;", (target_file_name,))
+
+                        cur.execute("""
+                            UPDATE public.villages
+                            SET total_voters = (SELECT count(*) FROM public.members WHERE village_id = public.villages.id),
+                                active_voters = (SELECT count(*) FROM public.members WHERE village_id = public.villages.id AND status = 'ACTIVE'),
+                                updated_at = NOW();
+                        """)
+        except Exception as se:
+            print(f"[DeleteJob] Note: Supabase delete error: {se}")
+
+        # 4. Update village stats in MongoDB
         village_id = job.get("villageId")
         if village_id:
             try:
