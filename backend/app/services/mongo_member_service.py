@@ -1,3 +1,4 @@
+from app.services.cache_service import CacheService
 import asyncio
 import re
 import math
@@ -34,6 +35,11 @@ class MongoMemberService:
         page: int = 1,
         limit: int = 40
     ) -> Dict[str, Any]:
+        cache_key = f"voters:list:{village_id or 'all'}:{search_query or ''}:{category_id or ''}:{status}:{assigned_user_id or ''}:{page}:{limit}"
+        cached = CacheService.get(cache_key)
+        if cached is not None:
+            return cached
+
         db = get_mongo_db()
         and_conditions = [
             {"isDeleted": {"$ne": True}}
@@ -130,13 +136,15 @@ class MongoMemberService:
         items, total = await asyncio.gather(fetch_items(), fetch_total())
         pages = math.ceil(total / limit) if limit > 0 else 1
 
-        return {
+        res_dict = {
             "items": items,
             "total": total,
             "page": page,
             "pages": pages,
             "limit": limit
         }
+        CacheService.set(cache_key, res_dict, ttl=60)
+        return res_dict
 
     @staticmethod
     async def get_member_by_id(member_id: str) -> Optional[Dict[str, Any]]:
@@ -317,6 +325,7 @@ class MongoMemberService:
         except Exception:
             pass
 
+        CacheService.invalidate_voter_cache()
         return format_member_doc(result) if result else None
 
     @staticmethod

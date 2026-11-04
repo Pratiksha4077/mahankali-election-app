@@ -24,7 +24,7 @@ SAKHARALE_ID = "11111111-1111-1111-1111-111111111111"
 # 1. Clean existing members, uploaded_files, and old logs from Supabase
 print("1. Cleaning old records from Supabase...")
 pg_cur.execute("TRUNCATE TABLE public.activity_logs CASCADE;")
-pg_cur.execute("TRUNCATE TABLE public.members CASCADE;")
+pg_cur.execute("TRUNCATE TABLE public.voters CASCADE;")
 pg_cur.execute("TRUNCATE TABLE public.import_jobs CASCADE;")
 pg_cur.execute("TRUNCATE TABLE public.uploaded_files CASCADE;")
 pg_cur.execute("TRUNCATE TABLE public.families CASCADE;")
@@ -61,8 +61,8 @@ for fname in distinct_files:
         fname_str,
         "EXCEL",
         50000,
-        f"https://res.cloudinary.com/c07yfemy/raw/upload/voters/{fname_str}",
-        f"voters/{fname_str}",
+        f"https://res.cloudinary.com/{os.getenv('CLOUDINARY_CLOUD_NAME', 'b60x8hju')}/raw/upload/election_app/voter_lists/{fname_str}",
+        f"election_app/voter_lists/{fname_str}",
         SAKHARALE_ID,
         "admin",
         cnt,
@@ -84,7 +84,7 @@ docs = list(mongo_db.members.find({}))
 print(f"3. Preparing batch insert for {len(docs)} members into Supabase public.members...")
 
 insert_sql = """
-INSERT INTO public.members (
+INSERT INTO public.voters (
     id, mongo_id, membership_number, epic_number, serial_number, booth_part_number,
     full_name, full_name_marathi, first_name, first_name_marathi,
     father_name, father_name_marathi, surname, surname_marathi,
@@ -212,17 +212,17 @@ for i in range(0, len(rows), batch_size):
 # 6. Update Sakharale village counts
 pg_cur.execute("""
     UPDATE public.villages
-    SET total_voters = (SELECT count(*) FROM public.members WHERE village_id = %s),
-        active_voters = (SELECT count(*) FROM public.members WHERE village_id = %s AND status = 'ACTIVE'),
+    SET total_voters = (SELECT count(*) FROM public.voters WHERE village_id = %s),
+        active_voters = (SELECT count(*) FROM public.voters WHERE village_id = %s AND status = 'ACTIVE'),
         deceased_voters = 0,
-        total_families = (SELECT count(*) FROM public.members WHERE village_id = %s) / 3,
+        total_families = (SELECT count(*) FROM public.voters WHERE village_id = %s) / 3,
         updated_at = NOW()
     WHERE id = %s;
 """, (SAKHARALE_ID, SAKHARALE_ID, SAKHARALE_ID, SAKHARALE_ID))
 pg_conn.commit()
 
 # 7. Analyze
-pg_cur.execute("ANALYZE public.members;")
+pg_cur.execute("ANALYZE public.voters;")
 pg_cur.execute("ANALYZE public.uploaded_files;")
 pg_conn.commit()
 

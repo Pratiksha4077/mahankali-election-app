@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pymongo import MongoClient
 from app.config.config import settings
 from app.auth.security import get_password_hash
@@ -7,8 +7,8 @@ from app.auth.security import get_password_hash
 logger = logging.getLogger("election_app.seed_mongo")
 
 def seed_mongo_initial_data():
-    """Seeds initial collections: categories, base villages, and ONLY the Admin user into MongoDB.
-    No dummy users or dummy voter records are created.
+    """Seeds initial collections: categories, Sakharale village ONLY, and ensures the 4 authorized users exist.
+    No test villages, dummy users or mock records are created.
     """
     client = MongoClient(settings.MONGODB_URL)
     db = client[settings.MONGODB_DB_NAME]
@@ -56,57 +56,52 @@ def seed_mongo_initial_data():
         db.categories.insert_many(categories)
         logger.info("Seeded 4 sponsor categories into MongoDB.")
 
-    # 2. Base Villages (clean, 0 stats)
-    if db.villages.count_documents({}) == 0:
-        villages = [
-            {
-                "name": "Sakharele",
+    # 2. Single Village Enforcement: Sakharale ONLY (साखराळे)
+    try:
+        # Remove any extraneous non-Sakharale villages
+        db.villages.delete_many({"nameMarathi": {"$ne": "साखराळे"}})
+    except Exception as e:
+        logger.warning(f"Note on cleaning extra villages: {e}")
+
+    sakharale = db.villages.find_one({"nameMarathi": "साखराळे"})
+    now = datetime.now(timezone.utc)
+    if not sakharale:
+        sakharale_doc = {
+            "name": "Sakharale",
+            "nameMarathi": "साखराळे",
+            "taluka": "Walwa",
+            "talukaMarathi": "वाळवा",
+            "district": "Sangli",
+            "districtMarathi": "सांगली",
+            "pinCode": "415414",
+            "stats": {"totalVoters": 0, "activeMembers": 0, "deceasedMembers": 0, "totalFamilies": 0, "categorizedMembers": 0},
+            "sourceFilesCount": 1,
+            "createdAt": now,
+            "updatedAt": now
+        }
+        db.villages.insert_one(sakharale_doc)
+        logger.info("Seeded Sakharale (साखराळे) single village into MongoDB.")
+    else:
+        # Ensure correct naming
+        db.villages.update_one(
+            {"_id": sakharale["_id"]},
+            {"$set": {
+                "name": "Sakharale",
                 "nameMarathi": "साखराळे",
                 "taluka": "Walwa",
                 "talukaMarathi": "वाळवा",
                 "district": "Sangli",
                 "districtMarathi": "सांगली",
-                "pinCode": "415414",
-                "stats": {"totalVoters": 0, "activeMembers": 0, "deceasedMembers": 0, "totalFamilies": 0, "categorizedMembers": 0},
-                "sourceFilesCount": 0,
-                "createdAt": datetime.utcnow(),
-                "updatedAt": datetime.utcnow()
-            },
-            {
-                "name": "Kavthe Mahankal",
-                "nameMarathi": "कवठेमहांकाळ",
-                "taluka": "Kavthe Mahankal",
-                "talukaMarathi": "कवठे महांकाळ",
-                "district": "Sangli",
-                "districtMarathi": "सांगली",
-                "pinCode": "416405",
-                "stats": {"totalVoters": 0, "activeMembers": 0, "deceasedMembers": 0, "totalFamilies": 0, "categorizedMembers": 0},
-                "sourceFilesCount": 0,
-                "createdAt": datetime.utcnow(),
-                "updatedAt": datetime.utcnow()
-            },
-            {
-                "name": "Agran Dhulgaon",
-                "nameMarathi": "अग्रण धुळगांव",
-                "taluka": "Kavthe Mahankal",
-                "talukaMarathi": "कवठे महांकाळ",
-                "district": "Sangli",
-                "districtMarathi": "सांगली",
-                "pinCode": "416405",
-                "stats": {"totalVoters": 0, "activeMembers": 0, "deceasedMembers": 0, "totalFamilies": 0, "categorizedMembers": 0},
-                "sourceFilesCount": 0,
-                "createdAt": datetime.utcnow(),
-                "updatedAt": datetime.utcnow()
-            }
-        ]
-        res = db.villages.insert_many(villages)
-        logger.info(f"Seeded {len(res.inserted_ids)} base villages into MongoDB.")
+                "pinCode": "415414"
+            }}
+        )
 
-    # 3. Clean up any demo or mock users from the database
+    # 3. Clean up any unauthorized or demo users from the database
     try:
-        deleted_demo = db.users.delete_many({"username": {"$in": ["pratiksha", "user", "demo", "test_user"]}})
+        allowed = ["admin", "karan", "praji", "sush"]
+        deleted_demo = db.users.delete_many({"username": {"$nin": allowed}})
         if deleted_demo.deleted_count > 0:
-            logger.info(f"Purged {deleted_demo.deleted_count} demo/mock users from MongoDB.")
+            logger.info(f"Purged {deleted_demo.deleted_count} unauthorized/test users from MongoDB.")
     except Exception as ex:
         logger.warning(f"Note on cleaning demo users: {ex}")
 
@@ -115,7 +110,7 @@ def seed_mongo_initial_data():
     if not admin_user:
         admin_doc = {
             "username": "admin",
-            "fullName": "System Administrator",
+            "fullName": "Admin",
             "mobileNumber": "9822011223",
             "hashedPassword": get_password_hash("admin123"),
             "role": "ADMIN",
@@ -124,20 +119,10 @@ def seed_mongo_initial_data():
             "permissions_granted": True,
             "lastLogin": None,
             "lastActivity": None,
-            "createdAt": datetime.utcnow(),
+            "createdAt": now,
             "createdBy": "system"
         }
         db.users.insert_one(admin_doc)
         logger.info("Admin account (admin / admin123) initialized in MongoDB.")
-    else:
-        db.users.update_one(
-            {"username": "admin"},
-            {"$set": {
-                "accountStatus": "ACTIVE",
-                "role": "ADMIN",
-                "permissions_granted": True,
-                "hashedPassword": get_password_hash("admin123")
-            }}
-        )
 
-    logger.info("MongoDB initial setup complete: Only authorized Admin account is present. All other users are managed by Admin.")
+    logger.info("MongoDB seed complete: Single village Sakharale and authorized users confirmed.")

@@ -1,6 +1,9 @@
 import os
+import sys
 import psycopg2
 from dotenv import load_dotenv
+
+sys.stdout.reconfigure(encoding='utf-8')
 
 if os.path.exists('.env'):
     load_dotenv('.env')

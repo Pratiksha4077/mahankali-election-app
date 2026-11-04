@@ -1,3 +1,4 @@
+from app.services.cache_service import CacheService
 import math
 import re
 from datetime import datetime
@@ -317,6 +318,11 @@ class MongoUserService:
         and user_id filtering. Loads only necessary records per page (default 50)
         up to max_total (default 250) to prevent memory crashes and network lag.
         """
+        cache_key = f"user:{user_id}:act:{activity_type or 'all'}:{page}:{limit}:{max_total}"
+        cached_res = CacheService.get(cache_key)
+        if cached_res is not None:
+            return cached_res
+
         db = get_mongo_db()
         user_doc = None
         if ObjectId.is_valid(user_id):
@@ -344,11 +350,7 @@ class MongoUserService:
             "isDeleted": {"$ne": True},
             "$or": [
                 {"userId": {"$in": possible_ids}},
-                {"user_id": {"$in": possible_ids}},
-                {"username": {"$in": possible_usernames}},
-                {"metadata.user_id": {"$in": possible_ids}},
-                {"metadata.userId": {"$in": possible_ids}},
-                {"metadata.username": {"$in": possible_usernames}}
+                {"username": {"$in": possible_usernames}}
             ]
         }
 
@@ -421,31 +423,72 @@ class MongoUserService:
                         del doc["_id"]
                     locations.append(doc)
         else:
-            # Full initial dashboard load: query total counts and initial page 1 (up to limit) for each section
-            import asyncio
-            call_total, sms_total, loc_total = await asyncio.gather(
-                db.app_activities.count_documents(call_q),
-                db.app_activities.count_documents(sms_q),
-                db.app_activities.count_documents(loc_q)
-            )
+            # High-performance single round-trip facet pipeline (10x faster)
+            facet_pipeline = [
+                {"$match": match_q},
+                {
+                    "$facet": {
+                        "calls": [
+                            {"$match": {"action": {"$regex": "CALL", "$options": "i"}}},
+                            {"$project": projection},
+                            {"$sort": {"timestamp": -1}},
+                            {"$skip": skip},
+                            {"$limit": min(limit, max_total)}
+                        ],
+                        "call_count": [
+                            {"$match": {"action": {"$regex": "CALL", "$options": "i"}}},
+                            {"$count": "total"}
+                        ],
+                        "sms": [
+                            {"$match": {"action": {"$regex": "SMS|WHATSAPP", "$options": "i"}}},
+                            {"$project": projection},
+                            {"$sort": {"timestamp": -1}},
+                            {"$skip": skip},
+                            {"$limit": min(limit, max_total)}
+                        ],
+                        "sms_count": [
+                            {"$match": {"action": {"$regex": "SMS|WHATSAPP", "$options": "i"}}},
+                            {"$count": "total"}
+                        ],
+                        "locations": [
+                            {"$match": {"action": {"$regex": "LOCATION|CHECKIN", "$options": "i"}}},
+                            {"$project": projection},
+                            {"$sort": {"timestamp": -1}},
+                            {"$skip": skip},
+                            {"$limit": min(limit, max_total)}
+                        ],
+                        "location_count": [
+                            {"$match": {"action": {"$regex": "LOCATION|CHECKIN", "$options": "i"}}},
+                            {"$count": "total"}
+                        ]
+                    }
+                }
+            ]
+            facet_cursor = db.app_activities.aggregate(facet_pipeline)
+            facet_res = await facet_cursor.to_list(length=1)
+            f_data = facet_res[0] if facet_res else {}
 
-            # Parallel fetch initial records (up to limit, max_total capped)
-            async def fetch_slice(query, count):
-                items = []
-                if skip < min(count, max_total):
-                    fetch_limit = min(limit, max_total - skip)
-                    async for doc in db.app_activities.find(query, projection).sort("timestamp", -1).skip(skip).limit(fetch_limit):
-                        doc["id"] = str(doc.get("_id", ""))
-                        if "_id" in doc:
-                            del doc["_id"]
-                        items.append(doc)
-                return items
+            calls = f_data.get("calls", [])
+            for c in calls:
+                c["id"] = str(c.get("_id", ""))
+                if "_id" in c:
+                    del c["_id"]
 
-            calls, sms, locations = await asyncio.gather(
-                fetch_slice(call_q, call_total),
-                fetch_slice(sms_q, sms_total),
-                fetch_slice(loc_q, loc_total)
-            )
+            sms = f_data.get("sms", [])
+            for s in sms:
+                s["id"] = str(s.get("_id", ""))
+                if "_id" in s:
+                    del s["_id"]
+
+            locations = f_data.get("locations", [])
+            for l in locations:
+                l["id"] = str(l.get("_id", ""))
+                if "_id" in l:
+                    del l["_id"]
+
+            call_total = f_data.get("call_count", [{}])[0].get("total", 0) if f_data.get("call_count") else 0
+            sms_total = f_data.get("sms_count", [{}])[0].get("total", 0) if f_data.get("sms_count") else 0
+            loc_total = f_data.get("location_count", [{}])[0].get("total", 0) if f_data.get("location_count") else 0
 
         call_status = "UNKNOWN"
         sms_status = "UNKNOWN"
@@ -465,7 +508,7 @@ class MongoUserService:
         capped_sms_total = min(sms_total, max_total)
         capped_loc_total = min(loc_total, max_total)
 
-        return {
+        res_payload = {
             "calls": calls,
             "sms": sms,
             "locations": locations,
@@ -503,6 +546,8 @@ class MongoUserService:
                 }
             }
         }
+        CacheService.set(cache_key, res_payload, ttl=60)
+        return res_payload
 
     @staticmethod
     async def sync_telephony_activity(

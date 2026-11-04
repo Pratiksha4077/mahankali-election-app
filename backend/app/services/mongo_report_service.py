@@ -1,5 +1,7 @@
 import asyncio
 import re
+import math
+from app.services.cache_service import CacheService
 from typing import Optional, Dict, Any, List
 from bson import ObjectId
 from app.database.mongodb import get_mongo_db
@@ -106,8 +108,20 @@ class MongoReportService:
 
     @staticmethod
     async def get_surname_report(village_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        cache_key = f"reports:surname:{village_id or 'all'}"
+        cached = CacheService.get(cache_key)
+        if cached is not None:
+            return cached
+
         db = get_mongo_db()
-        match_dict: Dict[str, Any] = {"status": "ACTIVE", "nameMarathi.surname": {"$nin": ["", None, "-"]}}
+        match_dict: Dict[str, Any] = {
+            "status": "ACTIVE",
+            "$or": [
+                {"nameMarathi.surname": {"$nin": ["", None, "-"]}},
+                {"name.surname": {"$nin": ["", None, "-"]}},
+                {"surname": {"$nin": ["", None, "-"]}}
+            ]
+        }
         match_dict.update(TEST_EXCLUSION_QUERY)
         if village_id:
             match_dict["village.id"] = village_id
@@ -116,11 +130,28 @@ class MongoReportService:
         pipeline = [
             match_stage,
             {
+                "$project": {
+                    "clean_surname": {
+                        "$trim": {
+                            "input": {
+                                "$ifNull": ["$nameMarathi.surname", {"$ifNull": ["$name.surname", "$surname"]}]
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                "$match": {
+                    "clean_surname": {"$nin": ["", None, "-"]}
+                }
+            },
+            {
                 "$group": {
-                    "_id": "$nameMarathi.surname",
-                    "surname": {"$first": "$nameMarathi.surname"},
-                    "name": {"$first": "$nameMarathi.surname"},
-                    "key": {"$first": "$nameMarathi.surname"},
+                    "_id": "$clean_surname",
+                    "surname": {"$first": "$clean_surname"},
+                    "name": {"$first": "$clean_surname"},
+                    "name_mr": {"$first": "$clean_surname"},
+                    "key": {"$first": "$clean_surname"},
                     "count": {"$sum": 1}
                 }
             },
@@ -128,7 +159,9 @@ class MongoReportService:
         ]
 
         cursor = db.members.aggregate(pipeline)
-        return [doc async for doc in cursor]
+        items = [doc async for doc in cursor]
+        CacheService.set(cache_key, items, ttl=300)
+        return items
 
     @staticmethod
     async def get_category_report(village_id: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -422,7 +455,7 @@ class MongoReportService:
         ]
 
     @staticmethod
-    async def get_drilldown_members(report_type: str, key: str, village_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_drilldown_members(report_type: str, key: str, village_id: Optional[str] = None, page: int = 1, limit: int = 50) -> Dict[str, Any]:
         db = get_mongo_db()
         filter_q: Dict[str, Any] = {"status": "ACTIVE"}
         filter_q.update(TEST_EXCLUSION_QUERY)

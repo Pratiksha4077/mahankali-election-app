@@ -366,7 +366,7 @@ class SupabaseMemberService:
                 pass
 
             sql = f"""
-                UPDATE public.members 
+                UPDATE public.voters 
                 SET {", ".join(set_clauses)}
                 WHERE {" OR ".join(where_conditions)}
             """
@@ -423,7 +423,7 @@ class SupabaseMemberService:
                     pass
 
                 update_sql = f"""
-                    UPDATE public.members
+                    UPDATE public.voters
                     SET category_id = %s,
                         category_code = %s,
                         category_color = %s,
@@ -511,12 +511,13 @@ class SupabaseVoterImportService:
             raise RuntimeError("Could not connect to Supabase database.")
         conn.autocommit = True
 
-        # 1. Upload original file to Cloudinary
+        # 1. Upload original file to Cloudinary with original filename
         cloudinary_url = None
         cloudinary_public_id = None
         try:
             cld_res = CloudinaryService.upload_file(
                 str(file_path),
+                original_filename=file_name,
                 folder="election_app/voter_lists",
                 resource_type="raw"
             )

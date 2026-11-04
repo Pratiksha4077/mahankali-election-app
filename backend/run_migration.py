@@ -1,13 +1,24 @@
 import psycopg2
 import os
+import sys
+from dotenv import load_dotenv
+
+sys.stdout.reconfigure(encoding='utf-8')
+if os.path.exists('.env'):
+    load_dotenv('.env')
+else:
+    load_dotenv('backend/.env')
 
 def run_migration():
     print("Reading supabase_migration.sql...")
-    with open("supabase_migration.sql", "r", encoding="utf-8") as f:
+    sql_path = "supabase_migration.sql" if os.path.exists("supabase_migration.sql") else "backend/supabase_migration.sql"
+    with open(sql_path, "r", encoding="utf-8") as f:
         sql = f.read()
 
-    db_url = "postgresql://postgres:C6gxtOI4FyxEGdmV@db.opjnrimmlguzpyaokvzb.supabase.co:5432/postgres"
-    print("Connecting to Supabase PostgreSQL...")
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        raise ValueError("DATABASE_URL not found in environment!")
+    print(f"Connecting to Supabase PostgreSQL at {db_url.split('@')[-1]}...")
     conn = psycopg2.connect(db_url, connect_timeout=15)
     conn.autocommit = True
     cur = conn.cursor()

@@ -22,8 +22,9 @@ class Settings(BaseSettings):
     MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
     MONGODB_DB_NAME: str = os.getenv("MONGODB_DB_NAME", "election_db")
     DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/election_app.db")
-    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "https://yqndmvoxlipybxqbmqcn.supabase.co")
     SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    REDIS_URL: str = os.getenv("REDIS_URL", "")
     
     # Storage Dirs
     UPLOAD_DIR: Path = BASE_DIR / "uploads"

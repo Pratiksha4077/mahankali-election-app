@@ -564,39 +564,56 @@ async def delete_import_job(
         try:
             import psycopg2
             from app.services.cloudinary_service import CloudinaryService
+            from app.services.cache_service import CacheService
+            target_file_name = job.get("fileName")
             db_url = settings.DATABASE_URL
             if db_url and db_url.startswith("postgres"):
                 with psycopg2.connect(db_url, connect_timeout=5) as pg_conn:
                     pg_conn.autocommit = True
                     with pg_conn.cursor() as cur:
-                        target_file_name = job.get("fileName")
                         cur.execute(
                             "SELECT id, cloudinary_public_id FROM public.uploaded_files WHERE file_name = %s OR id = %s LIMIT 1;",
                             (target_file_name, job_id)
                         )
                         row = cur.fetchone()
+                        cld_id = None
                         if row:
                             f_id, cld_id = row
-                            if cld_id:
-                                try:
-                                    CloudinaryService.delete_file(cld_id, resource_type="raw")
-                                except Exception:
-                                    pass
-                            cur.execute("DELETE FROM public.members WHERE source_file_id = %s OR source_file_name = %s;", (f_id, target_file_name))
+                            cur.execute("DELETE FROM public.voters WHERE source_file_id = %s OR source_file_name = %s;", (f_id, target_file_name))
                             cur.execute("DELETE FROM public.import_jobs WHERE file_id = %s OR id = %s;", (f_id, job_id))
                             cur.execute("DELETE FROM public.uploaded_files WHERE id = %s;", (f_id,))
                         else:
-                            cur.execute("DELETE FROM public.members WHERE source_file_name = %s;", (target_file_name,))
+                            cur.execute("DELETE FROM public.voters WHERE source_file_name = %s;", (target_file_name,))
                             cur.execute("DELETE FROM public.uploaded_files WHERE file_name = %s;", (target_file_name,))
+
+                        # Try deleting from Cloudinary
+                        cld_public_id = cld_id or f"election_app/voter_lists/{target_file_name}"
+                        try:
+                            CloudinaryService.delete_file(cld_public_id, resource_type="raw")
+                        except Exception as ce:
+                            print(f"[DeleteJob] Cloudinary deletion error: {ce}")
 
                         cur.execute("""
                             UPDATE public.villages
-                            SET total_voters = (SELECT count(*) FROM public.members WHERE village_id = public.villages.id),
-                                active_voters = (SELECT count(*) FROM public.members WHERE village_id = public.villages.id AND status = 'ACTIVE'),
+                            SET total_voters = (SELECT count(*) FROM public.voters WHERE village_id = public.villages.id),
+                                active_voters = (SELECT count(*) FROM public.voters WHERE village_id = public.villages.id AND status = 'ACTIVE'),
                                 updated_at = NOW();
                         """)
+
+            # Invalidate cache
+            CacheService.invalidate_voter_cache()
         except Exception as se:
             print(f"[DeleteJob] Note: Supabase delete error: {se}")
+
+        # Remove temporary local file if present
+        try:
+            target_fname = job.get("fileName")
+            if target_fname:
+                local_f = settings.UPLOAD_DIR / target_fname
+                if local_f.exists():
+                    local_f.unlink()
+        except Exception:
+            pass
 
         # 4. Update village stats in MongoDB
         village_id = job.get("villageId")

@@ -245,16 +245,16 @@ CREATE INDEX idx_import_jobs_time ON public.import_jobs (created_at DESC);
 CREATE INDEX idx_uploaded_files_time ON public.uploaded_files (created_at DESC);
 
 -- ------------------------------------------------------------------------------
--- 13. SEED DEFAULT DATA (प्रारंभिक गावे, वर्गवारी आणि वापरकर्ते)
+-- 13. SEED DEFAULT DATA (साखराळे गाव, ४ वर्गवारी आणि ४ अधिकृत वापरकर्ते)
 -- ------------------------------------------------------------------------------
 
--- Default Villages
-INSERT INTO public.villages (id, name, name_marathi, taluka, taluka_marathi, district, district_marathi)
+-- Only 1 Village: Sakharale (साखराळे)
+INSERT INTO public.villages (id, name, name_marathi, taluka, taluka_marathi, district, district_marathi, pin_code)
 VALUES 
-    ('11111111-1111-1111-1111-111111111111', 'Sakharale', 'साखराळे', 'Walwa', 'वाळवा', 'Sangli', 'सांगली'),
-    ('22222222-2222-2222-2222-222222222222', 'Walwa', 'वाळवा', 'Walwa', 'वाळवा', 'Sangli', 'सांगली'),
-    ('33333333-3333-3333-3333-333333333333', 'Islampur', 'इस्लामपूर', 'Walwa', 'वाळवा', 'Sangli', 'सांगली')
-ON CONFLICT (id) DO NOTHING;
+    ('11111111-1111-1111-1111-111111111111', 'Sakharale', 'साखराळे', 'Walwa', 'वाळवा', 'Sangli', 'सांगली', '415414')
+ON CONFLICT (id) DO UPDATE SET 
+    name = EXCLUDED.name,
+    name_marathi = EXCLUDED.name_marathi;
 
 -- Default Categories (रंग श्रेणी)
 INSERT INTO public.categories (id, code, name, name_marathi, color, description, display_order)
@@ -265,7 +265,7 @@ VALUES
     ('dddddddd-dddd-dddd-dddd-dddddddddddd', 'RED', 'Red (Opponent)', 'लाल (विरोधी)', '#EF4444', 'विरोधी मतदार', 4)
 ON CONFLICT (code) DO NOTHING;
 
--- Default Users (Password: admin123 & patil@123)
+-- Exactly 4 Authorized Users (Admin, Karan, Prajakta, Sushant)
 INSERT INTO public.users (id, username, full_name, mobile_number, hashed_password, role, account_status, is_active, permissions_granted)
 VALUES 
     (
@@ -273,7 +273,7 @@ VALUES
         'admin',
         'प्रशासक (Admin)',
         '9822011223',
-        '$2b$12$/SxfLKXtL.6nfNFPSYz8DeTmm/lRLXaO2jci9cdUgUo4UCbTfDcB6',
+        '$2b$12$drmLIQxWcq2MVDoyVExprOSgRnBLAe.tiCtYOPTP8hQ0ak6tolV22',
         'ADMIN',
         'ACTIVE',
         TRUE,
@@ -282,12 +282,39 @@ VALUES
     (
         '88888888-8888-8888-8888-888888888888',
         'karan',
-        'करण पाटील (कार्यकर्ता)',
-        '9822011224',
-        '$2b$12$DDi43U9CmuxrXldy0khNYe2LsCSqUzikfIxKSxQQ7zR6WrsO1fCLC',
+        'करण पाटील',
+        '9579860030',
+        '$2b$12$bd66u/I4ZHLKzp0U6wQDVu0f4fMg3UZUu1w.ERKuLDRhfGVAOhv.m',
+        'USER',
+        'ACTIVE',
+        TRUE,
+        TRUE
+    ),
+    (
+        '77777777-7777-7777-7777-777777777777',
+        'praji',
+        'प्राजक्ता',
+        '7028960467',
+        '$2b$12$RsdF1nyjknJ0kBG9fbUA/.O6Kf2cT7A0B8zeViflIOCXR1ca1OMZu',
+        'USER',
+        'ACTIVE',
+        TRUE,
+        TRUE
+    ),
+    (
+        '66666666-6666-6666-6666-666666666666',
+        'sush',
+        'सुशांत',
+        '9545519758',
+        '$2b$12$b6Zwi4jTIgGL1/6cfuVOuunh/y1.jb.blP31fI75Uu.ESh1c3Ijoe',
         'USER',
         'ACTIVE',
         TRUE,
         TRUE
     )
-ON CONFLICT (username) DO NOTHING;
+ON CONFLICT (username) DO UPDATE SET 
+    full_name = EXCLUDED.full_name,
+    mobile_number = EXCLUDED.mobile_number,
+    hashed_password = EXCLUDED.hashed_password,
+    account_status = 'ACTIVE',
+    is_active = TRUE;
