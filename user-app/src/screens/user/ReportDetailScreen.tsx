@@ -29,15 +29,36 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
   const [totalCount, setTotalCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Surname dedicated view & search state with Pagination
+  // Surname dedicated view & search state with Pagination (250 records per page)
+  const PAGE_SIZE = 250;
   const [selectedSurname, setSelectedSurname] = useState<string | null>(null);
   const [surnameSearchQuery, setSurnameSearchQuery] = useState<string>("");
+  const [debouncedSurnameSearch, setDebouncedSurnameSearch] = useState<string>("");
   const [surnameGroupSearch, setSurnameGroupSearch] = useState<string>("");
+  const [debouncedGroupSearch, setDebouncedGroupSearch] = useState<string>("");
   const [surnameVoters, setSurnameVoters] = useState<Member[]>([]);
   const [loadingSurnameVoters, setLoadingSurnameVoters] = useState<boolean>(false);
   const [surnamePage, setSurnamePage] = useState<number>(1);
+  const [surnameTotalPages, setSurnameTotalPages] = useState<number>(1);
+  const [surnameTotalVoters, setSurnameTotalVoters] = useState<number>(0);
   const [surnameHasMore, setSurnameHasMore] = useState<boolean>(false);
   const [loadingMoreSurname, setLoadingMoreSurname] = useState<boolean>(false);
+
+  // Debounce for surname group search
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedGroupSearch(surnameGroupSearch);
+    }, 200);
+    return () => clearTimeout(handler);
+  }, [surnameGroupSearch]);
+
+  // Debounce for search inside selected surname
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSurnameSearch(surnameSearchQuery);
+    }, 200);
+    return () => clearTimeout(handler);
+  }, [surnameSearchQuery]);
 
   // Drilldown state for expandable groups (Family, Religion, Caste, etc.)
   const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
@@ -140,65 +161,45 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
     }
   };
 
-  const handleSelectSurname = async (surname: string) => {
+  const handleSelectSurname = async (surname: string, page: number = 1) => {
     setSelectedSurname(surname);
-    setSurnameSearchQuery("");
-    setSurnamePage(1);
-    setSurnameHasMore(false);
+    if (page === 1) {
+      setSurnameSearchQuery("");
+      setDebouncedSurnameSearch("");
+    }
+    setSurnamePage(page);
     setLoadingSurnameVoters(true);
     try {
-      const res: any = await reportAPI.getDrilldownMembers("surname", surname, selectedVillageId || undefined, 1, 50);
+      const res: any = await reportAPI.getDrilldownMembers("surname", surname, selectedVillageId || undefined, page, PAGE_SIZE);
       const rawMembers = Array.isArray(res) ? res : res?.items || res?.data || [];
       const members = (rawMembers || []).filter((m: any) => !isTestVoter(m));
       setSurnameVoters(members);
-      if (!Array.isArray(res) && res?.hasMore !== undefined) {
-        setSurnameHasMore(Boolean(res.hasMore));
-      } else {
-        setSurnameHasMore(members.length >= 50);
-      }
+      const total = res?.total ?? members.length;
+      setSurnameTotalVoters(total);
+      setSurnameTotalPages(res?.pages ?? (total > 0 ? Math.ceil(total / PAGE_SIZE) : 1));
     } catch (err) {
       console.error("Failed to load voters for surname", err);
       setSurnameVoters([]);
+      setSurnameTotalVoters(0);
+      setSurnameTotalPages(1);
     } finally {
       setLoadingSurnameVoters(false);
-    }
-  };
-
-  const handleLoadMoreSurname = async () => {
-    if (!selectedSurname || loadingMoreSurname || !surnameHasMore) return;
-    setLoadingMoreSurname(true);
-    const nextPage = surnamePage + 1;
-    try {
-      const res: any = await reportAPI.getDrilldownMembers("surname", selectedSurname, selectedVillageId || undefined, nextPage, 50);
-      const rawMembers = Array.isArray(res) ? res : res?.items || res?.data || [];
-      const newMembers = (rawMembers || []).filter((m: any) => !isTestVoter(m));
-      if (newMembers.length > 0) {
-        setSurnameVoters(prev => [...prev, ...newMembers]);
-        setSurnamePage(nextPage);
-      }
-      if (!Array.isArray(res) && res?.hasMore !== undefined) {
-        setSurnameHasMore(Boolean(res.hasMore));
-      } else {
-        setSurnameHasMore(newMembers.length >= 50);
-      }
-    } catch (err) {
-      console.error("Failed to load more voters for surname", err);
-    } finally {
-      setLoadingMoreSurname(false);
     }
   };
 
   const handleBackToSurnames = () => {
     setSelectedSurname(null);
     setSurnameSearchQuery("");
+    setDebouncedSurnameSearch("");
     setSurnameVoters([]);
     setSurnamePage(1);
-    setSurnameHasMore(false);
+    setSurnameTotalPages(1);
+    setSurnameTotalVoters(0);
   };
 
   const filteredSurnameVoters = surnameVoters.filter((m) => {
-    if (!surnameSearchQuery.trim()) return true;
-    const q = surnameSearchQuery.toLowerCase().trim();
+    if (!debouncedSurnameSearch.trim()) return true;
+    const q = debouncedSurnameSearch.toLowerCase().trim();
     const nameMr = (m.full_name_mr || (m as any).name_mr || "").toLowerCase();
     const nameEn = (m.full_name_en || (m as any).name || "").toLowerCase();
     const epic = (m.epic_number || "").toLowerCase();
@@ -216,8 +217,8 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
   });
 
   const filteredSummaryGroups = summaryGroups.filter((g) => {
-    if (!surnameGroupSearch.trim() || reportType !== "surname") return true;
-    const q = surnameGroupSearch.toLowerCase().trim();
+    if (!debouncedGroupSearch.trim() || reportType !== "surname") return true;
+    const q = debouncedGroupSearch.toLowerCase().trim();
     const name = (g.name || g.name_mr || g.surname || g.key || "").toLowerCase();
     return name.includes(q);
   });
@@ -312,14 +313,27 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
         </ScrollView>
       </View>
 
-      {/* Blue Summary Banner */}
+      {/* Summary Banner */}
       <View style={[styles.summaryCard, { backgroundColor: isDark ? "#1E3A8A" : theme.colors.card, borderColor: isDark ? "#3B82F6" : theme.colors.border }]}>
-        <View>
-          <Text style={[styles.summaryTitle, { color: isDark ? "#FFFFFF" : theme.colors.textPrimary }]}>{t(titleKey as any)}</Text>
-          <Text style={[styles.summarySubtitle, { color: isDark ? "#93C5FD" : theme.colors.textSecondary }]}>Total Voters Found</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.summaryTitle, { color: isDark ? "#FFFFFF" : theme.colors.textPrimary }]}>
+            {reportType === "surname" ? "Surname-Wise Voter Report (आडनाव अहवाल)" : t(titleKey as any)}
+          </Text>
+          <Text style={[styles.summarySubtitle, { color: isDark ? "#93C5FD" : theme.colors.textSecondary }]}>
+            {reportType === "surname" ? `साखराळे गाव • एकूण ${summaryGroups.length} आडनावे सापडली` : "Total Voters Found"}
+          </Text>
         </View>
-        <View style={[styles.countPill, { backgroundColor: isDark ? "#1E293B" : theme.colors.surface, borderColor: isDark ? "#38BDF8" : theme.colors.border }]}>
-          <Text style={[styles.countPillText, { color: isDark ? "#FFFFFF" : theme.colors.primary }]}>{totalCount}</Text>
+        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+          {reportType === "surname" && (
+            <View style={[styles.countPill, { backgroundColor: isDark ? "#1E293B" : "#DBEAFE", borderColor: isDark ? "#38BDF8" : "#93C5FD" }]}>
+              <Text style={[styles.countPillText, { color: isDark ? "#93C5FD" : "#1D4ED8", fontSize: 13 }]}>
+                {summaryGroups.length} आडनावे
+              </Text>
+            </View>
+          )}
+          <View style={[styles.countPill, { backgroundColor: isDark ? "#1E293B" : theme.colors.surface, borderColor: isDark ? "#38BDF8" : theme.colors.border }]}>
+            <Text style={[styles.countPillText, { color: isDark ? "#FFFFFF" : theme.colors.primary }]}>{totalCount} मतदार</Text>
+          </View>
         </View>
       </View>
 
@@ -369,13 +383,13 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 {selectedSurname}
               </Text>
               <Text style={[styles.selectedSurnameSub, { color: theme.colors.textMuted }]}>
-                {filteredSurnameVoters.length} मतदार सापडले
+                {surnameTotalVoters} पैकी {filteredSurnameVoters.length} मतदार दर्शवले
               </Text>
             </View>
 
             <View style={[styles.countPillSmall, { backgroundColor: isDark ? "#1E3A8A" : "#DBEAFE" }]}>
               <Text style={[styles.countPillSmallText, { color: isDark ? "#93C5FD" : "#1D4ED8" }]}>
-                {filteredSurnameVoters.length}
+                {surnameTotalVoters}
               </Text>
             </View>
           </View>
@@ -385,7 +399,7 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
             <Ionicons name="search" size={18} color={theme.colors.textMuted} style={{ marginRight: 8 }} />
             <TextInput
               style={[styles.searchInput, { color: theme.colors.textPrimary }]}
-              placeholder={`${selectedSurname} मधील मतदार शोधा (नाव, EPIC)...`}
+              placeholder={`${selectedSurname} मधील मतदार शोधा (नाव, EPIC, अनुक्रमांक)...`}
               placeholderTextColor={theme.colors.textMuted}
               value={surnameSearchQuery}
               onChangeText={setSurnameSearchQuery}
@@ -399,12 +413,44 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
             )}
           </View>
 
+          {/* Top Pagination Bar */}
+          {surnameTotalPages > 1 && (
+            <View style={[styles.paginationBar, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+              <TouchableOpacity
+                style={[styles.pageNavBtn, { backgroundColor: isDark ? theme.colors.surface : "#F1F5F9", borderColor: theme.colors.border }, (surnamePage <= 1 || loadingSurnameVoters) && styles.pageNavBtnDisabled]}
+                onPress={() => handleSelectSurname(selectedSurname!, surnamePage - 1)}
+                disabled={surnamePage <= 1 || loadingSurnameVoters}
+              >
+                <Ionicons name="chevron-back" size={16} color={surnamePage <= 1 ? theme.colors.textMuted : theme.colors.primaryLight} />
+                <Text style={[styles.pageNavBtnText, { color: surnamePage <= 1 ? theme.colors.textMuted : theme.colors.primaryLight }]}>मागील</Text>
+              </TouchableOpacity>
+
+              <View style={styles.pageInfoWrapper}>
+                <Text style={[styles.pageInfoText, { color: theme.colors.textPrimary }]}>
+                  पृष्ठ {surnamePage} / {surnameTotalPages}
+                </Text>
+                <Text style={[styles.pageInfoSub, { color: theme.colors.textMuted }]}>
+                  (२५० प्रति पृष्ठ • एकूण {surnameTotalVoters} मतदार)
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.pageNavBtn, { backgroundColor: isDark ? theme.colors.surface : "#F1F5F9", borderColor: theme.colors.border }, (surnamePage >= surnameTotalPages || loadingSurnameVoters) && styles.pageNavBtnDisabled]}
+                onPress={() => handleSelectSurname(selectedSurname!, surnamePage + 1)}
+                disabled={surnamePage >= surnameTotalPages || loadingSurnameVoters}
+              >
+                <Text style={[styles.pageNavBtnText, { color: surnamePage >= surnameTotalPages ? theme.colors.textMuted : theme.colors.primaryLight }]}>पुढील</Text>
+                <Ionicons name="chevron-forward" size={16} color={surnamePage >= surnameTotalPages ? theme.colors.textMuted : theme.colors.primaryLight} />
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Voters List for Selected Surname */}
           {loadingSurnameVoters ? (
             <View style={styles.loaderCenter}>
               <ActivityIndicator size="large" color={theme.colors.primaryLight} />
               <Text style={[styles.drilldownLoadingText, { color: theme.colors.textMuted, marginTop: 10 }]}>
-                {selectedSurname} आडनावातील मतदार लोड होत आहेत...
+                {selectedSurname} आडनावातील मतदार लोड होत आहेत (पृष्ठ {surnamePage})...
               </Text>
             </View>
           ) : filteredSurnameVoters.length === 0 ? (
@@ -413,6 +459,14 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
               <Text style={[styles.drilldownEmptyText, { color: theme.colors.textMuted }]}>
                 {surnameSearchQuery ? `"${surnameSearchQuery}" साठी मतदार सापडले नाहीत.` : "या आडनावात कोणतेही मतदार सापडले नाहीत."}
               </Text>
+              {surnameSearchQuery.length > 0 && (
+                <TouchableOpacity
+                  style={[styles.clearFilterBtn, { borderColor: theme.colors.primaryLight }]}
+                  onPress={() => setSurnameSearchQuery("")}
+                >
+                  <Text style={{ color: theme.colors.primaryLight, fontSize: 13, fontWeight: "600" }}>शोध साफ करा</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             <FlatList
@@ -427,9 +481,19 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
                     <Ionicons name="person" size={20} color={isDark ? "#93C5FD" : theme.colors.primaryLight} />
                   </View>
                   <View style={{ flex: 1, paddingRight: 8 }}>
-                    <Text style={[styles.voterName, { color: theme.colors.textPrimary }]}>{item.full_name_mr || item.full_name_en}</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+                      <Text style={[styles.voterName, { color: theme.colors.textPrimary }]}>{item.full_name_mr || item.full_name_en}</Text>
+                      {(item as any).category_name && (
+                        <View style={[styles.categoryTagSmall, { backgroundColor: (item as any).category_color || "#10B981" }]}>
+                          <Text style={styles.categoryTagSmallText}>{(item as any).category_name}</Text>
+                        </View>
+                      )}
+                    </View>
+                    {item.full_name_en && item.full_name_mr && item.full_name_en !== item.full_name_mr && (
+                      <Text style={[styles.voterSubName, { color: theme.colors.textMuted }]}>{item.full_name_en}</Text>
+                    )}
                     <Text style={[styles.voterIdText, { color: theme.colors.textSecondary }]}>
-                      {item.epic_number ? `EPIC: ${item.epic_number}` : `SR: ${item.serial_number}`}
+                      {item.epic_number ? `EPIC: ${item.epic_number}` : `अनुक्रमांक: ${item.serial_number}`}
                       {item.age ? ` • वय: ${item.age}` : ""}
                       {item.gender ? ` • ${item.gender}` : ""}
                       {item.house_number ? ` • घर: ${item.house_number}` : ""}
@@ -471,15 +535,37 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
                   )}
                 </TouchableOpacity>
               )}
-              onEndReached={handleLoadMoreSurname}
-              onEndReachedThreshold={0.5}
               ListFooterComponent={
-                loadingMoreSurname ? (
-                  <View style={{ paddingVertical: 16, alignItems: "center", justifyContent: "center" }}>
-                    <ActivityIndicator size="small" color={theme.colors.primaryLight} />
-                    <Text style={{ fontSize: 12, color: theme.colors.textMuted, marginTop: 4 }}>
-                      पुढील मतदार लोड होत आहेत...
-                    </Text>
+                surnameTotalPages > 1 ? (
+                  <View style={{ marginTop: 8 }}>
+                    <View style={[styles.paginationBar, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+                      <TouchableOpacity
+                        style={[styles.pageNavBtn, { backgroundColor: isDark ? theme.colors.surface : "#F1F5F9", borderColor: theme.colors.border }, (surnamePage <= 1 || loadingSurnameVoters) && styles.pageNavBtnDisabled]}
+                        onPress={() => handleSelectSurname(selectedSurname!, surnamePage - 1)}
+                        disabled={surnamePage <= 1 || loadingSurnameVoters}
+                      >
+                        <Ionicons name="chevron-back" size={16} color={surnamePage <= 1 ? theme.colors.textMuted : theme.colors.primaryLight} />
+                        <Text style={[styles.pageNavBtnText, { color: surnamePage <= 1 ? theme.colors.textMuted : theme.colors.primaryLight }]}>मागील</Text>
+                      </TouchableOpacity>
+
+                      <View style={styles.pageInfoWrapper}>
+                        <Text style={[styles.pageInfoText, { color: theme.colors.textPrimary }]}>
+                          पृष्ठ {surnamePage} / {surnameTotalPages}
+                        </Text>
+                        <Text style={[styles.pageInfoSub, { color: theme.colors.textMuted }]}>
+                          (२५० प्रति पृष्ठ • एकूण {surnameTotalVoters} मतदार)
+                        </Text>
+                      </View>
+
+                      <TouchableOpacity
+                        style={[styles.pageNavBtn, { backgroundColor: isDark ? theme.colors.surface : "#F1F5F9", borderColor: theme.colors.border }, (surnamePage >= surnameTotalPages || loadingSurnameVoters) && styles.pageNavBtnDisabled]}
+                        onPress={() => handleSelectSurname(selectedSurname!, surnamePage + 1)}
+                        disabled={surnamePage >= surnameTotalPages || loadingSurnameVoters}
+                      >
+                        <Text style={[styles.pageNavBtnText, { color: surnamePage >= surnameTotalPages ? theme.colors.textMuted : theme.colors.primaryLight }]}>पुढील</Text>
+                        <Ionicons name="chevron-forward" size={16} color={surnamePage >= surnameTotalPages ? theme.colors.textMuted : theme.colors.primaryLight} />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ) : null
               }
@@ -543,7 +629,7 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
             <Ionicons name="search" size={18} color={theme.colors.textMuted} style={{ marginRight: 8 }} />
             <TextInput
               style={[styles.searchInput, { color: theme.colors.textPrimary }]}
-              placeholder="आडनाव शोधा (उदा. पाटील, कदम)..."
+              placeholder="आडनाव शोधा (उदा. पाटील, कदम / Patil)..."
               placeholderTextColor={theme.colors.textMuted}
               value={surnameGroupSearch}
               onChangeText={setSurnameGroupSearch}
@@ -557,44 +643,73 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
             )}
           </View>
 
-          <FlatList
-            data={filteredSummaryGroups}
-            keyExtractor={(item, idx) => (item.key || item.name || item.name_mr || idx).toString()}
-            renderItem={({ item }) => {
-              const surnameName = item.name || item.name_mr || item.surname;
-              return (
-                <TouchableOpacity
-                  style={[styles.surnameCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-                  onPress={() => handleSelectSurname(surnameName)}
-                  activeOpacity={0.7}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                    <View style={[styles.surnameIconCircle, { backgroundColor: isDark ? "#1E293B" : "#E0F2FE" }]}>
-                      <Ionicons name="person" size={18} color={theme.colors.primaryLight} />
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={[styles.surnameCardTitle, { color: theme.colors.textPrimary }]}>
-                        {surnameName}
-                      </Text>
-                      <Text style={[styles.surnameCardSub, { color: theme.colors.textMuted }]}>
-                        या आडनावातील मतदार पाहण्यासाठी टॅप करा
-                      </Text>
-                    </View>
-                  </View>
+          {/* Surnames Count Badge Bar */}
+          <View style={{ paddingHorizontal: 16, paddingBottom: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <Text style={{ fontSize: 12, color: theme.colors.textMuted, fontWeight: "600" }}>
+              {filteredSummaryGroups.length} आडनावे सापडली
+            </Text>
+            {surnameGroupSearch.length > 0 && (
+              <TouchableOpacity onPress={() => setSurnameGroupSearch("")}>
+                <Text style={{ fontSize: 11, color: theme.colors.primaryLight, fontWeight: "600" }}>शोध साफ करा</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <View style={[styles.groupBadge, { backgroundColor: theme.colors.cardElevated, borderColor: theme.colors.borderLight }]}>
-                      <Text style={[styles.groupBadgeText, { color: theme.colors.primaryLight }]}>
-                        {item.count || item.total_voters}
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
-                  </View>
+          {filteredSummaryGroups.length === 0 ? (
+            <View style={styles.drilldownEmpty}>
+              <Ionicons name="search-outline" size={40} color={theme.colors.textMuted} style={{ marginBottom: 8, marginTop: 20 }} />
+              <Text style={[styles.drilldownEmptyText, { color: theme.colors.textMuted }]}>
+                {surnameGroupSearch ? `"${surnameGroupSearch}" या नावाचे आडनाव सापडले नाही.` : "कोणतीही आडनाव नोंद सापडली नाही."}
+              </Text>
+              {surnameGroupSearch.length > 0 && (
+                <TouchableOpacity
+                  style={[styles.clearFilterBtn, { borderColor: theme.colors.primaryLight }]}
+                  onPress={() => setSurnameGroupSearch("")}
+                >
+                  <Text style={{ color: theme.colors.primaryLight, fontSize: 13, fontWeight: "600" }}>शोध साफ करा</Text>
                 </TouchableOpacity>
-              );
-            }}
-            contentContainerStyle={{ paddingBottom: 40 }}
-          />
+              )}
+            </View>
+          ) : (
+            <FlatList
+              data={filteredSummaryGroups}
+              keyExtractor={(item, idx) => (item.key || item.name || item.name_mr || idx).toString()}
+              renderItem={({ item }) => {
+                const surnameName = item.name || item.name_mr || item.surname;
+                return (
+                  <TouchableOpacity
+                    style={[styles.surnameCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+                    onPress={() => handleSelectSurname(surnameName)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                      <View style={[styles.surnameIconCircle, { backgroundColor: isDark ? "#1E293B" : "#E0F2FE" }]}>
+                        <Ionicons name="person" size={18} color={theme.colors.primaryLight} />
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={[styles.surnameCardTitle, { color: theme.colors.textPrimary }]}>
+                          {surnameName}
+                        </Text>
+                        <Text style={[styles.surnameCardSub, { color: theme.colors.textMuted }]}>
+                          या आडनावातील मतदार पाहण्यासाठी टॅप करा
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <View style={[styles.groupBadge, { backgroundColor: theme.colors.cardElevated, borderColor: theme.colors.borderLight }]}>
+                        <Text style={[styles.groupBadgeText, { color: theme.colors.primaryLight }]}>
+                          {item.count || item.total_voters} मतदार
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
+                    </View>
+                  </TouchableOpacity>
+                );
+              }}
+              contentContainerStyle={{ paddingBottom: 40 }}
+            />
+          )}
         </View>
       ) : (
         <FlatList
@@ -1097,5 +1212,64 @@ const styles = StyleSheet.create({
   voterVillageText: {
     fontSize: 11,
     marginTop: 2,
-  }
+  },
+  voterSubName: {
+    fontSize: 11,
+    marginTop: 1,
+  },
+  categoryTagSmall: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  categoryTagSmallText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  paginationBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginHorizontal: 16,
+    marginVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  pageNavBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 4,
+  },
+  pageNavBtnDisabled: {
+    opacity: 0.4,
+  },
+  pageNavBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  pageInfoWrapper: {
+    alignItems: "center",
+  },
+  pageInfoText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  pageInfoSub: {
+    fontSize: 10,
+    marginTop: 1,
+  },
+  clearFilterBtn: {
+    marginTop: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
 });

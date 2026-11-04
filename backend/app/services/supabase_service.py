@@ -453,34 +453,99 @@ class SupabaseVoterImportService:
         return psycopg2.connect(db_url, connect_timeout=10)
 
     @staticmethod
+    def cleanup_database(
+        clear_voters: bool = True,
+        clear_import_history: bool = True,
+        clear_activity_logs: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Transactional database cleanup in Supabase PostgreSQL:
+        - Preserves all users (Admin, Karan, Prajakta, Sushant) and Village master records (Sakharale).
+        - Safely deletes child foreign-key records first (voters -> import_jobs -> uploaded_files).
+        - Verifies remaining counts and returns detailed status.
+        """
+        result = {
+            "success": False,
+            "voters_deleted": 0,
+            "voters_remaining": 0,
+            "jobs_deleted": 0,
+            "files_deleted": 0,
+            "logs_deleted": 0,
+            "verified": False,
+            "error": None
+        }
+        conn = None
+        try:
+            conn = SupabaseVoterImportService._get_connection()
+            if not conn:
+                result["error"] = "Could not connect to Supabase database (DATABASE_URL missing or invalid)."
+                return result
+
+            with conn.cursor() as cur:
+                # 1. Clear voters & families first (leaf tables)
+                if clear_voters:
+                    cur.execute("DELETE FROM public.voters;")
+                    result["voters_deleted"] = cur.rowcount
+                    cur.execute("DELETE FROM public.families;")
+                    cur.execute("""
+                        UPDATE public.villages
+                        SET total_voters = 0, active_voters = 0, deceased_voters = 0, total_families = 0,
+                            updated_at = NOW();
+                    """)
+
+                # 2. Clear import jobs and uploaded files
+                if clear_import_history:
+                    cur.execute("DELETE FROM public.import_jobs;")
+                    result["jobs_deleted"] = cur.rowcount
+                    cur.execute("DELETE FROM public.uploaded_files;")
+                    result["files_deleted"] = cur.rowcount
+
+                # 3. Clear activity logs if requested
+                if clear_activity_logs:
+                    cur.execute("DELETE FROM public.activity_logs;")
+                    result["logs_deleted"] = cur.rowcount
+
+                # 4. Post-deletion verification query
+                cur.execute("SELECT count(*) FROM public.voters;")
+                rem_voters = cur.fetchone()[0]
+                result["voters_remaining"] = rem_voters
+
+            conn.commit()
+            result["success"] = True
+            result["verified"] = (rem_voters == 0 if clear_voters else True)
+            logger.info(
+                f"[SupabaseCleanup] Completed. Voters deleted: {result['voters_deleted']}, "
+                f"remaining: {result['voters_remaining']}, verified: {result['verified']}"
+            )
+            return result
+        except Exception as e:
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            logger.error(f"[SupabaseCleanup] Error during Supabase cleanup: {e}")
+            result["error"] = str(e)
+            return result
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+    @staticmethod
     def clear_all_voters() -> int:
         """
         Wipes all voter records, uploaded files, and import jobs from Supabase.
         Resets voter counters for Sakharale.
         """
-        try:
-            conn = SupabaseVoterImportService._get_connection()
-            if not conn:
-                return 0
-            conn.autocommit = True
-            with conn.cursor() as cur:
-                cur.execute("DELETE FROM public.voters;")
-                deleted_voters = cur.rowcount
-                cur.execute("DELETE FROM public.uploaded_files;")
-                cur.execute("DELETE FROM public.import_jobs;")
-                cur.execute("DELETE FROM public.families;")
-                cur.execute("DELETE FROM public.activity_logs;")
-                cur.execute("""
-                    UPDATE public.villages 
-                    SET total_voters = 0, active_voters = 0, deceased_voters = 0, total_families = 0,
-                        updated_at = NOW();
-                """)
-            conn.close()
-            logger.info(f"[SupabaseVoterImportService] Cleared {deleted_voters} voters from Supabase.")
-            return deleted_voters
-        except Exception as e:
-            logger.error(f"[SupabaseVoterImportService] Failed to clear voters in Supabase: {e}")
-            return 0
+        res = SupabaseVoterImportService.cleanup_database(
+            clear_voters=True,
+            clear_import_history=True,
+            clear_activity_logs=False
+        )
+        return res.get("voters_deleted", 0)
 
     @staticmethod
     def import_excel_file(
@@ -729,6 +794,7 @@ class SupabaseVoterImportService:
         logger.info(f"[SupabaseVoterImportService] Successfully imported {imported_count}/{total_rows} voters for file {file_name}")
 
         return {
+            "success": True,
             "file_id": file_uuid,
             "job_id": job_uuid,
             "file_name": file_name,

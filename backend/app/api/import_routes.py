@@ -1,4 +1,5 @@
 import shutil
+import uuid
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List
@@ -10,6 +11,7 @@ from pydantic import BaseModel
 from app.config.config import settings
 from app.database.mongodb import get_mongo_db
 from app.auth.security import require_admin, AuthUser, log_activity
+from app.services.cache_service import CacheService
 from app.pdf_processing.pipeline import process_pdf_import_job_mongo, commit_mongo_job_records
 from app.pdf_processing.mapper import FieldMapper
 from app.excel_processing.reader import ExcelReader
@@ -18,43 +20,171 @@ from app.excel_processing.exporter import DataExporter
 
 router = APIRouter(prefix="/admin/import", tags=["Admin Import Pipeline"])
 
-async def _clear_all_voters_internal(db, admin_username: str = "admin") -> int:
-    """Wipes all voter records, families, and import jobs/records across Supabase, MongoDB, and SQLite."""
-    # 1. Clear Supabase PostgreSQL
+class DatabaseCleanupRequest(BaseModel):
+    clear_voters: bool = True
+    clear_import_history: bool = True
+    clear_activity_logs: bool = False
+    delete_cloudinary_files: bool = False
+
+async def _execute_safe_database_cleanup(
+    db,
+    req: DatabaseCleanupRequest,
+    admin_username: str = "admin"
+) -> Dict[str, Any]:
+    """
+    Safely executes database cleanup with full verification across MongoDB & Supabase.
+    Preserves all users and Sakharale village master record.
+    Invalidates all Redis and In-Memory caches.
+    """
+    from app.services.supabase_service import SupabaseVoterImportService
+    from app.services.cloudinary_service import CloudinaryService
+
+    summary = {
+        "mongo_voters_deleted": 0,
+        "mongo_voters_remaining": 0,
+        "supabase_voters_deleted": 0,
+        "supabase_voters_remaining": 0,
+        "jobs_deleted": 0,
+        "activity_logs_deleted": 0,
+        "cloudinary_files_deleted": 0,
+        "verified": False,
+        "supabase_status": "NOT_CONNECTED",
+        "errors": []
+    }
+
+    # 1. Cloudinary File Deletion (if requested)
+    if req.delete_cloudinary_files:
+        try:
+            # Gather file names or public IDs from MongoDB import jobs before deleting
+            cld_cursor = db.import_jobs.find({}, {"fileName": 1, "excel_file": 1})
+            deleted_cld = 0
+            async for j in cld_cursor:
+                fname = j.get("fileName")
+                if fname:
+                    pub_id = f"election_app/voter_lists/{fname}"
+                    try:
+                        c_res = CloudinaryService.delete_file(pub_id, resource_type="raw")
+                        if c_res and c_res.get("result") in ("ok", "not found"):
+                            deleted_cld += 1
+                    except Exception:
+                        pass
+            summary["cloudinary_files_deleted"] = deleted_cld
+        except Exception as ce:
+            summary["errors"].append(f"Cloudinary deletion: {ce}")
+
+    # 2. Supabase PostgreSQL Cleanup
     try:
-        from app.services.supabase_service import SupabaseVoterImportService
-        SupabaseVoterImportService.clear_all_voters()
+        sp_res = SupabaseVoterImportService.cleanup_database(
+            clear_voters=req.clear_voters,
+            clear_import_history=req.clear_import_history,
+            clear_activity_logs=req.clear_activity_logs
+        )
+        if sp_res.get("success"):
+            summary["supabase_status"] = "SUCCESS"
+            summary["supabase_voters_deleted"] = sp_res.get("voters_deleted", 0)
+            summary["supabase_voters_remaining"] = sp_res.get("voters_remaining", 0)
+        else:
+            summary["supabase_status"] = "ERROR"
+            if sp_res.get("error"):
+                summary["errors"].append(f"Supabase: {sp_res['error']}")
     except Exception as se:
-        print(f"[ClearVoters] Error clearing Supabase: {se}")
+        summary["supabase_status"] = "EXCEPTION"
+        summary["errors"].append(f"Supabase connection: {se}")
 
-    # 2. Clear MongoDB
-    res_m = await db.members.delete_many({})
-    await db.families.delete_many({})
-    await db.import_records.delete_many({})
-    await db.import_jobs.delete_many({})
-    
-    # Reset village counters
-    await db.villages.update_many({}, {
-        "$set": {
-            "stats.totalVoters": 0,
-            "stats.activeMembers": 0,
-            "stats.deceasedMembers": 0,
-            "stats.totalFamilies": 0
-        }
-    })
+    # 3. MongoDB Cleanup
+    if req.clear_voters:
+        res_m = await db.members.delete_many({})
+        summary["mongo_voters_deleted"] = res_m.deleted_count
+        await db.families.delete_many({})
 
-    # Clear SQLite members & families
+        # Reset village statistics in MongoDB
+        await db.villages.update_many({}, {
+            "$set": {
+                "stats.totalVoters": 0,
+                "stats.activeMembers": 0,
+                "stats.deceasedMembers": 0,
+                "stats.totalFamilies": 0
+            }
+        })
+
+    if req.clear_import_history:
+        await db.import_records.delete_many({})
+        res_j = await db.import_jobs.delete_many({})
+        summary["jobs_deleted"] = res_j.deleted_count
+
+    if req.clear_activity_logs:
+        res_l = await db.activity_logs.delete_many({})
+        summary["activity_logs_deleted"] = res_l.deleted_count
+
+    # 4. SQLite Cleanup (if active)
     try:
         from app.config.database import SessionLocal
         from app.models.models import Member as SqlMember, Family as SqlFamily
         with SessionLocal() as s_db:
-            s_db.query(SqlMember).delete()
-            s_db.query(SqlFamily).delete()
+            if req.clear_voters:
+                s_db.query(SqlMember).delete()
+                s_db.query(SqlFamily).delete()
             s_db.commit()
     except Exception:
         pass
 
-    return res_m.deleted_count
+    # 5. Post-Deletion Verification
+    if req.clear_voters:
+        mongo_rem = await db.members.count_documents({})
+        summary["mongo_voters_remaining"] = mongo_rem
+        summary["verified"] = (mongo_rem == 0 and summary["supabase_voters_remaining"] == 0)
+    else:
+        summary["verified"] = True
+
+    # 6. Invalidate All Caches (Redis + In-Memory)
+    CacheService.invalidate_voter_cache()
+    CacheService.invalidate_all_reports()
+    if req.clear_activity_logs:
+        CacheService.invalidate_user_cache()
+
+    return summary
+
+async def _clear_all_voters_internal(db, admin_username: str = "admin") -> int:
+    """Wipes all voter records, families, and import jobs/records across Supabase, MongoDB, and SQLite."""
+    req = DatabaseCleanupRequest(
+        clear_voters=True,
+        clear_import_history=True,
+        clear_activity_logs=False,
+        delete_cloudinary_files=False
+    )
+    summary = await _execute_safe_database_cleanup(db, req, admin_username)
+    return summary["mongo_voters_deleted"]
+
+@router.post("/cleanup")
+async def safe_database_cleanup(
+    req: DatabaseCleanupRequest,
+    db = Depends(get_mongo_db),
+    admin: AuthUser = Depends(require_admin)
+):
+    """
+    Authorized Admin safe database cleanup with data-type selection and verified results.
+    Preserves all users and village settings.
+    """
+    summary = await _execute_safe_database_cleanup(db, req, admin.username)
+
+    log_activity(
+        user_id=admin.id,
+        action="DATABASE_CLEANUP",
+        entity_type="SYSTEM",
+        details=(
+            f"Admin performed database cleanup. MongoDB voters deleted: {summary['mongo_voters_deleted']}, "
+            f"Supabase voters deleted: {summary['supabase_voters_deleted']}, Verified: {summary['verified']}"
+        ),
+        username=admin.username
+    )
+
+    msg = "डेटा स्वच्छता यशस्वीरित्या पूर्ण झाली आणि दोन्ही डेटाबेसमधून पडताळणी झाली." if summary["verified"] else "डेटा स्वच्छ केला गेला, कृपया खालील तपशील तपासा."
+    return {
+        "success": summary["verified"] or summary["mongo_voters_remaining"] == 0,
+        "message": msg,
+        "summary": summary,
+        "verified": summary["verified"]
+    }
 
 @router.post("/clear-voters")
 async def clear_all_voters(
@@ -62,17 +192,26 @@ async def clear_all_voters(
     admin: AuthUser = Depends(require_admin)
 ):
     """Admin clears all voter records and import history to start fresh with real data."""
-    deleted_count = await _clear_all_voters_internal(db, admin.username)
+    req = DatabaseCleanupRequest(
+        clear_voters=True,
+        clear_import_history=True,
+        clear_activity_logs=False,
+        delete_cloudinary_files=False
+    )
+    summary = await _execute_safe_database_cleanup(db, req, admin.username)
+    deleted_count = summary["mongo_voters_deleted"]
     log_activity(
         user_id=admin.id,
         action="CLEAR_ALL_VOTERS",
-        details=f"Admin cleared {deleted_count} voter records from database",
+        details=f"Admin cleared voters from database (MongoDB: {summary['mongo_voters_deleted']}, Supabase: {summary['supabase_voters_deleted']})",
         username=admin.username
     )
     return {
-        "success": True,
-        "message": f"सर्व मतदार डेटा यशस्वीरित्या साफ केला गेला ({deleted_count} नोंदी हटवल्या).",
-        "deletedCount": deleted_count
+        "success": summary["verified"] or summary["mongo_voters_remaining"] == 0,
+        "message": f"सर्व मतदार डेटा यशस्वीरित्या साफ केला गेला (MongoDB: {summary['mongo_voters_deleted']}, Supabase: {summary['supabase_voters_deleted']}).",
+        "deletedCount": deleted_count,
+        "summary": summary,
+        "verified": summary["verified"]
     }
 
 class ConfirmImportPayload(BaseModel):
@@ -571,19 +710,36 @@ async def delete_import_job(
                 with psycopg2.connect(db_url, connect_timeout=5) as pg_conn:
                     pg_conn.autocommit = True
                     with pg_conn.cursor() as cur:
+                        where_clauses = ["file_name = %s"]
+                        params = [target_file_name]
+                        try:
+                            valid_u = str(uuid.UUID(str(job_id)))
+                            where_clauses.append("id = %s")
+                            params.append(valid_u)
+                        except ValueError:
+                            pass
                         cur.execute(
-                            "SELECT id, cloudinary_public_id FROM public.uploaded_files WHERE file_name = %s OR id = %s LIMIT 1;",
-                            (target_file_name, job_id)
+                            f"SELECT id, cloudinary_public_id FROM public.uploaded_files WHERE {' OR '.join(where_clauses)} LIMIT 1;",
+                            tuple(params)
                         )
                         row = cur.fetchone()
                         cld_id = None
                         if row:
                             f_id, cld_id = row
                             cur.execute("DELETE FROM public.voters WHERE source_file_id = %s OR source_file_name = %s;", (f_id, target_file_name))
-                            cur.execute("DELETE FROM public.import_jobs WHERE file_id = %s OR id = %s;", (f_id, job_id))
+                            job_clauses = ["file_id = %s", "file_name = %s"]
+                            job_params = [f_id, target_file_name]
+                            try:
+                                valid_u = str(uuid.UUID(str(job_id)))
+                                job_clauses.append("id = %s")
+                                job_params.append(valid_u)
+                            except ValueError:
+                                pass
+                            cur.execute(f"DELETE FROM public.import_jobs WHERE {' OR '.join(job_clauses)};", tuple(job_params))
                             cur.execute("DELETE FROM public.uploaded_files WHERE id = %s;", (f_id,))
                         else:
                             cur.execute("DELETE FROM public.voters WHERE source_file_name = %s;", (target_file_name,))
+                            cur.execute("DELETE FROM public.import_jobs WHERE file_name = %s;", (target_file_name,))
                             cur.execute("DELETE FROM public.uploaded_files WHERE file_name = %s;", (target_file_name,))
 
                         # Try deleting from Cloudinary

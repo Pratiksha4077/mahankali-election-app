@@ -556,16 +556,18 @@ class MongoReportService:
             ]
 
         skip = max(0, (page - 1) * limit)
-        limit = max(1, min(limit, 200))
+        limit = max(1, min(limit, 500))
 
         async def fetch_voters():
             cursor = db.members.find(filter_q, {
                 "_id": 1, "nameMarathi": 1, "nameEnglish": 1, "fullName": 1,
-                "epicNumber": 1, "serialNumber": 1, "village": 1, "mobileNumber": 1, "status": 1
+                "epicNumber": 1, "serialNumber": 1, "village": 1, "mobileNumber": 1, "status": 1,
+                "age": 1, "gender": 1, "houseNumber": 1, "category": 1
             }).sort("serialNumber", 1).skip(skip).limit(limit)
 
             items = []
             async for doc in cursor:
+                cat = doc.get("category") or {}
                 items.append({
                     "id": str(doc.get("_id", "")),
                     "full_name_mr": doc.get("nameMarathi", {}).get("full", "") or doc.get("fullName", ""),
@@ -575,6 +577,11 @@ class MongoReportService:
                     "serial_number": doc.get("serialNumber", 0),
                     "village_name_mr": doc.get("village", {}).get("nameMarathi", "साखराळे"),
                     "mobile_number": doc.get("mobileNumber", ""),
+                    "age": doc.get("age"),
+                    "gender": doc.get("gender", "Male"),
+                    "house_number": doc.get("houseNumber", ""),
+                    "category_color": cat.get("color", ""),
+                    "category_name": cat.get("nameMarathi") or cat.get("name", ""),
                     "status": doc.get("status", "ACTIVE")
                 })
             return items

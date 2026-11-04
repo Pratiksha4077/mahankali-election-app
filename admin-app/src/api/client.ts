@@ -534,6 +534,22 @@ export const adminAPI = {
     return res.data;
   },
 
+  cleanupDatabase: async (options?: {
+    clear_voters?: boolean;
+    clear_import_history?: boolean;
+    clear_activity_logs?: boolean;
+    delete_cloudinary_files?: boolean;
+  }) => {
+    const payload = {
+      clear_voters: options?.clear_voters ?? true,
+      clear_import_history: options?.clear_import_history ?? true,
+      clear_activity_logs: options?.clear_activity_logs ?? false,
+      delete_cloudinary_files: options?.delete_cloudinary_files ?? false,
+    };
+    const res = await apiClient.post("/admin/import/cleanup", payload);
+    return res.data;
+  },
+
   getImportJobs: async () => {
     try {
       const res = await apiClient.get("/admin/import/jobs");

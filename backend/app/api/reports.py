@@ -106,7 +106,7 @@ async def get_report_drilldown(
     key: str = Query(...),
     village_id: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=500),
     current_user: AuthUser = Depends(get_current_user)
 ):
     """Fetch members for a clicked group in any report (surname, family, category, etc.) with pagination."""

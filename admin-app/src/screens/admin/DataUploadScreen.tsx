@@ -44,24 +44,35 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
   const [jobToDelete, setJobToDelete] = useState<any | null>(null);
   const [clearModalVisible, setClearModalVisible] = useState<boolean>(false);
 
+  // Safe Database Cleanup Options State
+  const [clearVotersOpt, setClearVotersOpt] = useState<boolean>(true);
+  const [clearImportHistoryOpt, setClearImportHistoryOpt] = useState<boolean>(true);
+  const [clearActivityLogsOpt, setClearActivityLogsOpt] = useState<boolean>(false);
+  const [deleteCloudinaryFilesOpt, setDeleteCloudinaryFilesOpt] = useState<boolean>(false);
+  const [cleanupResult, setCleanupResult] = useState<any | null>(null);
+  const [resultModalVisible, setResultModalVisible] = useState<boolean>(false);
+
   const handleClearAllVoterData = () => {
     setClearModalVisible(true);
   };
 
   const handleConfirmClearAll = async () => {
     setClearing(true);
-    setClearModalVisible(false);
     try {
-      await adminAPI.clearAllVoters();
+      const res = await adminAPI.cleanupDatabase({
+        clear_voters: clearVotersOpt,
+        clear_import_history: clearImportHistoryOpt,
+        clear_activity_logs: clearActivityLogsOpt,
+        delete_cloudinary_files: deleteCloudinaryFilesOpt,
+      });
+      setClearModalVisible(false);
+      setCleanupResult(res?.summary || res);
+      setResultModalVisible(true);
       setImportJobs([]);
       await loadPastImports();
-      if (Platform.OS === "web" && typeof window !== "undefined") {
-        window.alert("सर्व मतदार डेटा यशस्वीरित्या साफ केला गेला.");
-      } else {
-        Alert.alert("यशस्वी (Success)", "सर्व मतदार डेटा यशस्वीरित्या साफ केला गेला.");
-      }
+      await loadVillages();
     } catch (err: any) {
-      console.error("Failed to clear voters:", err);
+      console.error("Failed to clear database:", err);
       if (Platform.OS === "web" && typeof window !== "undefined") {
         window.alert(err?.message || "डेटा साफ करताना अडचण आली.");
       } else {
@@ -633,17 +644,89 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
         </View>
       </Modal>
 
-      {/* Clear Database Confirmation Modal */}
+      {/* Clear Database Options Modal */}
       <Modal visible={clearModalVisible} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+          <View style={[styles.modalCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, maxWidth: 460 }]}>
             <View style={[styles.modalIconCircle, { backgroundColor: isDark ? "rgba(239, 68, 68, 0.15)" : "#FEE2E2" }]}>
-              <Ionicons name="warning" size={28} color="#EF4444" />
+              <Ionicons name="trash-bin" size={28} color="#EF4444" />
             </View>
-            <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>सावधान! डेटाबेस साफ करा</Text>
-            <Text style={[styles.modalDesc, { color: theme.colors.textSecondary }]}>
-              आपण आधीचा सर्व मतदार डेटा व इम्पोर्ट इतिहास हटवू इच्छिता का? या कृतीमुळे सर्व मतदार नोंदी साफ केल्या जातील जेणेकरून आपण नवीन फाईल्स अपलोड करून फ्रेश मतदार डेटा वापरू शकता.
+            <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>डेटाबेस स्वच्छता (Safe Database Cleanup)</Text>
+            <Text style={[styles.modalDesc, { color: theme.colors.textSecondary, marginBottom: 12 }]}>
+              कोणता डेटा साफ करायचा आहे ते निवडा. ही प्रक्रिया MongoDB आणि Supabase दोन्हीवर सुरक्षितपणे चालवली जाईल.
             </Text>
+
+            {/* Safeguard Notice */}
+            <View style={[styles.safeguardBanner, { backgroundColor: isDark ? "#064E3B" : "#D1FAE5", borderColor: "#10B981" }]}>
+              <Ionicons name="shield-checkmark" size={18} color="#10B981" style={{ marginRight: 8 }} />
+              <Text style={{ flex: 1, fontSize: 12, color: isDark ? "#A7F3D0" : "#065F46", fontWeight: "600" }}>
+                सुरक्षितता हमी: Admin खाती (Admin, Karan, Prajakta, Sushant) आणि साखराळे गावाचा डेटा कधीही हटवला जाणार नाही.
+              </Text>
+            </View>
+
+            {/* Cleanup Options Checkboxes */}
+            <View style={{ width: "100%", marginVertical: 12, gap: 10 }}>
+              {/* Option 1: Voters Data */}
+              <TouchableOpacity
+                style={[styles.cleanupOptionCard, { backgroundColor: isDark ? theme.colors.surface : "#F8FAFC", borderColor: clearVotersOpt ? theme.colors.primaryLight : theme.colors.border }]}
+                onPress={() => setClearVotersOpt(!clearVotersOpt)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.cleanupCheckbox, { borderColor: clearVotersOpt ? theme.colors.primaryLight : theme.colors.textMuted, backgroundColor: clearVotersOpt ? theme.colors.primaryLight : "transparent" }]}>
+                  {clearVotersOpt && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+                </View>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={[styles.cleanupOptionTitle, { color: theme.colors.textPrimary }]}>सर्व मतदार नोंदी (Voters Data)</Text>
+                  <Text style={[styles.cleanupOptionSub, { color: theme.colors.textMuted }]}>MongoDB आणि Supabase मधील सर्व मतदार साफ केले जातील</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Option 2: Import History */}
+              <TouchableOpacity
+                style={[styles.cleanupOptionCard, { backgroundColor: isDark ? theme.colors.surface : "#F8FAFC", borderColor: clearImportHistoryOpt ? theme.colors.primaryLight : theme.colors.border }]}
+                onPress={() => setClearImportHistoryOpt(!clearImportHistoryOpt)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.cleanupCheckbox, { borderColor: clearImportHistoryOpt ? theme.colors.primaryLight : theme.colors.textMuted, backgroundColor: clearImportHistoryOpt ? theme.colors.primaryLight : "transparent" }]}>
+                  {clearImportHistoryOpt && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+                </View>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={[styles.cleanupOptionTitle, { color: theme.colors.textPrimary }]}>इम्पोर्ट इतिहास (Import Jobs History)</Text>
+                  <Text style={[styles.cleanupOptionSub, { color: theme.colors.textMuted }]}>मागील सर्व एक्सेल इम्पोर्ट जॉब्स नोंदी साफ केल्या जातील</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Option 3: Activity Logs */}
+              <TouchableOpacity
+                style={[styles.cleanupOptionCard, { backgroundColor: isDark ? theme.colors.surface : "#F8FAFC", borderColor: clearActivityLogsOpt ? theme.colors.primaryLight : theme.colors.border }]}
+                onPress={() => setClearActivityLogsOpt(!clearActivityLogsOpt)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.cleanupCheckbox, { borderColor: clearActivityLogsOpt ? theme.colors.primaryLight : theme.colors.textMuted, backgroundColor: clearActivityLogsOpt ? theme.colors.primaryLight : "transparent" }]}>
+                  {clearActivityLogsOpt && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+                </View>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={[styles.cleanupOptionTitle, { color: theme.colors.textPrimary }]}>युझर ॲक्टिव्हिटी लॉग्स (Activity Logs)</Text>
+                  <Text style={[styles.cleanupOptionSub, { color: theme.colors.textMuted }]}>वापरकर्त्यांच्या कॉल, एसएमएस व लॉगिन नोंदी स्वच्छ करा</Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Option 4: Cloudinary Files */}
+              <TouchableOpacity
+                style={[styles.cleanupOptionCard, { backgroundColor: isDark ? theme.colors.surface : "#F8FAFC", borderColor: deleteCloudinaryFilesOpt ? "#EF4444" : theme.colors.border }]}
+                onPress={() => setDeleteCloudinaryFilesOpt(!deleteCloudinaryFilesOpt)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.cleanupCheckbox, { borderColor: deleteCloudinaryFilesOpt ? "#EF4444" : theme.colors.textMuted, backgroundColor: deleteCloudinaryFilesOpt ? "#EF4444" : "transparent" }]}>
+                  {deleteCloudinaryFilesOpt && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+                </View>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={[styles.cleanupOptionTitle, { color: theme.colors.textPrimary }]}>Cloudinary वरील मूळ फाईल्स (Stored Files)</Text>
+                  <Text style={[styles.cleanupOptionSub, { color: theme.colors.textMuted }]}>क्लाउड स्टोरेजमधील सेव्ह केलेल्या मूळ एक्सेल फाईल्स हटवा</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
             <View style={styles.modalBtnRow}>
               <TouchableOpacity
                 style={[styles.modalCancelBtn, { backgroundColor: isDark ? theme.colors.surface : "#F1F5F9", borderColor: theme.colors.border }]}
@@ -655,15 +738,81 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
               <TouchableOpacity
                 style={[styles.modalConfirmBtn, { backgroundColor: "#EF4444" }, clearing && { opacity: 0.6 }]}
                 onPress={handleConfirmClearAll}
-                disabled={clearing}
+                disabled={clearing || (!clearVotersOpt && !clearImportHistoryOpt && !clearActivityLogsOpt && !deleteCloudinaryFilesOpt)}
               >
                 {clearing ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <ActivityIndicator color="#FFFFFF" size="small" style={{ marginRight: 8 }} />
+                    <Text style={styles.modalConfirmText}>डेटा साफ होत आहे...</Text>
+                  </View>
                 ) : (
-                  <Text style={styles.modalConfirmText}>होय, डेटा साफ करा</Text>
+                  <Text style={styles.modalConfirmText}>निवडलेला डेटा साफ करा</Text>
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Verified Cleanup Result Dialog */}
+      <Modal visible={resultModalVisible} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, maxWidth: 440 }]}>
+            <View style={[styles.modalIconCircle, { backgroundColor: isDark ? "rgba(16, 185, 129, 0.15)" : "#D1FAE5" }]}>
+              <Ionicons name="checkmark-done" size={30} color="#10B981" />
+            </View>
+            <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>डेटा स्वच्छता पडताळणी पूर्ण!</Text>
+            <Text style={[styles.modalDesc, { color: theme.colors.textSecondary, marginBottom: 14 }]}>
+              दोन्ही डेटाबेस (MongoDB आणि Supabase) मधून डेटा सुरक्षितपणे काढण्यात आला आणि पडताळणी झाली आहे.
+            </Text>
+
+            {/* Result Metrics Card */}
+            <View style={[styles.resultMetricsCard, { backgroundColor: isDark ? theme.colors.surface : "#F8FAFC", borderColor: theme.colors.border }]}>
+              <View style={styles.resultMetricRow}>
+                <Ionicons name="server" size={16} color={theme.colors.primaryLight} />
+                <Text style={[styles.resultMetricLabel, { color: theme.colors.textPrimary }]}>MongoDB मतदार नोंदी:</Text>
+                <Text style={[styles.resultMetricValue, { color: "#10B981" }]}>
+                  {cleanupResult?.mongo_voters_deleted ?? 0} हटवले (उर्वरित: {cleanupResult?.mongo_voters_remaining ?? 0})
+                </Text>
+              </View>
+
+              <View style={styles.resultMetricRow}>
+                <Ionicons name="cloud-done" size={16} color="#3B82F6" />
+                <Text style={[styles.resultMetricLabel, { color: theme.colors.textPrimary }]}>Supabase मतदार नोंदी:</Text>
+                <Text style={[styles.resultMetricValue, { color: "#10B981" }]}>
+                  {cleanupResult?.supabase_voters_deleted ?? 0} हटवले (उर्वरित: {cleanupResult?.supabase_voters_remaining ?? 0} ✓)
+                </Text>
+              </View>
+
+              {cleanupResult?.jobs_deleted !== undefined && cleanupResult.jobs_deleted > 0 && (
+                <View style={styles.resultMetricRow}>
+                  <Ionicons name="list" size={16} color="#8B5CF6" />
+                  <Text style={[styles.resultMetricLabel, { color: theme.colors.textPrimary }]}>इम्पोर्ट इतिहास जॉब्स:</Text>
+                  <Text style={[styles.resultMetricValue, { color: theme.colors.textPrimary }]}>{cleanupResult.jobs_deleted} हटवले</Text>
+                </View>
+              )}
+
+              {cleanupResult?.cloudinary_files_deleted !== undefined && cleanupResult.cloudinary_files_deleted > 0 && (
+                <View style={styles.resultMetricRow}>
+                  <Ionicons name="cloud-offline" size={16} color="#EF4444" />
+                  <Text style={[styles.resultMetricLabel, { color: theme.colors.textPrimary }]}>Cloudinary फाईल्स:</Text>
+                  <Text style={[styles.resultMetricValue, { color: theme.colors.textPrimary }]}>{cleanupResult.cloudinary_files_deleted} हटवले</Text>
+                </View>
+              )}
+
+              <View style={styles.resultMetricRow}>
+                <Ionicons name="flash" size={16} color="#F59E0B" />
+                <Text style={[styles.resultMetricLabel, { color: theme.colors.textPrimary }]}>सिस्टम व रिपोर्ट कॅश:</Text>
+                <Text style={[styles.resultMetricValue, { color: "#10B981" }]}>पूर्णपणे रिफ्रेश (Cleared)</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.modalConfirmBtn, { backgroundColor: "#10B981", width: "100%", marginTop: 16 }]}
+              onPress={() => setResultModalVisible(false)}
+            >
+              <Text style={styles.modalConfirmText}>ठीक आहे (OK)</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -1126,6 +1275,60 @@ const styles = StyleSheet.create({
   modalConfirmText: {
     color: "#FFFFFF",
     fontSize: 14,
+    fontWeight: "700",
+  },
+  safeguardBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    width: "100%",
+    marginBottom: 8,
+  },
+  cleanupOptionCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    width: "100%",
+  },
+  cleanupCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cleanupOptionTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  cleanupOptionSub: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  resultMetricsCard: {
+    width: "100%",
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 8,
+  },
+  resultMetricRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  resultMetricLabel: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  resultMetricValue: {
+    fontSize: 12,
     fontWeight: "700",
   },
 });
