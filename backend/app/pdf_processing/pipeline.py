@@ -6,7 +6,8 @@ from typing import Dict, Any, List, Optional, Union
 from bson import ObjectId
 
 from app.config.config import settings
-from app.database.mongodb import get_sync_mongo_db
+def get_sync_mongo_db():
+    return None
 from pymongo import UpdateOne, InsertOne
 from app.pdf_processing.detector import detect_pdf_type, inspect_pdf_metadata
 from app.pdf_processing.extractor import extract_table_from_pdf

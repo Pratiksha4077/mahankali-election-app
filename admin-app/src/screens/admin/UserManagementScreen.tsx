@@ -292,12 +292,7 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
               </View>
 
               <View style={[styles.cardActionsRow, { borderTopColor: isDark ? "rgba(255,255,255,0.08)" : "#E2E8F0" }]}>
-                <TouchableOpacity
-                  style={styles.historyLink}
-                  onPress={() => navigation.navigate("UserActivity", { user: item })}
-                >
-                  <Text style={[styles.historyLinkText, { color: isDark ? "#93C5FD" : "#2563EB" }]}>📞 Call • 💬 SMS • 📍 Location History →</Text>
-                </TouchableOpacity>
+                <View style={{ flex: 1 }} />
 
                 <View style={styles.buttonsGroup}>
                   {/* View Details & Activity Timeline Button */}

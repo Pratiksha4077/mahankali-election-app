@@ -79,7 +79,7 @@ class AuthUser:
         self.mobileNumber = doc.get("mobileNumber", "")
         self.role = doc.get("role", "USER")
         self.accountStatus = doc.get("accountStatus", "ACTIVE")
-        self.assignedVillages = doc.get("assignedVillages", [])
+        self.assignedVillages = doc.get("assignedVillages", ["11111111-1111-1111-1111-111111111111"])
         self.is_active = (self.accountStatus == "ACTIVE")
         self.permissions_granted = doc.get("permissions_granted", False)
 
@@ -99,7 +99,7 @@ class AuthUser:
 
 
 # ============================================================
-# CURRENT USER DEPENDENCY
+# CURRENT USER DEPENDENCY (PURE SUPABASE POSTGRESQL)
 # ============================================================
 
 async def get_current_user(
@@ -122,53 +122,23 @@ async def get_current_user(
     except jwt.PyJWTError:
         raise credentials_exception
 
-    # Import inside function to avoid circular imports
-    from app.database.mongodb import get_mongo_db
-    mongo_db = get_mongo_db()
-
-    user_doc = await mongo_db.users.find_one({"username": username})
-
-    if user_doc is None:
-        # Fallback to SQLite
-        try:
-            from app.config.database import SessionLocal
-            from app.models.models import User
-            with SessionLocal() as s_db:
-                s_user = s_db.query(User).filter(
-                    User.username == username
-                ).first()
-                if s_user:
-                    user_doc = {
-                        "_id": s_user.id,
-                        "username": s_user.username,
-                        "fullName": s_user.username,
-                        "mobileNumber": s_user.mobile,
-                        "hashedPassword": s_user.hashed_password,
-                        "role": s_user.role,
-                        "accountStatus": (
-                            "ACTIVE" if s_user.is_active else "DISABLED"
-                        ),
-                    }
-        except Exception:
-            pass
+    from app.services.supabase_service import SupabaseUserService
+    user_doc = SupabaseUserService.get_user_by_username_or_mobile(username)
 
     if user_doc is None:
         raise credentials_exception
 
     user = AuthUser(user_doc)
     account_status = user_doc.get("accountStatus", "ACTIVE")
-    if not user.is_active or account_status == "DISABLED" or user_doc.get("admin_access_allowed") is False or user_doc.get("admin_access_denied") is True:
+    if not user.is_active or account_status == "DISABLED":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="ॲडमिनने आपला प्रवेश नाकारला आहे. आपण युझर पॅनेलमध्ये प्रवेश करू शकत नाही. (Access Denied: The administrator has denied your access to the User Panel.)"
         )
 
-    # Update lastActivity (non-blocking)
+    # Update lastActivity in Supabase (non-blocking)
     try:
-        await mongo_db.users.update_one(
-            {"username": username},
-            {"$set": {"lastActivity": datetime.utcnow()}}
-        )
+        SupabaseUserService.update_last_activity(username)
     except Exception:
         pass
 
@@ -191,7 +161,7 @@ def require_admin(
 
 
 # ============================================================
-# ACTIVITY LOGGING
+# ACTIVITY LOGGING (PURE SUPABASE POSTGRESQL)
 # ============================================================
 
 def log_activity(
@@ -206,62 +176,25 @@ def log_activity(
     ip_address: Optional[str] = None,
     username: Optional[str] = None,
 ):
-    """Logs activity to MongoDB audit_logs & app_activities."""
-    now = datetime.utcnow()
-
+    """Logs activity directly into Supabase PostgreSQL public.activity_logs."""
     try:
-        from app.database.mongodb import get_sync_mongo_db
-        s_mongo = get_sync_mongo_db()
-        s_mongo.audit_logs.insert_one({
-            "userId": user_id,
-            "username": username,
-            "action": action,
-            "entityType": entity_type,
-            "entityId": entity_id,
-            "details": details,
-            "oldValues": old_values,
-            "newValues": new_values,
-            "ipAddress": ip_address,
-            "timestamp": now,
-        })
+        from app.services.supabase_service import SupabaseActivityService
+        meta = {}
+        if old_values:
+            meta["old_values"] = old_values
+        if new_values:
+            meta["new_values"] = new_values
+        if ip_address:
+            meta["ip_address"] = ip_address
 
-        if action in [
-            "LOGIN", "LOGOUT", "SEARCH", "VIEW_MEMBER",
-            "UPDATE_MEMBER", "CALL_INITIATED", "SMS_INITIATED",
-            "WHATSAPP_OPENED"
-        ]:
-            s_mongo.app_activities.insert_one({
-                "userId": user_id,
-                "username": username,
-                "action": action,
-                "targetMemberId": (
-                    entity_id if entity_type == "MEMBER" else None
-                ),
-                "details": details or "",
-                "metadata": {"ipAddress": ip_address} if ip_address else {},
-                "timestamp": now,
-            })
+        SupabaseActivityService.log_activity_sync(
+            user_id=user_id,
+            username=username or "system",
+            action=action,
+            details=details or "",
+            entity_type=entity_type,
+            entity_id=entity_id,
+            metadata=meta
+        )
     except Exception:
         pass
-
-    # Optional SQLite fallback
-    if db_or_none is not None:
-        try:
-            from sqlalchemy.orm import Session
-            from app.models.models import AuditLog
-            if isinstance(db_or_none, Session):
-                audit = AuditLog(
-                    user_id=user_id,
-                    action=action,
-                    entity_type=entity_type,
-                    entity_id=entity_id,
-                    details=details,
-                    old_values=old_values,
-                    new_values=new_values,
-                    ip_address=ip_address,
-                    timestamp=now,
-                )
-                db_or_none.add(audit)
-                db_or_none.commit()
-        except Exception:
-            pass

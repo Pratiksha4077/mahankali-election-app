@@ -1,22 +1,22 @@
-import shutil
 import uuid
+import re
+import shutil
+import logging
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict, Any, List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, Form, Query
+from typing import Optional, List, Dict, Any
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import FileResponse
-from bson import ObjectId
 from pydantic import BaseModel
+from psycopg2.extras import RealDictCursor
 
 from app.config.config import settings
-from app.database.mongodb import get_mongo_db
 from app.auth.security import require_admin, AuthUser, log_activity
+from app.services.supabase_service import get_supabase_conn, SupabaseVoterImportService, SAKHARALE_VILLAGE_ID
+from app.services.cloudinary_service import CloudinaryService
 from app.services.cache_service import CacheService
-from app.pdf_processing.pipeline import process_pdf_import_job_mongo, commit_mongo_job_records
-from app.pdf_processing.mapper import FieldMapper
-from app.excel_processing.reader import ExcelReader
-from app.excel_processing.importer import ExcelImporter
-from app.excel_processing.exporter import DataExporter
+
+logger = logging.getLogger("election_app.import")
 
 router = APIRouter(prefix="/admin/import", tags=["Admin Import Pipeline"])
 
@@ -24,461 +24,149 @@ class DatabaseCleanupRequest(BaseModel):
     clear_voters: bool = True
     clear_import_history: bool = True
     clear_activity_logs: bool = False
-    delete_cloudinary_files: bool = False
+    delete_cloudinary_files: bool = True
 
-async def _execute_safe_database_cleanup(
-    db,
-    req: DatabaseCleanupRequest,
-    admin_username: str = "admin"
-) -> Dict[str, Any]:
-    """
-    Safely executes database cleanup with full verification across MongoDB & Supabase.
-    Preserves all users and Sakharale village master record.
-    Invalidates all Redis and In-Memory caches.
-    """
-    from app.services.supabase_service import SupabaseVoterImportService
-    from app.services.cloudinary_service import CloudinaryService
-
-    summary = {
-        "mongo_voters_deleted": 0,
-        "mongo_voters_remaining": 0,
-        "supabase_voters_deleted": 0,
-        "supabase_voters_remaining": 0,
-        "jobs_deleted": 0,
-        "activity_logs_deleted": 0,
-        "cloudinary_files_deleted": 0,
-        "verified": False,
-        "supabase_status": "NOT_CONNECTED",
-        "errors": []
+def format_job_row(j: Dict[str, Any]) -> Dict[str, Any]:
+    tot = j.get("total_records") or 0
+    val = j.get("valid_records") or 0
+    imp = j.get("imported_records") or 0
+    dup = j.get("duplicate_records") or 0
+    inv = j.get("invalid_records") or 0
+    created = j.get("created_at")
+    created_str = created.isoformat() if created and hasattr(created, "isoformat") else str(created or "")
+    
+    return {
+        "id": str(j.get("id")),
+        "jobId": str(j.get("id")),
+        "_id": str(j.get("id")),
+        "fileName": j.get("file_name"),
+        "fileType": j.get("file_type", "EXCEL"),
+        "fileSize": j.get("file_size", 0),
+        "status": j.get("status", "completed"),
+        "progress": j.get("progress", 100),
+        "currentStage": j.get("stage", "Completed"),
+        "stage": j.get("stage", "Completed"),
+        "totalRecords": tot,
+        "validRecords": val,
+        "importedRecords": imp,
+        "duplicateRecords": dup,
+        "invalidRecords": inv,
+        "total_records": tot,
+        "valid_records": val,
+        "imported_records": imp,
+        "duplicate_records": dup,
+        "invalid_records": inv,
+        "cloudinaryUrl": j.get("cloudinary_url") or "",
+        "excel_file": None,
+        "excelDownloadUrl": None,
+        "createdAt": created_str,
+        "metrics": {
+            "totalRecords": tot,
+            "validRecords": val,
+            "importedRecords": imp,
+            "duplicateRecords": dup,
+            "invalidRecords": inv
+        }
     }
 
-    # 1. Cloudinary File Deletion (if requested)
-    if req.delete_cloudinary_files:
-        try:
-            # Gather file names or public IDs from MongoDB import jobs before deleting
-            cld_cursor = db.import_jobs.find({}, {"fileName": 1, "excel_file": 1})
-            deleted_cld = 0
-            async for j in cld_cursor:
-                fname = j.get("fileName")
-                if fname:
-                    pub_id = f"election_app/voter_lists/{fname}"
-                    try:
-                        c_res = CloudinaryService.delete_file(pub_id, resource_type="raw")
-                        if c_res and c_res.get("result") in ("ok", "not found"):
-                            deleted_cld += 1
-                    except Exception:
-                        pass
-            summary["cloudinary_files_deleted"] = deleted_cld
-        except Exception as ce:
-            summary["errors"].append(f"Cloudinary deletion: {ce}")
-
-    # 2. Supabase PostgreSQL Cleanup
-    try:
-        sp_res = SupabaseVoterImportService.cleanup_database(
-            clear_voters=req.clear_voters,
-            clear_import_history=req.clear_import_history,
-            clear_activity_logs=req.clear_activity_logs
-        )
-        if sp_res.get("success"):
-            summary["supabase_status"] = "SUCCESS"
-            summary["supabase_voters_deleted"] = sp_res.get("voters_deleted", 0)
-            summary["supabase_voters_remaining"] = sp_res.get("voters_remaining", 0)
-        else:
-            summary["supabase_status"] = "ERROR"
-            if sp_res.get("error"):
-                summary["errors"].append(f"Supabase: {sp_res['error']}")
-    except Exception as se:
-        summary["supabase_status"] = "EXCEPTION"
-        summary["errors"].append(f"Supabase connection: {se}")
-
-    # 3. MongoDB Cleanup
-    if req.clear_voters:
-        res_m = await db.members.delete_many({})
-        summary["mongo_voters_deleted"] = res_m.deleted_count
-        await db.families.delete_many({})
-
-        # Reset village statistics in MongoDB
-        await db.villages.update_many({}, {
-            "$set": {
-                "stats.totalVoters": 0,
-                "stats.activeMembers": 0,
-                "stats.deceasedMembers": 0,
-                "stats.totalFamilies": 0
-            }
-        })
-
-    if req.clear_import_history:
-        await db.import_records.delete_many({})
-        res_j = await db.import_jobs.delete_many({})
-        summary["jobs_deleted"] = res_j.deleted_count
-
-    if req.clear_activity_logs:
-        res_l = await db.activity_logs.delete_many({})
-        summary["activity_logs_deleted"] = res_l.deleted_count
-
-    # 4. SQLite Cleanup (if active)
-    try:
-        from app.config.database import SessionLocal
-        from app.models.models import Member as SqlMember, Family as SqlFamily
-        with SessionLocal() as s_db:
-            if req.clear_voters:
-                s_db.query(SqlMember).delete()
-                s_db.query(SqlFamily).delete()
-            s_db.commit()
-    except Exception:
-        pass
-
-    # 5. Post-Deletion Verification
-    if req.clear_voters:
-        mongo_rem = await db.members.count_documents({})
-        summary["mongo_voters_remaining"] = mongo_rem
-        summary["verified"] = (mongo_rem == 0 and summary["supabase_voters_remaining"] == 0)
-    else:
-        summary["verified"] = True
-
-    # 6. Invalidate All Caches (Redis + In-Memory)
-    CacheService.invalidate_voter_cache()
-    CacheService.invalidate_all_reports()
-    if req.clear_activity_logs:
-        CacheService.invalidate_user_cache()
-
-    return summary
-
-async def _clear_all_voters_internal(db, admin_username: str = "admin") -> int:
-    """Wipes all voter records, families, and import jobs/records across Supabase, MongoDB, and SQLite."""
-    req = DatabaseCleanupRequest(
-        clear_voters=True,
-        clear_import_history=True,
-        clear_activity_logs=False,
-        delete_cloudinary_files=False
-    )
-    summary = await _execute_safe_database_cleanup(db, req, admin_username)
-    return summary["mongo_voters_deleted"]
+# ==============================================================================
+# DATABASE CLEANUP ENDPOINTS
+# ==============================================================================
 
 @router.post("/cleanup")
 async def safe_database_cleanup(
     req: DatabaseCleanupRequest,
-    db = Depends(get_mongo_db),
     admin: AuthUser = Depends(require_admin)
 ):
     """
-    Authorized Admin safe database cleanup with data-type selection and verified results.
-    Preserves all users and village settings.
+    Authorized Admin safe database cleanup:
+    - Wipes voters from Supabase PostgreSQL (leaf records first).
+    - Wipes Cloudinary assets under folder 'election_app'.
+    - Preserves all 4 users and Sakharale village master.
+    - Verifies deletion and returns detailed metrics.
     """
-    summary = await _execute_safe_database_cleanup(db, req, admin.username)
+    logger.info(f"Admin {admin.username} initiated database cleanup: {req}")
+    res = SupabaseVoterImportService.cleanup_database(
+        clear_voters=req.clear_voters,
+        clear_import_history=req.clear_import_history,
+        clear_activity_logs=req.clear_activity_logs,
+        delete_cloudinary_files=req.delete_cloudinary_files
+    )
+
+    CacheService.invalidate_voter_cache()
+    CacheService.invalidate_all_reports()
 
     log_activity(
         user_id=admin.id,
         action="DATABASE_CLEANUP",
         entity_type="SYSTEM",
         details=(
-            f"Admin performed database cleanup. MongoDB voters deleted: {summary['mongo_voters_deleted']}, "
-            f"Supabase voters deleted: {summary['supabase_voters_deleted']}, Verified: {summary['verified']}"
+            f"Admin performed database cleanup. Supabase voters deleted: {res.get('voters_deleted', 0)}, "
+            f"Cloudinary files deleted: {res.get('cloudinary_files_deleted', 0)}, Verified: {res.get('verified')}"
         ),
         username=admin.username
     )
 
-    msg = "डेटा स्वच्छता यशस्वीरित्या पूर्ण झाली आणि दोन्ही डेटाबेसमधून पडताळणी झाली." if summary["verified"] else "डेटा स्वच्छ केला गेला, कृपया खालील तपशील तपासा."
+    summary = {
+        "mongo_voters_deleted": res.get("voters_deleted", 0),
+        "mongo_voters_remaining": res.get("voters_remaining", 0),
+        "supabase_voters_deleted": res.get("voters_deleted", 0),
+        "supabase_voters_remaining": res.get("voters_remaining", 0),
+        "jobs_deleted": res.get("jobs_deleted", 0),
+        "files_deleted": res.get("files_deleted", 0),
+        "activity_logs_deleted": res.get("logs_deleted", 0),
+        "cloudinary_files_deleted": res.get("cloudinary_files_deleted", 0),
+        "verified": res.get("verified", True),
+        "supabase_status": "SUCCESS" if res.get("success") else "ERROR",
+        "errors": [res["error"]] if res.get("error") else []
+    }
+
     return {
-        "success": summary["verified"] or summary["mongo_voters_remaining"] == 0,
-        "message": msg,
+        "success": res.get("success", True),
+        "message": "डेटाबेस आणि Cloudinary फाईल्स यशस्वीरित्या स्वच्छ केल्या गेल्या आहेत.",
         "summary": summary,
-        "verified": summary["verified"]
+        **summary
     }
 
 @router.post("/clear-voters")
+@router.post("/clear-all-voters")
 async def clear_all_voters(
-    db = Depends(get_mongo_db),
     admin: AuthUser = Depends(require_admin)
 ):
-    """Admin clears all voter records and import history to start fresh with real data."""
+    """Admin clears all voter records, import history, and Cloudinary files to start fresh."""
     req = DatabaseCleanupRequest(
         clear_voters=True,
         clear_import_history=True,
         clear_activity_logs=False,
-        delete_cloudinary_files=False
+        delete_cloudinary_files=True
     )
-    summary = await _execute_safe_database_cleanup(db, req, admin.username)
-    deleted_count = summary["mongo_voters_deleted"]
-    log_activity(
-        user_id=admin.id,
-        action="CLEAR_ALL_VOTERS",
-        details=f"Admin cleared voters from database (MongoDB: {summary['mongo_voters_deleted']}, Supabase: {summary['supabase_voters_deleted']})",
-        username=admin.username
-    )
-    return {
-        "success": summary["verified"] or summary["mongo_voters_remaining"] == 0,
-        "message": f"सर्व मतदार डेटा यशस्वीरित्या साफ केला गेला (MongoDB: {summary['mongo_voters_deleted']}, Supabase: {summary['supabase_voters_deleted']}).",
-        "deletedCount": deleted_count,
-        "summary": summary,
-        "verified": summary["verified"]
-    }
+    return await safe_database_cleanup(req, admin)
 
-class ConfirmImportPayload(BaseModel):
-    duplicateStrategy: Optional[str] = "SKIP"  # "SKIP", "UPDATE", "KEEP_BOTH"
-
-def format_job(job: dict) -> dict:
-    if not job:
-        return {}
-    j = dict(job)
-    job_id = str(j.get("_id", ""))
-    j["id"] = job_id
-    j["job_id"] = job_id
-    j["jobId"] = job_id
-    metrics = j.get("metrics", {})
-    j["records_found"] = j.get("records_found", metrics.get("totalRecords", 0))
-    j["valid_records"] = j.get("valid_records", metrics.get("validRecords", 0))
-    j["invalid_records"] = j.get("invalid_records", metrics.get("invalidRecords", 0))
-    j["duplicate_records"] = j.get("duplicate_records", metrics.get("duplicateRecords", 0))
-    j["imported_records"] = j.get("imported_records", metrics.get("importedRecords", 0))
-    j["excel_file"] = j.get("excel_file") or j.get("excelDownloadUrl")
-    j["excelDownloadUrl"] = j["excel_file"]
-    if "_id" in j:
-        del j["_id"]
-    return j
-
-@router.post("/pdf")
-async def upload_and_process_pdf(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    village_id: str = Form(..., description="Target village ID for imported voter records"),
-    auto_commit: bool = Form(True),
-    clear_previous: bool = Form(False),
-    db = Depends(get_mongo_db),
-    admin: AuthUser = Depends(require_admin)
-):
-    """
-    Admin uploads one or multiple PDF electoral rolls bound to a pre-selected village.
-    Returns job_id immediately and starts 8-stage processing in background.
-    """
-    raise HTTPException(
-        status_code=400,
-        detail="PDF upload is disabled. Please upload voter data using Excel (.xlsx, .xls) or CSV (.csv) files."
-    )
-
-    # Resolve Village
-    v_query = {"_id": ObjectId(village_id)} if ObjectId.is_valid(village_id) else {"_id": village_id}
-    village = await db.villages.find_one(v_query)
-    village_name = village.get("nameMarathi", "साखराळे") if village else "साखराळे"
-
-    # Save uploaded file to staging
-    file_path = settings.UPLOAD_DIR / file.filename
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    file_size = file_path.stat().st_size
-
-    # Create job in MongoDB
-    job_doc = {
-        "villageId": village_id,
-        "villageName": village_name,
-        "fileName": file.filename,
-        "fileType": "PDF",
-        "fileSize": file_size,
-        "totalPages": 0,
-        "status": "QUEUED",
-        "progress": 0,
-        "currentStage": "File uploaded",
-        "stages": [
-            {"name": "File uploaded", "completed": True},
-            {"name": "PDF analyzed", "completed": False},
-            {"name": "Text extracted", "completed": False},
-            {"name": "Records detected", "completed": False},
-            {"name": "Validating", "completed": False},
-            {"name": "Duplicate checking", "completed": False},
-            {"name": "Generating Excel", "completed": False},
-            {"name": "Importing database", "completed": False}
-        ],
-        "metrics": {
-            "totalRecords": 0,
-            "validRecords": 0,
-            "invalidRecords": 0,
-            "duplicateRecords": 0,
-            "importedRecords": 0
-        },
-        "excelDownloadUrl": None,
-        "errorReportUrl": None,
-        "uploadedBy": admin.username,
-        "createdAt": datetime.utcnow()
-    }
-
-    res = await db.import_jobs.insert_one(job_doc)
-    job_id = str(res.inserted_id)
-
-    log_activity(
-        user_id=admin.id,
-        action="UPLOAD_PDF",
-        entity_type="IMPORT_JOB",
-        entity_id=job_id,
-        details=f"Uploaded {file.filename} for village {village_name}",
-        username=admin.username
-    )
-
-    # Launch background task
-    background_tasks.add_task(
-        process_pdf_import_job_mongo,
-        job_id=job_id,
-        village_id=village_id,
-        uploaded_by=admin.username,
-        auto_commit_db=auto_commit
-    )
-
-    return {
-        "success": True,
-        "job_id": job_id,
-        "jobId": job_id,
-        "status": "QUEUED",
-        "fileName": file.filename,
-        "villageId": village_id,
-        "villageName": village_name,
-        "fileSize": file_size,
-        "message": "PDF import job created. Processing initiated in background."
-    }
-
-def process_excel_import_job_worker(
-    job_id: str,
-    file_path: Path,
-    village_id: str,
-    village_name: str,
-    booth_number_from_filename: str,
-    uploaded_by: str,
-    file_name: str
-):
-    """Background worker for parsing and committing Excel/CSV voter records."""
-    from app.database.mongodb import get_sync_mongo_db
-    from app.pdf_processing.pipeline import update_mongo_job_stage
-    db = get_sync_mongo_db()
-    try:
-        update_mongo_job_stage(db, job_id, "Reading file data", 15, status="PROCESSING")
-        raw_rows = ExcelReader.read_file(file_path)
-
-        update_mongo_job_stage(db, job_id, "Mapping columns", 35, status="PROCESSING")
-        mapper = FieldMapper()
-        import_records = []
-        valid_count = 0
-        invalid_count = 0
-
-        for idx, row in enumerate(raw_rows):
-            mapped = mapper.map_record(row)
-            if not mapped.get("booth_part_number"):
-                mapped["booth_part_number"] = booth_number_from_filename
-            if not mapped.get("village_mr"):
-                mapped["village_mr"] = village_name
-
-            is_valid = bool(mapped.get("epic_number") or mapped.get("full_name_mr") or mapped.get("full_name_en"))
-            if is_valid:
-                valid_count += 1
-            else:
-                invalid_count += 1
-
-            import_records.append({
-                "jobId": job_id,
-                "rowIndex": idx + 1,
-                "parsedData": mapped,
-                "rawData": row,
-                "status": "VALID" if is_valid else "INVALID",
-                "isDuplicate": False
-            })
-
-        if import_records:
-            update_mongo_job_stage(db, job_id, "Storing parsed records", 55, status="PROCESSING")
-            CHUNK_SIZE = 1000
-            for i in range(0, len(import_records), CHUNK_SIZE):
-                db.import_records.insert_many(import_records[i:i + CHUNK_SIZE])
-
-        db.import_jobs.update_one(
-            {"_id": ObjectId(job_id) if ObjectId.is_valid(job_id) else job_id},
-            {"$set": {
-                "metrics.totalRecords": len(raw_rows),
-                "metrics.validRecords": valid_count,
-                "metrics.invalidRecords": invalid_count,
-            }}
-        )
-
-        update_mongo_job_stage(db, job_id, "Committing voters to database", 75, status="PROCESSING")
-        imported_count = commit_mongo_job_records(job_id, duplicate_strategy="UPDATE")
-
-        # Direct Cloudinary & Supabase PostgreSQL Storage
-        try:
-            from app.services.supabase_service import SupabaseVoterImportService
-            supabase_res = SupabaseVoterImportService.import_excel_file(
-                file_path=file_path,
-                file_name=file_name,
-                file_size=file_path.stat().st_size if file_path.exists() else 0,
-                village_id=village_id,
-                uploaded_by=uploaded_by
-            )
-            print(f"[SupabaseWorker] Successfully saved to Cloudinary and Supabase: {supabase_res}")
-        except Exception as se:
-            print(f"[SupabaseWorker] Supabase import error: {se}")
-
-        # Update village metrics
-        try:
-            total_v = db.members.count_documents({"village.id": village_id})
-            active_v = db.members.count_documents({"village.id": village_id, "status": "ACTIVE"})
-            oid_q = {"_id": ObjectId(village_id)} if ObjectId.is_valid(village_id) else {"_id": village_id}
-            db.villages.update_one(
-                oid_q,
-                {"$set": {
-                    "stats.totalVoters": total_v,
-                    "stats.activeMembers": active_v,
-                    "updatedAt": datetime.utcnow()
-                }}
-            )
-        except Exception:
-            pass
-
-        update_mongo_job_stage(
-            db, job_id,
-            stage_name="Completed ✓",
-            progress=100,
-            status="COMPLETED",
-            extra={
-                "metrics.importedRecords": imported_count,
-                "completedAt": datetime.utcnow()
-            }
-        )
-
-        log_activity(
-            user_id="admin",
-            action="UPLOAD_EXCEL",
-            entity_type="IMPORT_JOB",
-            entity_id=job_id,
-            details=f"Uploaded {file_name} (Booth: {booth_number_from_filename}) with {imported_count} live records for {village_name}",
-            username=uploaded_by
-        )
-    except Exception as e:
-        update_mongo_job_stage(
-            db, job_id,
-            stage_name="Processing failed",
-            progress=100,
-            status="FAILED",
-            extra={
-                "errorSummary": str(e),
-                "completedAt": datetime.utcnow()
-            }
-        )
+# ==============================================================================
+# FILE UPLOAD & PROCESSING (EXCEL / CSV)
+# ==============================================================================
 
 @router.post("/excel")
+@router.post("/upload")
 async def upload_and_process_excel(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    village_id: str = Form(...),
+    village_id: Optional[str] = Form(None),
     clear_previous: bool = Form(False),
-    db = Depends(get_mongo_db),
     admin: AuthUser = Depends(require_admin)
 ):
-    """Admin uploads Excel or CSV for a village with asynchronous background processing.
-    The filename number (e.g., 61.xlsx) is used as the matdan kendra (polling booth) number.
-    Returns in < 150ms while worker commits records in background.
     """
-    import re as _re
+    Admin uploads Excel or CSV file.
+    - Saves original file to disk and uploads to Cloudinary with original filename.
+    - Parses voter records and inserts directly into Supabase public.voters.
+    - Updates village statistics.
+    """
     ext = Path(file.filename).suffix.lower()
     if ext not in [".xlsx", ".xls", ".csv"]:
-        raise HTTPException(status_code=400, detail="Only .xlsx, .xls, and .csv files are supported")
+        raise HTTPException(status_code=400, detail="फक्त .xlsx, .xls किंवा .csv फाईल्स समर्थित आहेत.")
 
     if clear_previous:
-        await _clear_all_voters_internal(db, admin.username)
+        SupabaseVoterImportService.clear_all_voters()
 
     file_path = settings.UPLOAD_DIR / file.filename
     with open(file_path, "wb") as buffer:
@@ -486,315 +174,175 @@ async def upload_and_process_excel(
 
     file_size = file_path.stat().st_size
 
-    # Extract booth/part number from filename (e.g., "61.xlsx" => "61", "booth_62.csv" => "62")
-    stem = Path(file.filename).stem
-    booth_match = _re.search(r'\d+', stem)
-    booth_number_from_filename = booth_match.group(0) if booth_match else stem
+    # Synchronous processing guarantees instant verification and zero missing records
+    try:
+        import_res = SupabaseVoterImportService.import_excel_file(
+            file_path=file_path,
+            file_name=file.filename,
+            file_size=file_size,
+            village_id=village_id or SAKHARALE_VILLAGE_ID,
+            uploaded_by=admin.username
+        )
 
-    v_query = {"_id": ObjectId(village_id)} if ObjectId.is_valid(village_id) else {"_id": village_id}
-    village = await db.villages.find_one(v_query)
-    village_name = village.get("nameMarathi", "साखराळे") if village else "साखराळे"
+        CacheService.invalidate_voter_cache()
+        CacheService.invalidate_all_reports()
 
-    # Create job in MongoDB with QUEUED status
-    job_doc = {
-        "villageId": village_id,
-        "villageName": village_name,
-        "fileName": file.filename,
-        "boothPartNumber": booth_number_from_filename,
-        "fileType": "EXCEL" if ext != ".csv" else "CSV",
-        "fileSize": file_size,
-        "totalPages": 1,
-        "status": "QUEUED",
-        "progress": 5,
-        "currentStage": "Queued for processing",
-        "metrics": {
-            "totalRecords": 0,
-            "validRecords": 0,
-            "invalidRecords": 0,
-            "duplicateRecords": 0,
-            "importedRecords": 0
-        },
-        "excelDownloadUrl": None,
-        "uploadedBy": admin.username,
-        "createdAt": datetime.utcnow()
-    }
-    res = await db.import_jobs.insert_one(job_doc)
-    job_id = str(res.inserted_id)
+        log_activity(
+            user_id=admin.id,
+            action="IMPORT_EXCEL",
+            entity_type="IMPORT_JOB",
+            entity_id=import_res["job_id"],
+            details=f"Imported {import_res['imported_records']} voters from {file.filename} into Supabase",
+            username=admin.username
+        )
 
-    # Launch background task for high-performance non-blocking processing
-    background_tasks.add_task(
-        process_excel_import_job_worker,
-        job_id=job_id,
-        file_path=file_path,
-        village_id=village_id,
-        village_name=village_name,
-        booth_number_from_filename=booth_number_from_filename,
-        uploaded_by=admin.username,
-        file_name=file.filename
+        return {
+            "success": True,
+            "job_id": import_res["job_id"],
+            "jobId": import_res["job_id"],
+            "fileName": file.filename,
+            "totalRecords": import_res["total_records"],
+            "importedRecords": import_res["imported_records"],
+            "cloudinaryUrl": import_res.get("cloudinary_url"),
+            "status": "COMPLETED",
+            "message": f"'{file.filename}' मधील {import_res['imported_records']} मतदार यशस्वीरित्या Supabase मध्ये समाविष्ट करण्यात आले."
+        }
+    except Exception as e:
+        logger.error(f"Import failed for {file.filename}: {e}")
+        raise HTTPException(status_code=500, detail=f"फाईल प्रक्रिया करताना त्रुटी: {str(e)}")
+
+@router.post("/pdf")
+async def upload_pdf_deprecated():
+    raise HTTPException(
+        status_code=400,
+        detail="PDF अपलोड बंद करण्यात आले आहे. कृपया एक्सेल (.xlsx) किंवा सीएसव्ही (.csv) फाईल वापरा."
     )
 
-    return {
-        "success": True,
-        "job_id": job_id,
-        "jobId": job_id,
-        "boothPartNumber": booth_number_from_filename,
-        "villageName": village_name,
-        "status": "QUEUED",
-        "message": f"Excel file '{file.filename}' queued for background processing (Booth: {booth_number_from_filename})."
-    }
-
+# ==============================================================================
+# IMPORT JOBS & HISTORY
+# ==============================================================================
 
 @router.get("/jobs")
 async def list_import_jobs(
-    db = Depends(get_mongo_db),
     admin: AuthUser = Depends(require_admin)
 ):
-    """List recent import jobs for Admin."""
-    cursor = db.import_jobs.find({}).sort("createdAt", -1).limit(50)
-    jobs = []
-    async for j in cursor:
-        jobs.append(format_job(j))
-    return {"success": True, "data": jobs}
+    """List recent import jobs from Supabase public.import_jobs."""
+    conn = get_supabase_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT * FROM public.import_jobs
+                ORDER BY created_at DESC
+                LIMIT 50;
+            """)
+            rows = cur.fetchall()
+            jobs = [format_job_row(dict(r)) for r in rows]
+            return {"success": True, "data": jobs}
+    finally:
+        conn.close()
 
 @router.get("/jobs/{job_id}")
 async def get_import_job_status(
     job_id: str,
-    db = Depends(get_mongo_db),
     admin: AuthUser = Depends(require_admin)
 ):
-    """Poll live progress and stage of an import job."""
-    query = {"_id": ObjectId(job_id)} if ObjectId.is_valid(job_id) else {"_id": job_id}
-    job = await db.import_jobs.find_one(query)
-    if not job:
-        raise HTTPException(status_code=404, detail="Import job not found")
-    return {"success": True, "data": format_job(job), **format_job(job)}
+    """Retrieve import job status from Supabase."""
+    conn = get_supabase_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM public.import_jobs WHERE id::text = %s LIMIT 1;", (str(job_id),))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Import job not found")
+            return {"success": True, "job": format_job_row(dict(row))}
+    finally:
+        conn.close()
 
 @router.get("/jobs/{job_id}/preview")
 async def get_import_job_preview(
     job_id: str,
-    limit: int = 50,
-    db = Depends(get_mongo_db),
+    limit: int = Query(20, ge=1, le=100),
     admin: AuthUser = Depends(require_admin)
 ):
-    """Preview parsed rows and metrics before committing to MongoDB."""
-    query = {"_id": ObjectId(job_id)} if ObjectId.is_valid(job_id) else {"_id": job_id}
-    job = await db.import_jobs.find_one(query)
-    if not job:
-        raise HTTPException(status_code=404, detail="Import job not found")
-
-    cursor = db.import_records.find({"jobId": job_id}).limit(limit)
-    rows = []
-    async for r in cursor:
-        pdata = r.get("parsedData", {})
-        pdata["status"] = r.get("status", "VALID")
-        pdata["errors"] = r.get("errors", [])
-        pdata["row_index"] = r.get("rowIndex", 0)
-        pdata["full_name"] = pdata.get("full_name_mr") or pdata.get("full_name_en", "")
-        rows.append(pdata)
-
-    metrics = job.get("metrics", {})
-    records_found = job.get("records_found", metrics.get("totalRecords", len(rows)))
-    valid_records = job.get("valid_records", metrics.get("validRecords", len(rows)))
-
-    return {
-        "success": True,
-        "job_id": job_id,
-        "status": job.get("status"),
-        "records_found": records_found,
-        "valid_records": valid_records,
-        "invalid_records": job.get("invalid_records", metrics.get("invalidRecords", 0)),
-        "duplicate_records": job.get("duplicate_records", metrics.get("duplicateRecords", 0)),
-        "excel_file": job.get("excel_file") or job.get("excelDownloadUrl"),
-        "metrics": metrics,
-        "sample_rows": rows,
-        "preview_rows": rows
-    }
-
-@router.get("/jobs/{job_id}/excel")
-async def download_job_excel(
-    job_id: str,
-    db = Depends(get_mongo_db),
-    admin: AuthUser = Depends(require_admin)
-):
-    """Download the generated bilingual Excel workbook produced from the PDF."""
-    query = {"_id": ObjectId(job_id)} if ObjectId.is_valid(job_id) else {"_id": job_id}
-    job = await db.import_jobs.find_one(query)
-    excel_url = job.get("excel_file") or job.get("excelDownloadUrl") if job else None
-    if not job or not excel_url:
-        raise HTTPException(status_code=404, detail="Excel file not yet generated or job not found")
-
-    rel_path = excel_url.replace("/static/processed/", "")
-    file_path = settings.PROCESSED_DIR / rel_path
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Generated Excel file not found on disk")
-
-    return FileResponse(
-        path=str(file_path),
-        filename=rel_path,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-@router.post("/jobs/{job_id}/commit")
-@router.post("/jobs/{job_id}/confirm")
-async def confirm_job_import(
-    job_id: str,
-    payload: Optional[ConfirmImportPayload] = None,
-    db = Depends(get_mongo_db),
-    admin: AuthUser = Depends(require_admin)
-):
-    """Commit verified records from import job into MongoDB `members`."""
-    strategy = payload.duplicateStrategy if payload else "SKIP"
-    imported = commit_mongo_job_records(job_id, duplicate_strategy=strategy)
-
-    log_activity(
-        user_id=admin.id,
-        action="IMPORT_DATA",
-        entity_type="IMPORT_JOB",
-        entity_id=job_id,
-        details=f"Committed {imported} voter records into database with duplicate strategy {strategy}",
-        username=admin.username
-    )
-
-    return {
-        "success": True,
-        "message": f"Successfully imported {imported} voter records into MongoDB",
-        "importedCount": imported,
-        "imported_records": imported
-    }
+    """Preview records from the imported job in Supabase."""
+    conn = get_supabase_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT * FROM public.voters
+                WHERE source_file_id::text = %s OR id::text = %s
+                ORDER BY serial_number ASC
+                LIMIT %s;
+            """, (str(job_id), str(job_id), limit))
+            rows = cur.fetchall()
+            return {"success": True, "sample_rows": [dict(r) for r in rows]}
+    finally:
+        conn.close()
 
 @router.delete("/jobs/{job_id}")
 async def delete_import_job(
     job_id: str,
     delete_voters: bool = Query(True, description="Also delete voter records created by this import job"),
-    db = Depends(get_mongo_db),
     admin: AuthUser = Depends(require_admin)
 ):
-    """Delete an import job record and its associated import_records from history,
-    and remove the imported voter records so the database stays clean.
-    """
-    query = {"_id": ObjectId(job_id)} if ObjectId.is_valid(job_id) else {"_id": job_id}
-    job = await db.import_jobs.find_one(query)
-    if not job:
-        job = await db.import_jobs.find_one({"id": job_id})
-    if not job:
-        raise HTTPException(status_code=404, detail="Import job not found")
-
-    real_id_str = str(job.get("_id", job_id))
-
-    # 1. Delete the import job document
-    await db.import_jobs.delete_one({"_id": job["_id"]})
-
-    # 2. Delete associated import records (preview data)
-    await db.import_records.delete_many({"$or": [{"jobId": job_id}, {"jobId": real_id_str}]})
-
+    """Delete an import job, associated voter records, and Cloudinary asset."""
+    conn = get_supabase_conn()
+    conn.autocommit = True
     deleted_voters = 0
-    if delete_voters:
-        # 3. Delete members created by this specific job in MongoDB
-        res_m = await db.members.delete_many({
-            "$or": [
-                {"source.importJobId": job_id},
-                {"source.importJobId": real_id_str},
-                {"source.fileName": job.get("fileName")}
-            ]
-        })
-        deleted_voters = res_m.deleted_count
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT * FROM public.import_jobs WHERE id::text = %s LIMIT 1;", (str(job_id),))
+            job = cur.fetchone()
+            target_fname = job.get("file_name") if job else None
+            f_id = job.get("file_id") if job else None
 
-        # 3b. Cascade delete from Supabase PostgreSQL & Cloudinary
-        try:
-            import psycopg2
-            from app.services.cloudinary_service import CloudinaryService
-            from app.services.cache_service import CacheService
-            target_file_name = job.get("fileName")
-            db_url = settings.DATABASE_URL
-            if db_url and db_url.startswith("postgres"):
-                with psycopg2.connect(db_url, connect_timeout=5) as pg_conn:
-                    pg_conn.autocommit = True
-                    with pg_conn.cursor() as cur:
-                        where_clauses = ["file_name = %s"]
-                        params = [target_file_name]
-                        try:
-                            valid_u = str(uuid.UUID(str(job_id)))
-                            where_clauses.append("id = %s")
-                            params.append(valid_u)
-                        except ValueError:
-                            pass
-                        cur.execute(
-                            f"SELECT id, cloudinary_public_id FROM public.uploaded_files WHERE {' OR '.join(where_clauses)} LIMIT 1;",
-                            tuple(params)
-                        )
-                        row = cur.fetchone()
-                        cld_id = None
-                        if row:
-                            f_id, cld_id = row
-                            cur.execute("DELETE FROM public.voters WHERE source_file_id = %s OR source_file_name = %s;", (f_id, target_file_name))
-                            job_clauses = ["file_id = %s", "file_name = %s"]
-                            job_params = [f_id, target_file_name]
-                            try:
-                                valid_u = str(uuid.UUID(str(job_id)))
-                                job_clauses.append("id = %s")
-                                job_params.append(valid_u)
-                            except ValueError:
-                                pass
-                            cur.execute(f"DELETE FROM public.import_jobs WHERE {' OR '.join(job_clauses)};", tuple(job_params))
-                            cur.execute("DELETE FROM public.uploaded_files WHERE id = %s;", (f_id,))
-                        else:
-                            cur.execute("DELETE FROM public.voters WHERE source_file_name = %s;", (target_file_name,))
-                            cur.execute("DELETE FROM public.import_jobs WHERE file_name = %s;", (target_file_name,))
-                            cur.execute("DELETE FROM public.uploaded_files WHERE file_name = %s;", (target_file_name,))
+            if delete_voters:
+                cur.execute("""
+                    DELETE FROM public.voters
+                    WHERE source_file_id::text = %s OR source_file_name = %s;
+                """, (str(f_id or job_id), target_fname))
+                deleted_voters = cur.rowcount
 
-                        # Try deleting from Cloudinary
-                        cld_public_id = cld_id or f"election_app/voter_lists/{target_file_name}"
-                        try:
-                            CloudinaryService.delete_file(cld_public_id, resource_type="raw")
-                        except Exception as ce:
-                            print(f"[DeleteJob] Cloudinary deletion error: {ce}")
+            # Delete job and file record
+            cur.execute("DELETE FROM public.import_jobs WHERE id::text = %s;", (str(job_id),))
+            if f_id:
+                cur.execute("DELETE FROM public.uploaded_files WHERE id::text = %s;", (str(f_id),))
 
-                        cur.execute("""
-                            UPDATE public.villages
-                            SET total_voters = (SELECT count(*) FROM public.voters WHERE village_id = public.villages.id),
-                                active_voters = (SELECT count(*) FROM public.voters WHERE village_id = public.villages.id AND status = 'ACTIVE'),
-                                updated_at = NOW();
-                        """)
-
-            # Invalidate cache
-            CacheService.invalidate_voter_cache()
-        except Exception as se:
-            print(f"[DeleteJob] Note: Supabase delete error: {se}")
-
-        # Remove temporary local file if present
-        try:
-            target_fname = job.get("fileName")
+            # Delete from Cloudinary
             if target_fname:
-                local_f = settings.UPLOAD_DIR / target_fname
-                if local_f.exists():
-                    local_f.unlink()
-        except Exception:
-            pass
+                try:
+                    cld_id = f"election_app/voter_lists/{target_fname}"
+                    CloudinaryService.delete_file(cld_id, resource_type="raw")
+                except Exception as ce:
+                    logger.warning(f"Cloudinary deletion note: {ce}")
 
-        # 4. Update village stats in MongoDB
-        village_id = job.get("villageId")
-        if village_id:
-            try:
-                tot = await db.members.count_documents({"village.id": village_id})
-                act = await db.members.count_documents({"village.id": village_id, "status": "ACTIVE"})
-                v_q = {"_id": ObjectId(village_id)} if ObjectId.is_valid(village_id) else {"_id": village_id}
-                await db.villages.update_one(v_q, {"$set": {"stats.totalVoters": tot, "stats.activeMembers": act}})
-            except Exception:
-                pass
+            # Update village stats
+            cur.execute("""
+                UPDATE public.villages
+                SET total_voters = (SELECT count(*) FROM public.voters WHERE village_id = public.villages.id AND is_deleted = false),
+                    active_voters = (SELECT count(*) FROM public.voters WHERE village_id = public.villages.id AND status = 'ACTIVE' AND is_deleted = false),
+                    deceased_voters = (SELECT count(*) FROM public.voters WHERE village_id = public.villages.id AND status = 'DECEASED' AND is_deleted = false),
+                    updated_at = NOW()
+                WHERE id = %s;
+            """, (SAKHARALE_VILLAGE_ID,))
 
-    log_activity(
-        user_id=admin.id,
-        action="DELETE_IMPORT_JOB",
-        entity_type="IMPORT_JOB",
-        entity_id=job_id,
-        details=f"Deleted import job {job.get('fileName', 'unknown')} and removed {deleted_voters} voter records",
-        username=admin.username
-    )
+        CacheService.invalidate_voter_cache()
+        CacheService.invalidate_all_reports()
 
-    return {
-        "success": True,
-        "message": f"इम्पोर्ट जॉब यशस्वीरित्या हटवला गेला ({deleted_voters} मतदार नोंदी हटवल्या).",
-        "deletedJobId": job_id,
-        "deletedVotersCount": deleted_voters
-    }
+        log_activity(
+            user_id=admin.id,
+            action="DELETE_IMPORT_JOB",
+            entity_type="IMPORT_JOB",
+            entity_id=job_id,
+            details=f"Deleted import job {target_fname} and removed {deleted_voters} voters",
+            username=admin.username
+        )
 
+        return {
+            "success": True,
+            "message": f"इम्पोर्ट जॉब यशस्वीरित्या हटवला गेला ({deleted_voters} मतदार नोंदी हटवल्या).",
+            "deletedJobId": job_id,
+            "deletedVotersCount": deleted_voters
+        }
+    finally:
+        conn.close()

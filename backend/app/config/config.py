@@ -18,10 +18,8 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     
-    # Database configuration
-    MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
-    MONGODB_DB_NAME: str = os.getenv("MONGODB_DB_NAME", "election_db")
-    DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/election_app.db")
+    # Database configuration (Supabase PostgreSQL)
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:sTGw5Jrsvvx8qKY0@db.yqndmvoxlipybxqbmqcn.supabase.co:5432/postgres")
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "https://yqndmvoxlipybxqbmqcn.supabase.co")
     SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     REDIS_URL: str = os.getenv("REDIS_URL", "")

@@ -3,73 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
 
 from app.auth.security import get_current_user, AuthUser, log_activity
-from app.services.mongo_member_service import MongoMemberService
+from app.services.supabase_service import SupabaseMemberService
 
 router = APIRouter(prefix="/members", tags=["Members & Voters"])
-
-def enrich_member_document(doc: Dict[str, Any]) -> Dict[str, Any]:
-    if not doc:
-        return {}
-    res = dict(doc)
-    # Provide backward-compatible flat aliases
-    res["id"] = str(res.get("id", res.get("_id", "")))
-    
-    nm = res.get("nameMarathi") or {}
-    if isinstance(nm, dict):
-        res["full_name_mr"] = nm.get("full", "")
-        res["surname"] = nm.get("surname", "")
-        res["first_name"] = nm.get("first", "")
-        res["father_name"] = nm.get("fatherName", "")
-    else:
-        res["full_name_mr"] = str(nm)
-
-    ne = res.get("name") or {}
-    if isinstance(ne, dict):
-        res["full_name_en"] = ne.get("full", "")
-
-    v = res.get("village") or {}
-    if isinstance(v, dict):
-        res["village_name_mr"] = v.get("nameMarathi", "")
-        res["village_name_en"] = v.get("name", "")
-        res["village_id"] = v.get("id", "")
-
-    rel = res.get("relative") or {}
-    if isinstance(rel, dict):
-        res["relative_name_mr"] = rel.get("nameMarathi", "")
-        res["relation_type"] = rel.get("relationType", "Father")
-    else:
-        res["relative_name_mr"] = res.get("relativeNameMarathi", "")
-        res["relation_type"] = res.get("relationType", "Father")
-
-    if not res.get("father_name"):
-        res["father_name"] = res.get("relative_name_mr", "")
-
-    c = res.get("category") or {}
-    if isinstance(c, dict) and c.get("color"):
-        res["category_color"] = c.get("color", "")
-        res["category_label"] = c.get("nameMarathi", c.get("name", "Uncategorized"))
-        res["category_id"] = str(c.get("id", ""))
-    else:
-        color = res.get("color_tag") or res.get("color") or ""
-        res["category_color"] = color
-        res["category_label"] = ""
-        res["category_id"] = str(res.get("category_id") or "")
-
-    res["religion"] = res.get("religion", "")
-    res["caste"] = res.get("caste", "")
-    res["designation"] = res.get("designation", "")
-    res["profession"] = res.get("profession", "")
-    res["organization"] = res.get("organization", "")
-    res["family_id"] = str(res.get("familyId") or "")
-
-    res["mobile_number"] = res.get("mobileNumber", "")
-    res["serial_number"] = res.get("serialNumber")
-    res["epic_number"] = res.get("epicNumber")
-    res["house_number"] = res.get("houseNumber", "")
-    res["booth_part_number"] = res.get("boothPartNumber", "")
-    res["membership_number"] = res.get("membershipNumber", "")
-    res["is_deceased"] = (res.get("status") == "DECEASED")
-    return res
 
 class MemberUpdatePayload(BaseModel):
     model_config = {"extra": "allow"}
@@ -110,7 +46,6 @@ class MemberUpdatePayload(BaseModel):
     village_id: Optional[str] = None
     villageId: Optional[str] = None
 
-
 class MemberCategoryUpdatePayload(BaseModel):
     category_id: Optional[str] = None
     categoryId: Optional[str] = None
@@ -128,12 +63,12 @@ async def get_members(
     status: Optional[str] = Query(None),
     my_assigned_only: bool = Query(False),
     page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=250),
     current_user: AuthUser = Depends(get_current_user)
 ):
-    """List and search members/voters from MongoDB."""
+    """List and search members/voters directly from Supabase PostgreSQL."""
     user_id = current_user.id if my_assigned_only else None
-    result = await MongoMemberService.get_members(
+    result = SupabaseMemberService.get_members(
         village_id=village_id,
         search_query=q,
         category_id=category_id,
@@ -152,14 +87,13 @@ async def get_members(
             username=current_user.username
         )
 
-    enriched_items = [enrich_member_document(doc) for doc in result["items"]]
     return {
         "success": True,
         "total": result["total"],
         "page": result["page"],
         "limit": result["limit"],
         "total_pages": result["pages"],
-        "items": enriched_items
+        "items": result["items"]
     }
 
 @router.get("/{member_id}")
@@ -167,10 +101,10 @@ async def get_member_detail(
     member_id: str,
     current_user: AuthUser = Depends(get_current_user)
 ):
-    """Retrieve full voter profile and log in-app view."""
-    member = await MongoMemberService.get_member_by_id(member_id)
+    """Retrieve full voter profile from Supabase."""
+    member = SupabaseMemberService.get_member_by_id(member_id)
     if not member:
-        raise HTTPException(status_code=404, detail="Member not found")
+        raise HTTPException(status_code=404, detail="मतदार सापडला नाही (Member not found)")
 
     log_activity(
         user_id=current_user.id,
@@ -181,11 +115,10 @@ async def get_member_detail(
         username=current_user.username
     )
 
-    enriched = enrich_member_document(member)
     return {
         "success": True,
-        "data": enriched,
-        **enriched
+        "data": member,
+        **member
     }
 
 @router.put("/{member_id}")
@@ -195,15 +128,15 @@ async def update_member(
     payload: MemberUpdatePayload,
     current_user: AuthUser = Depends(get_current_user)
 ):
-    """Update editable demographics and contact info."""
+    """Update editable demographics and contact info in Supabase."""
     update_dict = payload.model_dump(exclude_unset=True)
-    updated = await MongoMemberService.update_member(
+    updated = SupabaseMemberService.update_member(
         member_id=member_id,
         update_fields=update_dict,
         updated_by=current_user.username
     )
     if not updated:
-        raise HTTPException(status_code=404, detail="Member not found")
+        raise HTTPException(status_code=404, detail="मतदार सापडला नाही (Member not found)")
 
     log_activity(
         user_id=current_user.id,
@@ -213,12 +146,11 @@ async def update_member(
         details=f"Updated member details",
         username=current_user.username
     )
-    enriched = enrich_member_document(updated)
     return {
         "success": True,
         "message": "Member details updated",
-        "data": enriched,
-        **enriched
+        "data": updated,
+        **updated
     }
 
 @router.patch("/{member_id}/category")
@@ -227,19 +159,20 @@ async def update_category(
     payload: MemberCategoryUpdatePayload,
     current_user: AuthUser = Depends(get_current_user)
 ):
-    """Assign/update category tag for voter."""
+    """Assign/update category tag for voter in Supabase."""
     cat_id = payload.categoryId or payload.category_id
     if not cat_id:
         raise HTTPException(status_code=400, detail="Category ID is required")
 
-    updated = await MongoMemberService.update_member_category(
+    success = SupabaseMemberService.update_category(
         member_id=member_id,
-        category_id=cat_id,
+        category_ident=cat_id,
         updated_by=current_user.username
     )
-    if not updated:
+    if not success:
         raise HTTPException(status_code=404, detail="Member or category not found")
 
+    member = SupabaseMemberService.get_member_by_id(member_id) or {}
     log_activity(
         user_id=current_user.id,
         action="CHANGE_CATEGORY",
@@ -248,12 +181,11 @@ async def update_category(
         details=f"Changed category to {cat_id}",
         username=current_user.username
     )
-    enriched = enrich_member_document(updated)
     return {
         "success": True,
         "message": "Category updated",
-        "data": enriched,
-        **enriched
+        "data": member,
+        **member
     }
 
 @router.patch("/{member_id}/status")
@@ -263,25 +195,18 @@ async def toggle_deceased(
     payload: MemberDeceasedPayload,
     current_user: AuthUser = Depends(get_current_user)
 ):
-    """Mark member as deceased or active."""
+    """Mark member as deceased or active in Supabase."""
     is_dec = payload.is_deceased if payload.is_deceased is not None else (payload.status == "DECEASED")
     
-    if is_dec:
-        updated = await MongoMemberService.mark_as_deceased(
-            member_id=member_id,
-            deceased_date=None,
-            recorded_by=current_user.username
-        )
-    else:
-        updated = await MongoMemberService.update_member(
-            member_id=member_id,
-            update_fields={"status": "ACTIVE"},
-            updated_by=current_user.username
-        )
-
-    if not updated:
+    success = SupabaseMemberService.toggle_deceased(
+        member_id=member_id,
+        is_deceased=is_dec,
+        updated_by=current_user.username
+    )
+    if not success:
         raise HTTPException(status_code=404, detail="Member not found")
 
+    member = SupabaseMemberService.get_member_by_id(member_id) or {}
     log_activity(
         user_id=current_user.id,
         action="MARK_DECEASED" if is_dec else "MARK_ACTIVE",
@@ -290,10 +215,9 @@ async def toggle_deceased(
         details="Marked as deceased" if is_dec else "Restored to active",
         username=current_user.username
     )
-    enriched = enrich_member_document(updated)
     return {
         "success": True,
         "message": "Status updated successfully",
-        "data": enriched,
-        **enriched
+        "data": member,
+        **member
     }

@@ -48,7 +48,7 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
   const [clearVotersOpt, setClearVotersOpt] = useState<boolean>(true);
   const [clearImportHistoryOpt, setClearImportHistoryOpt] = useState<boolean>(true);
   const [clearActivityLogsOpt, setClearActivityLogsOpt] = useState<boolean>(false);
-  const [deleteCloudinaryFilesOpt, setDeleteCloudinaryFilesOpt] = useState<boolean>(false);
+  const [deleteCloudinaryFilesOpt, setDeleteCloudinaryFilesOpt] = useState<boolean>(true);
   const [cleanupResult, setCleanupResult] = useState<any | null>(null);
   const [resultModalVisible, setResultModalVisible] = useState<boolean>(false);
 

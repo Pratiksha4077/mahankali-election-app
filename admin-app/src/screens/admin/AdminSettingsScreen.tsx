@@ -134,7 +134,7 @@ export const SettingsSyncScreen: React.FC<{ navigation: any }> = ({ navigation }
                 <Ionicons name="server-outline" size={18} color="#60A5FA" style={{ marginRight: 10 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.adminInfoLabel, { color: theme.colors.textMuted }]}>Backend Server</Text>
-                  <Text style={[styles.adminInfoValue, { color: theme.colors.textPrimary }]}>localhost:8000 (FastAPI + MongoDB)</Text>
+                  <Text style={[styles.adminInfoValue, { color: theme.colors.textPrimary }]}>Supabase PostgreSQL + FastAPI</Text>
                 </View>
                 <View style={styles.statusDot} />
               </View>
@@ -211,7 +211,7 @@ export const SettingsSyncScreen: React.FC<{ navigation: any }> = ({ navigation }
         <View style={[styles.appInfoCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
           <Text style={[styles.appInfoTitle, { color: theme.colors.textPrimary }]}>निवडणूक व्यवस्थापन अॅप</Text>
           <Text style={[styles.appInfoText, { color: theme.colors.textSecondary }]}>साखराळे ग्राम • वाळवा तालुका • सांगली जिल्हा</Text>
-          <Text style={[styles.appInfoVersion, { color: theme.colors.textMuted }]}>Version 2.0 • Powered by FastAPI + MongoDB</Text>
+          <Text style={[styles.appInfoVersion, { color: theme.colors.textMuted }]}>Version 2.0 • Powered by FastAPI + Supabase</Text>
         </View>
       </ScrollView>
 

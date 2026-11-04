@@ -6,34 +6,41 @@ from contextlib import asynccontextmanager
 import logging
 
 from app.config.config import settings
-from app.database.mongodb import connect_to_mongo, close_mongo_connection
-from app.database.seed_mongo import seed_mongo_initial_data
+from app.services.supabase_service import get_supabase_conn, SupabaseActivityService
 
 from app.api import (
     auth, admin_users, admin_dashboard, members, villages, categories,
-    family_routes, reports, import_routes, export_routes, sync, audit, users
+    family_routes, reports, import_routes, export_routes, sync, audit
 )
 
 logger = logging.getLogger("election_app")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. Connect to MongoDB (Primary Production Database)
+    # 1. Connect and verify Supabase PostgreSQL connection
     try:
-        await connect_to_mongo()
-        seed_mongo_initial_data()
+        conn = get_supabase_conn()
+        with conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM public.users;")
+            u_count = cur.fetchone()[0]
+            cur.execute("SELECT count(*) FROM public.villages;")
+            v_count = cur.fetchone()[0]
+            cur.execute("SELECT count(*) FROM public.voters;")
+            vot_count = cur.fetchone()[0]
+            logger.info(
+                f"[Supabase] Connected successfully. Users: {u_count}, "
+                f"Villages: {v_count}, Voters: {vot_count}"
+            )
+        conn.close()
     except Exception as e:
-        logger.error(f"MongoDB startup warning: {e}")
+        logger.error(f"[Supabase] Connection warning on startup: {e}")
 
     yield
-
-    # 2. Shutdown
-    await close_mongo_connection()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="Production-grade Backend API for Election & Voter Management App with MongoDB, Marathi Electoral Roll PDF Extraction, Excel Processing, and Dual Admin/User Panels.",
+    description="Production-grade Backend API for Election & Voter Management App with Supabase PostgreSQL, Cloudinary File Storage, and Dual Admin/User Panels.",
     lifespan=lifespan
 )
 
@@ -66,10 +73,8 @@ app.include_router(import_routes.router, prefix=settings.API_V1_STR)
 app.include_router(export_routes.router, prefix=settings.API_V1_STR)
 app.include_router(sync.router, prefix=settings.API_V1_STR)
 app.include_router(audit.router, prefix=settings.API_V1_STR)
-app.include_router(users.router, prefix=settings.API_V1_STR)
 
 from app.api.admin_users import LogActivityRequest
-from app.services.mongo_user_service import MongoUserService
 
 @app.post(f"{settings.API_V1_STR}/activity")
 async def log_activity_general(payload: LogActivityRequest, request: Request):
@@ -93,23 +98,28 @@ async def log_activity_general(payload: LogActivityRequest, request: Request):
         except Exception:
             pass
 
-    act = await MongoUserService.log_activity(
+    if payload.targetMemberId:
+        meta["target_member_id"] = payload.targetMemberId
+    if payload.targetMemberName:
+        meta["target_member_name"] = payload.targetMemberName
+
+    SupabaseActivityService.log_activity_sync(
         user_id=user_id,
         username=username,
         action=payload.action,
-        details=payload.details,
-        target_member_id=payload.targetMemberId,
-        target_member_name=payload.targetMemberName,
+        details=payload.details or "",
+        entity_type="MEMBER" if payload.targetMemberId else "ACTIVITY",
+        entity_id=payload.targetMemberId,
         metadata=meta
     )
-    return {"success": True, "data": act}
+    return {"success": True, "message": "Activity logged"}
 
 @app.get("/")
 def root():
     return {
         "status": "online",
         "app": settings.PROJECT_NAME,
-        "database": "MongoDB 8.x (Primary)",
+        "database": "Supabase PostgreSQL (Primary)",
         "version": settings.VERSION,
         "docs_url": "/docs"
     }
@@ -118,6 +128,7 @@ def root():
 def api_health():
     return {
         "status": "healthy",
+        "database": "Supabase PostgreSQL",
         "app": settings.PROJECT_NAME,
         "version": settings.VERSION
     }
@@ -125,4 +136,3 @@ def api_health():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
-

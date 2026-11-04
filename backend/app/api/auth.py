@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from app.config.config import settings
-from app.database.mongodb import get_mongo_db
 from app.auth.security import verify_password, create_access_token, get_current_user, AuthUser, log_activity
+from app.services.supabase_service import SupabaseUserService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -16,35 +16,9 @@ class LoginPayload(BaseModel):
 @router.post("/login")
 async def login(payload: LoginPayload):
     username = payload.username.strip()
-    db = get_mongo_db()
 
-    # Search in MongoDB by username or mobileNumber
-    user = await db.users.find_one({
-        "$or": [
-            {"username": username},
-            {"mobileNumber": username}
-        ]
-    })
-
-    if not user:
-        # Fallback to SQLite check if needed
-        try:
-            from app.config.database import SessionLocal
-            from app.models.models import User
-            with SessionLocal() as s_db:
-                s_user = s_db.query(User).filter(User.username == username).first()
-                if s_user:
-                    user = {
-                        "_id": s_user.id,
-                        "username": s_user.username,
-                        "fullName": s_user.username,
-                        "mobileNumber": s_user.mobile,
-                        "hashedPassword": s_user.hashed_password,
-                        "role": s_user.role,
-                        "accountStatus": "ACTIVE" if s_user.is_active else "DISABLED"
-                    }
-        except Exception:
-            pass
+    # Search in Supabase public.users by username or mobile_number
+    user = SupabaseUserService.get_user_by_username_or_mobile(username)
 
     if not user or not verify_password(payload.password, user.get("hashedPassword", "")):
         raise HTTPException(
@@ -55,20 +29,18 @@ async def login(payload: LoginPayload):
 
     account_status = user.get("accountStatus", "ACTIVE")
     is_active = user.get("is_active", True)
-    admin_access_allowed = user.get("admin_access_allowed", True)
-    admin_access_denied = user.get("admin_access_denied", False)
 
-    if account_status == "DISABLED" or is_active is False or admin_access_allowed is False or admin_access_denied is True:
+    if account_status == "DISABLED" or is_active is False:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="ॲडमिनने आपला प्रवेश नाकारला आहे. आपण युझर पॅनेलमध्ये लॉग इन करू शकत नाही. (Access Denied: The administrator has denied your access to the User Panel.)"
         )
 
-    # Update lastLogin
-    user_id = str(user.get("_id", ""))
-    now = datetime.utcnow()
+    user_id = str(user.get("id", ""))
+
+    # Update last_login in Supabase
     try:
-        await db.users.update_one({"_id": user["_id"]}, {"$set": {"lastLogin": now, "lastActivity": now}})
+        SupabaseUserService.update_last_login(user_id)
     except Exception:
         pass
 
@@ -87,6 +59,7 @@ async def login(payload: LoginPayload):
 
     user_info = {
         "id": user_id,
+        "_id": user_id,
         "username": user["username"],
         "fullName": user.get("fullName", user["username"]),
         "mobile": user.get("mobileNumber", ""),
@@ -94,7 +67,7 @@ async def login(payload: LoginPayload):
         "role": user["role"],
         "accountStatus": user.get("accountStatus", "ACTIVE"),
         "is_active": user.get("accountStatus", "ACTIVE") == "ACTIVE",
-        "assignedVillages": user.get("assignedVillages", []),
+        "assignedVillages": user.get("assignedVillages", ["11111111-1111-1111-1111-111111111111"]),
         "permissions_granted": user.get("permissions_granted", False)
     }
 
@@ -121,4 +94,7 @@ async def logout(current_user: AuthUser = Depends(get_current_user)):
         details=f"User {current_user.username} logged out",
         username=current_user.username
     )
-    return {"success": True, "message": "Logged out successfully"}
+    return {
+        "success": True,
+        "message": "Logged out successfully"
+    }

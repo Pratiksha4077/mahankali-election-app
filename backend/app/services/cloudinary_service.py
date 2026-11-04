@@ -37,6 +37,25 @@ class CloudinaryService:
             return False
 
     @staticmethod
+    def delete_all_files(prefix: str = "election_app") -> int:
+        """
+        Deletes all uploaded files from Cloudinary under the folder prefix (e.g. 'election_app').
+        Uses Cloudinary Admin API delete_resources_by_prefix for both 'raw' and 'image' resource types.
+        """
+        if not CloudinaryService.is_configured():
+            return 0
+        total_deleted = 0
+        for rtype in ["raw", "image"]:
+            try:
+                res = cloudinary.api.delete_resources_by_prefix(prefix, resource_type=rtype, type="upload")
+                deleted_dict = res.get("deleted", {})
+                total_deleted += len([k for k, v in deleted_dict.items() if v == "deleted"])
+                logger.info(f"[Cloudinary] Bulk deleted {rtype} files under '{prefix}': {res}")
+            except Exception as e:
+                logger.warning(f"[Cloudinary] Bulk delete for {rtype} under '{prefix}' failed: {e}")
+        return total_deleted
+
+    @staticmethod
     def upload_file(
         file_path: str,
         original_filename: Optional[str] = None,
@@ -118,3 +137,22 @@ class CloudinaryService:
             logger.warning("Cloudinary delete attempt 2 (%s) failed for %s: %s", alt_type, public_id, e2)
 
         return False
+
+    @staticmethod
+    def delete_all_files(prefix: str = "election_app") -> int:
+        """
+        Deletes all uploaded files from Cloudinary under the folder prefix (e.g. 'election_app').
+        Uses Cloudinary Admin API delete_resources_by_prefix for both 'raw' and 'image' resource types.
+        """
+        if not CloudinaryService.is_configured():
+            return 0
+        total_deleted = 0
+        for rtype in ["raw", "image"]:
+            try:
+                res = cloudinary.api.delete_resources_by_prefix(prefix, resource_type=rtype)
+                deleted_dict = res.get("deleted", {})
+                total_deleted += len([k for k, v in deleted_dict.items() if v == "deleted"])
+                logger.info(f"[Cloudinary] Bulk deleted {rtype} files under '{prefix}': {res}")
+            except Exception as e:
+                logger.warning(f"[Cloudinary] Bulk delete for {rtype} under '{prefix}' failed: {e}")
+        return total_deleted
