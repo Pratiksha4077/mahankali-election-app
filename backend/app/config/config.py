@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     
-    # Database configuration (Supabase PostgreSQL)
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:sTGw5Jrsvvx8qKY0@db.yqndmvoxlipybxqbmqcn.supabase.co:5432/postgres")
+    # Database configuration (Supabase PostgreSQL - Session Pooler for IPv4 & IPv6 Cloud support)
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres.yqndmvoxlipybxqbmqcn:sTGw5Jrsvvx8qKY0@aws-0-eu-west-1.pooler.supabase.com:5432/postgres")
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "https://yqndmvoxlipybxqbmqcn.supabase.co")
     SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     REDIS_URL: str = os.getenv("REDIS_URL", "")

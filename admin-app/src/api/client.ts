@@ -151,11 +151,28 @@ export const authAPI = {
       return res.data;
     } catch (e: any) {
       if (e?.response) {
+        if (e.response.status === 401) {
+          throw new Error(
+            e.response.data?.detail || "लॉगिन अयशस्वी: चुकीचे युझरनेम किंवा पासवर्ड."
+          );
+        }
+        if (e.response.status === 403) {
+          throw new Error(
+            e.response.data?.detail || "ॲडमिनने आपला प्रवेश नाकारला आहे."
+          );
+        }
+        if (e.response.status >= 500) {
+          throw new Error(
+            typeof e.response.data?.detail === "string"
+              ? `सर्व्हर त्रुटी: ${e.response.data.detail}`
+              : "सर्व्हरशी संपर्क झाला परंतु सर्व्हरवर त्रुटी आली. कृपया थोड्या वेळाने प्रयत्न करा किंवा सर्व्हर तपासा."
+          );
+        }
         throw new Error(
           e.response.data?.detail || e.response.data?.message || "लॉगिन अयशस्वी: चुकीचे युझरनेम किंवा पासवर्ड."
         );
       }
-      throw new Error("सर्व्हरशी संपर्क होऊ शकला नाही. कृपया बॅकएंड चालू असल्याची खात्री करा.");
+      throw new Error("सर्व्हरशी संपर्क होऊ शकला नाही. कृपया इंटरनेट व बॅकएंड चालू असल्याची खात्री करा.");
     }
   },
   getMe: async () => {

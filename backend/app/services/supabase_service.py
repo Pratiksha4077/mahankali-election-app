@@ -13,13 +13,31 @@ from app.config.config import settings
 logger = logging.getLogger("election_app.supabase")
 
 SAKHARALE_VILLAGE_ID = "11111111-1111-1111-1111-111111111111"
+SUPABASE_POOLER_URL = "postgresql://postgres.yqndmvoxlipybxqbmqcn:sTGw5Jrsvvx8qKY0@aws-0-eu-west-1.pooler.supabase.com:5432/postgres"
 
 def get_supabase_conn():
-    """Returns a direct psycopg2 connection to Supabase PostgreSQL."""
+    """Returns a psycopg2 connection to Supabase PostgreSQL with pooler fallback."""
     db_url = settings.DATABASE_URL
     if not db_url or not db_url.startswith("postgres"):
-        raise RuntimeError("DATABASE_URL is not configured for Supabase.")
-    return psycopg2.connect(db_url, connect_timeout=10)
+        db_url = SUPABASE_POOLER_URL
+
+    # Automatically transform IPv6-only direct host into IPv4/IPv6 session pooler for Render & mobile
+    if "db.yqndmvoxlipybxqbmqcn.supabase.co" in db_url:
+        db_url = db_url.replace(
+            "db.yqndmvoxlipybxqbmqcn.supabase.co:5432",
+            "aws-0-eu-west-1.pooler.supabase.com:5432"
+        ).replace(
+            "postgres:sTGw5Jrsvvx8qKY0@",
+            "postgres.yqndmvoxlipybxqbmqcn:sTGw5Jrsvvx8qKY0@"
+        )
+
+    try:
+        return psycopg2.connect(db_url, connect_timeout=10)
+    except Exception as e:
+        logger.warning(f"[Supabase] Connection attempt to {db_url.split('@')[-1]} failed: {e}. Falling back to pooler.")
+        if db_url != SUPABASE_POOLER_URL:
+            return psycopg2.connect(SUPABASE_POOLER_URL, connect_timeout=10)
+        raise e
 
 def format_voter_as_member(row: Dict[str, Any]) -> Dict[str, Any]:
     """Formats a database voter row into the exact frontend Member JSON schema."""

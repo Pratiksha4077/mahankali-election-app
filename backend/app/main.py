@@ -126,9 +126,23 @@ def root():
 
 @app.get(f"{settings.API_V1_STR}/health")
 def api_health():
+    db_status = "connected"
+    db_error = None
+    try:
+        from app.services.supabase_service import get_supabase_conn
+        conn = get_supabase_conn()
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1;")
+        conn.close()
+    except Exception as e:
+        db_status = "error"
+        db_error = str(e)
+
     return {
-        "status": "healthy",
-        "database": "Supabase PostgreSQL",
+        "status": "healthy" if db_status == "connected" else "degraded",
+        "database": f"Supabase PostgreSQL ({db_status})",
+        "db_status": db_status,
+        "db_error": db_error,
         "app": settings.PROJECT_NAME,
         "version": settings.VERSION
     }
