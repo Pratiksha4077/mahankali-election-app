@@ -451,7 +451,14 @@ export const adminAPI = {
           role: u.role || "USER",
           is_active: u.accountStatus ? u.accountStatus === "ACTIVE" : (u.is_active ?? true),
           assignedVillages: u.assignedVillages || [],
-          permissions_granted: u.permissions_granted ?? false
+          permissions_granted: u.permissions_granted ?? true,
+          permissions: u.permissions || {
+            location: u.permissions_granted ?? true,
+            callHistory: u.permissions_granted ?? true,
+            call_history: u.permissions_granted ?? true,
+            phoneCall: u.permissions_granted ?? true,
+            sms: u.permissions_granted ?? true,
+          }
         }));
       }
       return [];

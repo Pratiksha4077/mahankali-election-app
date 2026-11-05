@@ -157,6 +157,29 @@ def format_voter_as_member(row: Dict[str, Any]) -> Dict[str, Any]:
 
 class SupabaseUserService:
     @staticmethod
+    def _normalize_permissions(raw_perms: Any) -> Dict[str, bool]:
+        if raw_perms is None:
+            return {"location": True, "callHistory": True, "call_history": True, "phoneCall": True, "sms": True}
+        if isinstance(raw_perms, str):
+            try:
+                raw_perms = json.loads(raw_perms)
+            except Exception:
+                raw_perms = {}
+        if not isinstance(raw_perms, dict):
+            raw_perms = {}
+
+        is_loc = bool(raw_perms.get("location", True))
+        is_call = bool(raw_perms.get("callHistory", raw_perms.get("call_history", raw_perms.get("phoneCall", True))))
+        is_sms = bool(raw_perms.get("sms", True))
+        return {
+            "location": is_loc,
+            "callHistory": is_call,
+            "call_history": is_call,
+            "phoneCall": is_call,
+            "sms": is_sms
+        }
+
+    @staticmethod
     def get_user_by_username_or_mobile(identifier: str) -> Optional[Dict[str, Any]]:
         clean_id = (identifier or "").strip()
         if not clean_id:
@@ -184,6 +207,8 @@ class SupabaseUserService:
                 u["accountStatus"] = u.get("account_status") or "ACTIVE"
                 u["hashedPassword"] = u.get("hashed_password") or ""
                 u["assignedVillages"] = u.get("assigned_villages") or [SAKHARALE_VILLAGE_ID]
+                u["permissions"] = SupabaseUserService._normalize_permissions(u.get("permissions"))
+                u["permissions_granted"] = bool(u.get("permissions_granted", True))
                 return u
         finally:
             conn.close()
@@ -219,6 +244,8 @@ class SupabaseUserService:
                 u["accountStatus"] = u.get("account_status") or "ACTIVE"
                 u["hashedPassword"] = u.get("hashed_password") or ""
                 u["assignedVillages"] = u.get("assigned_villages") or [SAKHARALE_VILLAGE_ID]
+                u["permissions"] = SupabaseUserService._normalize_permissions(u.get("permissions"))
+                u["permissions_granted"] = bool(u.get("permissions_granted", True))
                 return u
         finally:
             conn.close()
@@ -245,7 +272,7 @@ class SupabaseUserService:
                 offset = max(0, (page - 1) * limit)
                 cur.execute(f"""
                     SELECT id, username, full_name, mobile_number, role, account_status,
-                           is_active, assigned_villages, permissions_granted,
+                           is_active, assigned_villages, permissions_granted, permissions,
                            last_login, last_activity, created_at
                     FROM public.users
                     {where_str}
@@ -263,10 +290,54 @@ class SupabaseUserService:
                     u["mobileNumber"] = u.get("mobile_number") or ""
                     u["accountStatus"] = u.get("account_status") or "ACTIVE"
                     u["assignedVillages"] = u.get("assigned_villages") or [SAKHARALE_VILLAGE_ID]
+                    u["permissions"] = SupabaseUserService._normalize_permissions(u.get("permissions"))
+                    u["permissions_granted"] = bool(u.get("permissions_granted", True))
                     items.append(u)
 
                 pages = math.ceil(total / limit) if limit > 0 else 1
                 return {"items": items, "total": total, "page": page, "pages": pages, "limit": limit}
+        finally:
+            conn.close()
+
+    @staticmethod
+    def update_user_permissions(
+        user_id: str,
+        permissions_granted: bool = True,
+        permissions: Optional[Dict[str, Any]] = None
+    ) -> Optional[Dict[str, Any]]:
+        conn = get_supabase_conn()
+        conn.autocommit = True
+        try:
+            norm_perms = SupabaseUserService._normalize_permissions(permissions)
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                where_clause = "id::text = %s"
+                try:
+                    uuid.UUID(str(user_id))
+                    where_clause = "id = %s"
+                except Exception:
+                    pass
+
+                cur.execute(f"""
+                    UPDATE public.users
+                    SET permissions_granted = %s,
+                        permissions = %s,
+                        last_activity = NOW()
+                    WHERE {where_clause}
+                    RETURNING id, username, full_name, mobile_number, role, account_status,
+                              is_active, assigned_villages, permissions_granted, permissions;
+                """, (permissions_granted, Json(norm_perms), str(user_id)))
+                row = cur.fetchone()
+                if not row:
+                    return None
+                u = dict(row)
+                u["id"] = str(u["id"])
+                u["_id"] = str(u["id"])
+                u["fullName"] = u.get("full_name") or u.get("username")
+                u["mobileNumber"] = u.get("mobile_number") or ""
+                u["accountStatus"] = u.get("account_status") or "ACTIVE"
+                u["permissions"] = SupabaseUserService._normalize_permissions(u.get("permissions"))
+                u["permissions_granted"] = bool(u.get("permissions_granted", True))
+                return u
         finally:
             conn.close()
 

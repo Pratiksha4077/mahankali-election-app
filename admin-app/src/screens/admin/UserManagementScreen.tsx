@@ -234,61 +234,69 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
                 </View>
 
                 {/* Granular Device Permission Badges */}
-                <View style={{ flexDirection: "row", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-                  {/* Location Permission Badge */}
-                  <View
-                    style={[
-                      styles.permBadge,
-                      { backgroundColor: item.permissions?.location ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
-                    ]}
-                  >
-                    <Ionicons
-                      name="navigate"
-                      size={10}
-                      color={item.permissions?.location ? "#10B981" : "#EF4444"}
-                      style={{ marginRight: 2 }}
-                    />
-                    <Text style={[styles.permBadgeText, { color: item.permissions?.location ? "#34D399" : "#F87171" }]}>
-                      स्थान: {item.permissions?.location ? "मंजूर" : "नाकारले"}
-                    </Text>
-                  </View>
+                {(() => {
+                  const isLoc = item.permissions?.location ?? item.permissions_granted ?? false;
+                  const isCall = (item.permissions?.callHistory ?? item.permissions?.call_history ?? item.permissions?.phoneCall ?? item.permissions_granted) ?? false;
+                  const isSms = item.permissions?.sms ?? item.permissions_granted ?? false;
 
-                  {/* Call History Permission Badge */}
-                  <View
-                    style={[
-                      styles.permBadge,
-                      { backgroundColor: (item.permissions?.callHistory ?? item.permissions?.phoneCall) ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
-                    ]}
-                  >
-                    <Ionicons
-                      name="call"
-                      size={10}
-                      color={(item.permissions?.callHistory ?? item.permissions?.phoneCall) ? "#10B981" : "#EF4444"}
-                      style={{ marginRight: 2 }}
-                    />
-                    <Text style={[styles.permBadgeText, { color: (item.permissions?.callHistory ?? item.permissions?.phoneCall) ? "#34D399" : "#F87171" }]}>
-                      कॉल: {(item.permissions?.callHistory ?? item.permissions?.phoneCall) ? "मंजूर" : "नाकारले"}
-                    </Text>
-                  </View>
+                  return (
+                    <View style={{ flexDirection: "row", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                      {/* Location Permission Badge */}
+                      <View
+                        style={[
+                          styles.permBadge,
+                          { backgroundColor: isLoc ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
+                        ]}
+                      >
+                        <Ionicons
+                          name="navigate"
+                          size={10}
+                          color={isLoc ? "#10B981" : "#EF4444"}
+                          style={{ marginRight: 2 }}
+                        />
+                        <Text style={[styles.permBadgeText, { color: isLoc ? "#34D399" : "#F87171" }]}>
+                          स्थान: {isLoc ? "मंजूर" : "नाकारले"}
+                        </Text>
+                      </View>
 
-                  {/* SMS Permission Badge */}
-                  <View
-                    style={[
-                      styles.permBadge,
-                      { backgroundColor: item.permissions?.sms ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
-                    ]}
-                  >
-                    <Ionicons
-                      name="chatbubbles"
-                      size={10}
-                      color={item.permissions?.sms ? "#10B981" : "#EF4444"}
-                      style={{ marginRight: 2 }}
-                    />
-                    <Text style={[styles.permBadgeText, { color: item.permissions?.sms ? "#34D399" : "#F87171" }]}>
-                      SMS: {item.permissions?.sms ? "मंजूर" : "नाकारले"}
-                    </Text>
-                  </View>
-                </View>
+                      {/* Call History Permission Badge */}
+                      <View
+                        style={[
+                          styles.permBadge,
+                          { backgroundColor: isCall ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
+                        ]}
+                      >
+                        <Ionicons
+                          name="call"
+                          size={10}
+                          color={isCall ? "#10B981" : "#EF4444"}
+                          style={{ marginRight: 2 }}
+                        />
+                        <Text style={[styles.permBadgeText, { color: isCall ? "#34D399" : "#F87171" }]}>
+                          कॉल: {isCall ? "मंजूर" : "नाकारले"}
+                        </Text>
+                      </View>
+
+                      {/* SMS Permission Badge */}
+                      <View
+                        style={[
+                          styles.permBadge,
+                          { backgroundColor: isSms ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
+                        ]}
+                      >
+                        <Ionicons
+                          name="chatbubbles"
+                          size={10}
+                          color={isSms ? "#10B981" : "#EF4444"}
+                          style={{ marginRight: 2 }}
+                        />
+                        <Text style={[styles.permBadgeText, { color: isSms ? "#34D399" : "#F87171" }]}>
+                          SMS: {isSms ? "मंजूर" : "नाकारले"}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })()}
               </View>
 
               <View style={[styles.cardActionsRow, { borderTopColor: isDark ? "rgba(255,255,255,0.08)" : "#E2E8F0" }]}>

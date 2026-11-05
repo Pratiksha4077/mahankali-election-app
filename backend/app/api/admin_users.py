@@ -209,6 +209,51 @@ async def set_user_access_route(
         "data": res
     }
 
+@router.post("/self-permissions")
+async def update_self_permissions(
+    payload: UserPermissionsRequest,
+    current_user: AuthUser = Depends(get_current_user)
+):
+    """Authenticated field user syncs active device permissions (location, call, sms) into Supabase."""
+    perms = payload.permissions or {}
+    is_granted = payload.permissions_granted if payload.permissions_granted is not None else True
+
+    updated = SupabaseUserService.update_user_permissions(
+        user_id=current_user.id,
+        permissions_granted=is_granted,
+        permissions=perms
+    )
+    return {"success": True, "message": "Permissions synced successfully", "data": updated}
+
+@router.patch("/{user_id}/permissions")
+@router.put("/{user_id}/permissions")
+async def set_user_permissions(
+    user_id: str,
+    payload: UserPermissionsRequest,
+    admin: AuthUser = Depends(require_admin)
+):
+    """Admin grants or denies device permissions for a user in Supabase."""
+    perms = payload.permissions or {}
+    is_granted = payload.permissions_granted if payload.permissions_granted is not None else True
+
+    updated = SupabaseUserService.update_user_permissions(
+        user_id=user_id,
+        permissions_granted=is_granted,
+        permissions=perms
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    log_activity(
+        user_id=admin.id,
+        action="UPDATE_USER_PERMISSIONS",
+        entity_type="USER",
+        entity_id=user_id,
+        details=f"Admin set permissions_granted={is_granted} for user {user_id}",
+        username=admin.username
+    )
+    return {"success": True, "message": "Permissions updated successfully", "data": updated}
+
 @router.get("/{user_id}/activities")
 async def get_user_activities(
     user_id: str,
