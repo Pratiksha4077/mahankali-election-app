@@ -1717,7 +1717,8 @@ class SupabaseActivityService:
     def get_telephony_activity(
         user_id: Optional[str] = None,
         username: Optional[str] = None,
-        req_type: str = "all",
+        activity_type: str = "all",
+        req_type: Optional[str] = None,
         page: int = 1,
         limit: int = 50,
         max_total: int = 250
