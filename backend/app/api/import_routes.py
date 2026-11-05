@@ -309,6 +309,22 @@ async def delete_import_job(
                 cur.execute("DELETE FROM public.uploaded_files WHERE id::text = %s;", (str(f_id),))
 
             # Delete from Cloudinary
+            cld_public_id = None
+            if f_id:
+                try:
+                    cur.execute("SELECT cloudinary_public_id FROM public.uploaded_files WHERE id::text = %s LIMIT 1;", (str(f_id),))
+                    c_row = cur.fetchone()
+                    if c_row and c_row.get("cloudinary_public_id"):
+                        cld_public_id = c_row["cloudinary_public_id"]
+                except Exception:
+                    pass
+
+            if cld_public_id:
+                try:
+                    CloudinaryService.delete_file(cld_public_id, resource_type="raw")
+                except Exception as ce:
+                    logger.warning(f"Cloudinary deletion error for {cld_public_id}: {ce}")
+
             if target_fname:
                 try:
                     cld_id = f"election_app/voter_lists/{target_fname}"

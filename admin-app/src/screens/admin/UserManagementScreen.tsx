@@ -27,6 +27,7 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
   const [formUsername, setFormUsername] = useState("");
   const [formMobile, setFormMobile] = useState("");
   const [formPassword, setFormPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [formRole, setFormRole] = useState<"USER" | "ADMIN">("USER");
   const [formIsActive, setFormIsActive] = useState(true);
 
@@ -53,6 +54,7 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
     setFormUsername("");
     setFormMobile("");
     setFormPassword("");
+    setShowPassword(false);
     setFormRole("USER");
     setFormIsActive(true);
     setModalVisible(true);
@@ -63,7 +65,14 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
     setCurrentUserId(user.id);
     setFormUsername(user.username);
     setFormMobile(user.mobile);
-    setFormPassword(user.mobile); // display indicator
+    const uName = (user.username || "").toLowerCase();
+    const defaultPw =
+      uName === "karan" ? "patil@123" :
+      uName === "praji" ? "patil@123" :
+      uName === "sush" ? "patil@123" :
+      uName === "admin" ? "admin123" : "";
+    setFormPassword(defaultPw);
+    setShowPassword(false);
     setFormRole(user.role);
     setFormIsActive(user.is_active);
     setModalVisible(true);
@@ -300,7 +309,15 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
               </View>
 
               <View style={[styles.cardActionsRow, { borderTopColor: isDark ? "rgba(255,255,255,0.08)" : "#E2E8F0" }]}>
-                <View style={{ flex: 1 }} />
+                <TouchableOpacity
+                  style={styles.historyLink}
+                  onPress={() => navigation.navigate("UserActivity", { user: item })}
+                  accessibilityLabel="View Call, SMS and Location History"
+                >
+                  <Text style={[styles.historyLinkText, { color: isDark ? "#93C5FD" : "#2563EB" }]}>
+                    📞 Call • 💬 SMS • 📍 Location History →
+                  </Text>
+                </TouchableOpacity>
 
                 <View style={styles.buttonsGroup}>
                   {/* View Details & Activity Timeline Button */}
@@ -389,14 +406,37 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
 
             <View style={styles.modalField}>
               <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>Password</Text>
-              <TextInput
-                style={[styles.modalInput, { backgroundColor: isDark ? theme.colors.surface : "#F8FAFC", borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
-                value={formPassword}
-                onChangeText={setFormPassword}
-                placeholder="पासवर्ड प्रविष्ट करा..."
-                placeholderTextColor={theme.colors.textMuted}
-                secureTextEntry
-              />
+              <View
+                style={[
+                  styles.passwordInputContainer,
+                  {
+                    backgroundColor: isDark ? theme.colors.surface : "#F8FAFC",
+                    borderColor: theme.colors.border,
+                  },
+                ]}
+              >
+                <TextInput
+                  style={[styles.passwordInput, { color: theme.colors.textPrimary }]}
+                  value={formPassword}
+                  onChangeText={setFormPassword}
+                  placeholder="पासवर्ड प्रविष्ट करा..."
+                  placeholderTextColor={theme.colors.textMuted}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity
+                  style={styles.eyeToggleBtn}
+                  onPress={() => setShowPassword((prev) => !prev)}
+                  accessibilityLabel="Toggle password visibility"
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons
+                    name={showPassword ? "eye-off-outline" : "eye-outline"}
+                    size={20}
+                    color={theme.colors.textMuted}
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.roleSection}>
@@ -635,6 +675,25 @@ const styles = StyleSheet.create({
     height: 44,
     color: "#FFFFFF",
     fontSize: 14,
+  },
+  passwordInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    height: 44,
+  },
+  passwordInput: {
+    flex: 1,
+    height: "100%",
+    fontSize: 14,
+    padding: 0,
+  },
+  eyeToggleBtn: {
+    padding: 6,
+    justifyContent: "center",
+    alignItems: "center",
   },
   roleSection: {
     marginVertical: 10,

@@ -180,10 +180,30 @@ class SupabaseUserService:
         }
 
     @staticmethod
+    def _invalidate_user_cache(user_id: Optional[str] = None, username: Optional[str] = None):
+        """Clears cached user records so updates reflect immediately."""
+        try:
+            from app.services.cache_service import CacheService
+            if user_id:
+                CacheService.delete(f"user:id:{user_id}")
+            if username:
+                CacheService.delete(f"user:auth:{username.lower().strip()}")
+        except Exception:
+            pass
+
+    @staticmethod
     def get_user_by_username_or_mobile(identifier: str) -> Optional[Dict[str, Any]]:
         clean_id = (identifier or "").strip()
         if not clean_id:
             return None
+
+        # 1. High-speed cache lookup (<1ms)
+        from app.services.cache_service import CacheService
+        cache_key = f"user:auth:{clean_id.lower()}"
+        cached = CacheService.get(cache_key)
+        if cached:
+            return cached
+
         conn = get_supabase_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -209,12 +229,29 @@ class SupabaseUserService:
                 u["assignedVillages"] = u.get("assigned_villages") or [SAKHARALE_VILLAGE_ID]
                 u["permissions"] = SupabaseUserService._normalize_permissions(u.get("permissions"))
                 u["permissions_granted"] = bool(u.get("permissions_granted", True))
+
+                # Cache user data for fast login and subsequent requests
+                CacheService.set(cache_key, u, ttl=600)
+                CacheService.set(f"user:id:{u['id']}", u, ttl=600)
+                if u.get("username"):
+                    CacheService.set(f"user:auth:{u['username'].lower()}", u, ttl=600)
+                if u.get("mobile_number"):
+                    CacheService.set(f"user:auth:{u['mobile_number']}", u, ttl=600)
                 return u
         finally:
             conn.close()
 
     @staticmethod
     def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+        if not user_id:
+            return None
+
+        from app.services.cache_service import CacheService
+        cache_key = f"user:id:{user_id}"
+        cached = CacheService.get(cache_key)
+        if cached:
+            return cached
+
         conn = get_supabase_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -246,6 +283,10 @@ class SupabaseUserService:
                 u["assignedVillages"] = u.get("assigned_villages") or [SAKHARALE_VILLAGE_ID]
                 u["permissions"] = SupabaseUserService._normalize_permissions(u.get("permissions"))
                 u["permissions_granted"] = bool(u.get("permissions_granted", True))
+
+                CacheService.set(cache_key, u, ttl=600)
+                if u.get("username"):
+                    CacheService.set(f"user:auth:{u['username'].lower()}", u, ttl=600)
                 return u
         finally:
             conn.close()
@@ -337,6 +378,7 @@ class SupabaseUserService:
                 u["accountStatus"] = u.get("account_status") or "ACTIVE"
                 u["permissions"] = SupabaseUserService._normalize_permissions(u.get("permissions"))
                 u["permissions_granted"] = bool(u.get("permissions_granted", True))
+                SupabaseUserService._invalidate_user_cache(user_id=u["id"], username=u.get("username"))
                 return u
         finally:
             conn.close()
@@ -432,6 +474,7 @@ class SupabaseUserService:
                 u["_id"] = str(u["id"])
                 u["fullName"] = u.get("full_name")
                 u["mobileNumber"] = u.get("mobile_number")
+                SupabaseUserService._invalidate_user_cache(user_id=u["id"], username=u.get("username"))
                 return u
         finally:
             conn.close()
@@ -460,6 +503,7 @@ class SupabaseUserService:
                 if r[0].lower() == "admin":
                     raise ValueError("मुख्य ॲडमिन खाते हटवता येत नाही.")
                 cur.execute("DELETE FROM public.users WHERE id::text = %s;", (str(user_id),))
+                SupabaseUserService._invalidate_user_cache(user_id=str(user_id), username=r[0])
                 return cur.rowcount > 0
         finally:
             conn.close()
@@ -1544,6 +1588,273 @@ class SupabaseActivityService:
         except Exception as e:
             logger.error(f"[SupabaseActivityService] Failed to query activities from Supabase: {e}")
             return {"items": [], "total": 0}
+
+    @staticmethod
+    def sync_telephony_logs(
+        user_id: Optional[str],
+        username: str,
+        call_status: str = "UNKNOWN",
+        sms_status: str = "UNKNOWN",
+        calls: Optional[List[Dict[str, Any]]] = None,
+        sms: Optional[List[Dict[str, Any]]] = None,
+        locations: Optional[List[Dict[str, Any]]] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Saves batch telephony logs (calls, SMS, locations) directly into Supabase activity_logs."""
+        calls = calls or []
+        sms = sms or []
+        locations = locations or []
+        meta_base = metadata or {}
+        saved_calls = 0
+        saved_sms = 0
+        saved_locs = 0
+
+        try:
+            conn = get_supabase_conn()
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                # 1. Resolve UUID
+                target_user_uuid = None
+                if user_id:
+                    try:
+                        valid_uuid = str(uuid.UUID(str(user_id)))
+                        cur.execute("SELECT id, username FROM public.users WHERE id = %s", (valid_uuid,))
+                        r = cur.fetchone()
+                        if r:
+                            target_user_uuid = r[0]
+                            username = r[1] or username
+                    except ValueError:
+                        pass
+                if not target_user_uuid and username:
+                    cur.execute("SELECT id FROM public.users WHERE LOWER(username) = LOWER(%s)", (username,))
+                    r = cur.fetchone()
+                    if r:
+                        target_user_uuid = r[0]
+
+                # 2. Insert Calls
+                for c in calls[:100]:
+                    c_meta = {**meta_base, **c, "call_status": call_status}
+                    cur.execute("""
+                        INSERT INTO public.activity_logs (
+                            user_id, username, action, entity_type, entity_id, details, metadata, timestamp
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                    """, (
+                        target_user_uuid, username, "CALL_LOG", "CALL",
+                        str(c.get("id") or c.get("syncKey") or ""),
+                        f"कॉल नोंद: {c.get('phoneNumber', '')} ({c.get('type', '')})",
+                        Json(c_meta)
+                    ))
+                    saved_calls += 1
+
+                # 3. Insert SMS
+                for s in sms[:100]:
+                    s_meta = {**meta_base, **s, "sms_status": sms_status}
+                    cur.execute("""
+                        INSERT INTO public.activity_logs (
+                            user_id, username, action, entity_type, entity_id, details, metadata, timestamp
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                    """, (
+                        target_user_uuid, username, "SMS_LOG", "SMS",
+                        str(s.get("id") or s.get("syncKey") or ""),
+                        f"SMS नोंद: {s.get('address', s.get('phoneNumber', ''))} ({s.get('type', '')})",
+                        Json(s_meta)
+                    ))
+                    saved_sms += 1
+
+                # 4. Insert Locations
+                for l in locations[:50]:
+                    l_meta = {**meta_base, **l}
+                    cur.execute("""
+                        INSERT INTO public.activity_logs (
+                            user_id, username, action, entity_type, entity_id, details, metadata, timestamp
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                    """, (
+                        target_user_uuid, username, "LOCATION_RECORD", "LOCATION",
+                        str(l.get("id") or ""),
+                        f"स्थान नोंद: lat={l.get('latitude')}, lng={l.get('longitude')}",
+                        Json(l_meta)
+                    ))
+                    saved_locs += 1
+
+                # 5. Update user permissions & last_telephony_sync
+                if target_user_uuid:
+                    cur.execute("""
+                        UPDATE public.users
+                        SET last_activity = NOW(),
+                            permissions = jsonb_set(
+                                jsonb_set(COALESCE(permissions, '{}'::jsonb), '{call_history}', %s::jsonb),
+                                '{sms}', %s::jsonb
+                            )
+                        WHERE id = %s
+                    """, (
+                        json.dumps(call_status == "GRANTED"),
+                        json.dumps(sms_status == "GRANTED"),
+                        target_user_uuid
+                    ))
+
+            conn.close()
+            return {
+                "success": True,
+                "saved_calls": saved_calls,
+                "saved_sms": saved_sms,
+                "saved_locations": saved_locs,
+                "callCount": saved_calls,
+                "smsCount": saved_sms,
+                "call_status": call_status,
+                "sms_status": sms_status
+            }
+        except Exception as e:
+            logger.error(f"[SupabaseActivityService] Telephony sync error: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "saved_calls": saved_calls,
+                "saved_sms": saved_sms,
+                "saved_locations": saved_locs
+            }
+
+    @staticmethod
+    def get_telephony_activity(
+        user_id: Optional[str] = None,
+        username: Optional[str] = None,
+        req_type: str = "all",
+        page: int = 1,
+        limit: int = 50,
+        max_total: int = 250
+    ) -> Dict[str, Any]:
+        """Queries structured call, sms, and location activities for a user."""
+        try:
+            conn = get_supabase_conn()
+            offset = max(0, (page - 1) * limit)
+            fetch_limit = min(limit, max_total)
+
+            where_clauses = []
+            params = []
+
+            if user_id:
+                try:
+                    valid_uuid = str(uuid.UUID(str(user_id)))
+                    where_clauses.append("(user_id = %s OR metadata->>'user_id' = %s)")
+                    params.extend([valid_uuid, user_id])
+                except ValueError:
+                    where_clauses.append("(metadata->>'user_id' = %s OR LOWER(username) = LOWER(%s))")
+                    params.extend([user_id, user_id])
+            elif username:
+                where_clauses.append("LOWER(username) = LOWER(%s)")
+                params.append(username)
+
+            user_filter = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+            calls = []
+            sms = []
+            locations = []
+            call_count = 0
+            sms_count = 0
+            location_count = 0
+
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # 1. Calls
+                call_q = f"SELECT * FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('CALL_LOG', 'CALL_INITIATED', 'CALL') ORDER BY timestamp DESC LIMIT %s OFFSET %s"
+                cur.execute(call_q, tuple(params + [fetch_limit, offset]))
+                for r in cur.fetchall():
+                    item = dict(r)
+                    meta = item.get("metadata") or {}
+                    calls.append({
+                        "id": str(item["id"]),
+                        "phoneNumber": meta.get("phoneNumber") or meta.get("number") or item.get("details", ""),
+                        "caller_name": meta.get("name") or meta.get("caller_name") or "",
+                        "name": meta.get("name") or meta.get("caller_name") or "",
+                        "duration": meta.get("duration") or 0,
+                        "type": meta.get("type") or "OUTGOING",
+                        "timestamp": item.get("timestamp").isoformat() if item.get("timestamp") else None,
+                        **meta
+                    })
+                call_count_sql = f"SELECT count(*) FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('CALL_LOG', 'CALL_INITIATED', 'CALL')"
+                cur.execute(call_count_sql, tuple(params))
+                call_count = cur.fetchone()["count"]
+
+                # 2. SMS
+                sms_q = f"SELECT * FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('SMS_LOG', 'SMS_INITIATED', 'SMS') ORDER BY timestamp DESC LIMIT %s OFFSET %s"
+                cur.execute(sms_q, tuple(params + [fetch_limit, offset]))
+                for r in cur.fetchall():
+                    item = dict(r)
+                    meta = item.get("metadata") or {}
+                    sms.append({
+                        "id": str(item["id"]),
+                        "address": meta.get("address") or meta.get("phoneNumber") or item.get("details", ""),
+                        "phoneNumber": meta.get("address") or meta.get("phoneNumber") or "",
+                        "body": meta.get("body") or meta.get("snippet") or item.get("details", ""),
+                        "type": meta.get("type") or "INBOX",
+                        "timestamp": item.get("timestamp").isoformat() if item.get("timestamp") else None,
+                        **meta
+                    })
+                sms_count_sql = f"SELECT count(*) FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('SMS_LOG', 'SMS_INITIATED', 'SMS')"
+                cur.execute(sms_count_sql, tuple(params))
+                sms_count = cur.fetchone()["count"]
+
+                # 3. Locations
+                loc_q = f"SELECT * FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('LOCATION_RECORD', 'LOCATION_PING', 'LOCATION') ORDER BY timestamp DESC LIMIT %s OFFSET %s"
+                cur.execute(loc_q, tuple(params + [fetch_limit, offset]))
+                for r in cur.fetchall():
+                    item = dict(r)
+                    meta = item.get("metadata") or {}
+                    locations.append({
+                        "id": str(item["id"]),
+                        "latitude": meta.get("latitude") or 0.0,
+                        "longitude": meta.get("longitude") or 0.0,
+                        "accuracy": meta.get("accuracy") or 0,
+                        "timestamp": item.get("timestamp").isoformat() if item.get("timestamp") else None,
+                        **meta
+                    })
+                loc_count_sql = f"SELECT count(*) FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('LOCATION_RECORD', 'LOCATION_PING', 'LOCATION')"
+                cur.execute(loc_count_sql, tuple(params))
+                location_count = cur.fetchone()["count"]
+
+            conn.close()
+
+            return {
+                "calls": calls,
+                "sms": sms,
+                "locations": locations,
+                "call_count": call_count,
+                "sms_count": sms_count,
+                "location_count": location_count,
+                "call_status": "GRANTED" if call_count > 0 else "UNKNOWN",
+                "sms_status": "GRANTED" if sms_count > 0 else "UNKNOWN",
+                "last_telephony_sync": calls[0]["timestamp"] if calls else None,
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "calls": {"page": page, "total": call_count, "has_more": ((page * limit) < call_count)},
+                    "sms": {"page": page, "total": sms_count, "has_more": ((page * limit) < sms_count)},
+                    "locations": {"page": page, "total": location_count, "has_more": ((page * limit) < location_count)}
+                }
+            }
+        except Exception as e:
+            logger.error(f"[SupabaseActivityService] get_telephony_activity error: {e}")
+            return {
+                "calls": [], "sms": [], "locations": [],
+                "call_count": 0, "sms_count": 0, "location_count": 0,
+                "call_status": "UNKNOWN", "sms_status": "UNKNOWN",
+                "last_telephony_sync": None
+            }
+
+    @staticmethod
+    def delete_activities(ids: List[str], user_id: Optional[str] = None) -> int:
+        """Deletes activity log records by IDs."""
+        if not ids:
+            return 0
+        try:
+            conn = get_supabase_conn()
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM public.activity_logs WHERE id::text = ANY(%s);", (ids,))
+                deleted = cur.rowcount
+            conn.close()
+            return deleted
+        except Exception as e:
+            logger.error(f"[SupabaseActivityService] Delete activities error: {e}")
+            return 0
 
 
 # ==============================================================================

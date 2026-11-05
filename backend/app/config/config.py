@@ -29,10 +29,10 @@ class Settings(BaseSettings):
     PROCESSED_DIR: Path = BASE_DIR / "processed"
     EXPORT_DIR: Path = BASE_DIR / "exports"
 
-    # Cloudinary Credentials
-    CLOUDINARY_CLOUD_NAME: str = os.getenv("CLOUDINARY_CLOUD_NAME", "")
-    CLOUDINARY_API_KEY: str = os.getenv("CLOUDINARY_API_KEY", "")
-    CLOUDINARY_API_SECRET: str = os.getenv("CLOUDINARY_API_SECRET", "")
+    # Cloudinary Credentials (b60x8hju)
+    CLOUDINARY_CLOUD_NAME: str = os.getenv("CLOUDINARY_CLOUD_NAME", "b60x8hju")
+    CLOUDINARY_API_KEY: str = os.getenv("CLOUDINARY_API_KEY", "136763836687584")
+    CLOUDINARY_API_SECRET: str = os.getenv("CLOUDINARY_API_SECRET", "LtFQyB_rsPgoR4GTmulF87NfMyY")
 
     class Config:
         case_sensitive = True

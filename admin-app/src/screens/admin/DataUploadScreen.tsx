@@ -653,7 +653,7 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
             </View>
             <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>डेटाबेस स्वच्छता (Safe Database Cleanup)</Text>
             <Text style={[styles.modalDesc, { color: theme.colors.textSecondary, marginBottom: 12 }]}>
-              कोणता डेटा साफ करायचा आहे ते निवडा. ही प्रक्रिया MongoDB आणि Supabase दोन्हीवर सुरक्षितपणे चालवली जाईल.
+              कोणता डेटा साफ करायचा आहे ते निवडा. ही प्रक्रिया Supabase आणि Cloudinary वर सुरक्षितपणे चालवली जाईल.
             </Text>
 
             {/* Safeguard Notice */}
@@ -677,7 +677,7 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
                 </View>
                 <View style={{ flex: 1, marginLeft: 10 }}>
                   <Text style={[styles.cleanupOptionTitle, { color: theme.colors.textPrimary }]}>सर्व मतदार नोंदी (Voters Data)</Text>
-                  <Text style={[styles.cleanupOptionSub, { color: theme.colors.textMuted }]}>MongoDB आणि Supabase मधील सर्व मतदार साफ केले जातील</Text>
+                  <Text style={[styles.cleanupOptionSub, { color: theme.colors.textMuted }]}>Supabase मधील सर्व मतदार डेटा साफ केला जाईल</Text>
                 </View>
               </TouchableOpacity>
 
@@ -761,26 +761,18 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
             <View style={[styles.modalIconCircle, { backgroundColor: isDark ? "rgba(16, 185, 129, 0.15)" : "#D1FAE5" }]}>
               <Ionicons name="checkmark-done" size={30} color="#10B981" />
             </View>
-            <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>डेटा स्वच्छता पडताळणी पूर्ण!</Text>
+            <Text style={[styles.modalTitle, { color: theme.colors.textPrimary }]}>डेटाबेस स्वच्छता पूर्ण!</Text>
             <Text style={[styles.modalDesc, { color: theme.colors.textSecondary, marginBottom: 14 }]}>
-              दोन्ही डेटाबेस (MongoDB आणि Supabase) मधून डेटा सुरक्षितपणे काढण्यात आला आणि पडताळणी झाली आहे.
+              निवडलेला सर्व डेटा Supabase व Cloudinary मधून सुरक्षितपणे काढण्यात आला आणि पडताळणी झाली आहे.
             </Text>
 
             {/* Result Metrics Card */}
             <View style={[styles.resultMetricsCard, { backgroundColor: isDark ? theme.colors.surface : "#F8FAFC", borderColor: theme.colors.border }]}>
               <View style={styles.resultMetricRow}>
-                <Ionicons name="server" size={16} color={theme.colors.primaryLight} />
-                <Text style={[styles.resultMetricLabel, { color: theme.colors.textPrimary }]}>MongoDB मतदार नोंदी:</Text>
-                <Text style={[styles.resultMetricValue, { color: "#10B981" }]}>
-                  {cleanupResult?.mongo_voters_deleted ?? 0} हटवले (उर्वरित: {cleanupResult?.mongo_voters_remaining ?? 0})
-                </Text>
-              </View>
-
-              <View style={styles.resultMetricRow}>
                 <Ionicons name="cloud-done" size={16} color="#3B82F6" />
                 <Text style={[styles.resultMetricLabel, { color: theme.colors.textPrimary }]}>Supabase मतदार नोंदी:</Text>
                 <Text style={[styles.resultMetricValue, { color: "#10B981" }]}>
-                  {cleanupResult?.supabase_voters_deleted ?? 0} हटवले (उर्वरित: {cleanupResult?.supabase_voters_remaining ?? 0} ✓)
+                  {cleanupResult?.supabase_voters_deleted ?? cleanupResult?.voters_deleted ?? 0} हटवले (उर्वरित: {cleanupResult?.supabase_voters_remaining ?? cleanupResult?.voters_remaining ?? 0} ✓)
                 </Text>
               </View>
 
@@ -808,10 +800,11 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
             </View>
 
             <TouchableOpacity
-              style={[styles.modalConfirmBtn, { backgroundColor: "#10B981", width: "100%", marginTop: 16 }]}
+              style={styles.resultModalOkBtn}
               onPress={() => setResultModalVisible(false)}
+              activeOpacity={0.8}
             >
-              <Text style={styles.modalConfirmText}>ठीक आहे (OK)</Text>
+              <Text style={styles.resultModalOkBtnText}>समजले (OK)</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1330,5 +1323,21 @@ const styles = StyleSheet.create({
   resultMetricValue: {
     fontSize: 12,
     fontWeight: "700",
+  },
+  resultModalOkBtn: {
+    width: "100%",
+    height: 48,
+    backgroundColor: "#10B981",
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 18,
+    elevation: 3,
+  },
+  resultModalOkBtnText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: 0.5,
   },
 });

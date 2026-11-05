@@ -3,9 +3,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 
 from app.auth.security import require_admin, get_current_user, AuthUser, log_activity
-from app.services.supabase_service import SupabaseUserService, SupabaseActivityService
+from app.services.supabase_service import SupabaseUserService, SupabaseActivityService, get_supabase_conn
 
 router = APIRouter(prefix="/admin/users", tags=["Admin User Management"])
+
+class TelephonySyncRequest(BaseModel):
+    callStatus: Optional[str] = "UNKNOWN"
+    smsStatus: Optional[str] = "UNKNOWN"
+    calls: Optional[List[Dict[str, Any]]] = []
+    sms: Optional[List[Dict[str, Any]]] = []
+    locations: Optional[List[Dict[str, Any]]] = []
+    metadata: Optional[Dict[str, Any]] = None
+
+class DeleteActivityPayload(BaseModel):
+    activity_ids: Optional[List[str]] = None
+    ids: Optional[List[str]] = None
 
 class UserCreateRequest(BaseModel):
     fullName: str
@@ -287,3 +299,99 @@ async def get_all_activities(
         limit=limit
     )
     return {"success": True, "data": data}
+
+# ==============================================================================
+# TELEPHONY (CALLS, SMS, LOCATION) ACTIVITY SYNC & RETRIEVAL
+# ==============================================================================
+
+@router.post("/activity/telephony-sync")
+async def sync_telephony_activity(
+    payload: TelephonySyncRequest,
+    current_user: AuthUser = Depends(get_current_user)
+):
+    """Authenticated field user uploads batch calls, SMS metadata, and location logs directly into Supabase."""
+    res = SupabaseActivityService.sync_telephony_logs(
+        user_id=current_user.id,
+        username=current_user.username,
+        call_status=payload.callStatus or "UNKNOWN",
+        sms_status=payload.smsStatus or "UNKNOWN",
+        calls=payload.calls or [],
+        sms=payload.sms or [],
+        locations=payload.locations or [],
+        metadata=payload.metadata or {}
+    )
+    return {
+        "success": True,
+        "message": "Telephony activity synced successfully",
+        "data": res,
+        **res
+    }
+
+@router.get("/{user_id}/activity")
+async def get_user_activity(
+    user_id: str,
+    username: Optional[str] = Query(None),
+    type: Optional[str] = Query("all"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=250),
+    max_total: int = Query(250, ge=1, le=1000),
+    admin: AuthUser = Depends(require_admin)
+):
+    """Admin retrieves a user's phone calls, SMS records, and GPS location history from Supabase."""
+    data = SupabaseActivityService.get_telephony_activity(
+        user_id=user_id,
+        username=username,
+        activity_type=type or "all",
+        page=page,
+        limit=limit,
+        max_total=max_total
+    )
+    return {
+        "success": True,
+        "data": data,
+        **data
+    }
+
+@router.delete("/{user_id}/activity/{activity_id}")
+async def delete_single_activity(
+    user_id: str,
+    activity_id: str,
+    admin: AuthUser = Depends(require_admin)
+):
+    """Admin deletes a single activity log item."""
+    deleted = SupabaseActivityService.delete_activities([activity_id], user_id=user_id)
+    return {"success": True, "deleted": deleted}
+
+@router.delete("/{user_id}/activity")
+async def delete_activities(
+    user_id: str,
+    payload: Optional[DeleteActivityPayload] = None,
+    delete_all: Optional[bool] = Query(False),
+    action_type: Optional[str] = Query(None),
+    admin: AuthUser = Depends(require_admin)
+):
+    """Admin batch deletes or clears activity logs for a user in Supabase."""
+    if delete_all:
+        conn = get_supabase_conn()
+        conn.autocommit = True
+        try:
+            with conn.cursor() as cur:
+                if action_type:
+                    cur.execute(
+                        "DELETE FROM public.activity_logs WHERE (user_id::text = %s OR username = %s) AND action = %s;",
+                        (str(user_id), str(user_id), action_type)
+                    )
+                else:
+                    cur.execute(
+                        "DELETE FROM public.activity_logs WHERE user_id::text = %s OR username = %s;",
+                        (str(user_id), str(user_id))
+                    )
+                return {"success": True, "deleted": cur.rowcount}
+        finally:
+            conn.close()
+
+    ids = []
+    if payload:
+        ids = payload.activity_ids or payload.ids or []
+    deleted = SupabaseActivityService.delete_activities(ids, user_id=user_id)
+    return {"success": True, "deleted": deleted}
