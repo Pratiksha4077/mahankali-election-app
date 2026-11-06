@@ -257,35 +257,41 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
         return;
       }
 
-      const addressStr = loc.placeName ? `${loc.placeName} (${loc.address})` : (loc.address || `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`);
-      const areaName = loc.placeName || loc.city || loc.district || "";
+      const addressStr = loc.address || `साखराळे, ता. वाळवा, जि. सांगली`;
+      const areaName = loc.placeName || "साखराळे (Sakharale)";
 
       await logUserActivity({
         action: "LOCATION_CHECKIN",
         userId: user?.id,
         username: user?.username,
-        details: `रिअल-टाईम स्थान: ${addressStr} (अक्षांश: ${loc.latitude.toFixed(5)}, रेखांश: ${loc.longitude.toFixed(5)})`,
+        details: `रिअल-टाईम स्थान: ${areaName} (अक्षांश: ${loc.latitude.toFixed(5)}, रेखांश: ${loc.longitude.toFixed(5)})`,
         metadata: {
-          village: areaName,
-          city: loc.city,
-          district: loc.district,
-          subregion: loc.subregion,
-          postalCode: loc.postalCode,
+          village: "साखराळे",
+          placeName: areaName,
           address: addressStr,
+          city: loc.city || "साखराळे",
+          district: loc.district || "सांगली",
+          subregion: loc.subregion || "वाळवा",
+          postalCode: loc.postalCode || "415414",
           latitude: loc.latitude,
           longitude: loc.longitude,
           accuracy: loc.accuracy,
-          checkinType: "MANUAL_CHECKIN"
+          checkinType: "MANUAL_CHECKIN",
+          date: loc.dateStr || new Date().toLocaleDateString("en-GB"),
+          time: loc.timeStr || new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })
         }
       });
 
+      // Also trigger telephony/location sync to ensure Supabase receives it
+      syncDeviceTelephonyLogs().catch(() => {});
+
       Alert.alert(
-        "📍 स्थान यशस्वीरित्या नोंदवले!",
-        `पत्ता: ${addressStr}\nशहर/जिल्हा: ${areaName}\nअक्षांश: ${loc.latitude.toFixed(5)}\nरेखांश: ${loc.longitude.toFixed(5)}\nअचूकता: ±${Math.round(loc.accuracy || 10)} मी.\nवेळ: ${new Date().toLocaleTimeString("mr-IN")}`,
+        "📍 रिअल-टाईम स्थान पाठवले!",
+        `ठिकाण: ${areaName}\nपत्ता: ${addressStr}\nअक्षांश: ${loc.latitude.toFixed(5)}\nरेखांश: ${loc.longitude.toFixed(5)}\nवेळ: ${new Date().toLocaleTimeString("mr-IN")}`,
         [{ text: "उत्कृष्ट (OK)" }]
       );
-    } catch (e) {
-      Alert.alert("माहिती", "स्थान नोंदवले गेले आहे.");
+    } catch (e: any) {
+      Alert.alert("स्थान त्रुटी", e?.message || "स्थान पाठवणे शक्य झाले नाही.");
     } finally {
       setCheckingInLocation(false);
     }
@@ -408,6 +414,64 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
             <Text style={[styles.countBadgeText, { color: theme.colors.primaryLight }]}>{totalCount}</Text>
             <Text style={[styles.countBadgeLabel, { color: theme.colors.textMuted }]}>मतदार</Text>
           </View>
+        </View>
+
+        {/* Real-time GPS Location Check-in Card */}
+        <View style={{ paddingHorizontal: theme.spacing.lg, marginBottom: 12 }}>
+          <TouchableOpacity
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              backgroundColor: isDark ? "rgba(16, 185, 129, 0.12)" : "#ECFDF5",
+              borderWidth: 1,
+              borderColor: isDark ? "#059669" : "#10B981",
+              borderRadius: 12,
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+            }}
+            onPress={handleCheckinLocation}
+            disabled={checkingInLocation}
+            activeOpacity={0.8}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", flex: 1, marginRight: 8 }}>
+              <View
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  backgroundColor: isDark ? "#065F46" : "#D1FAE5",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: 10,
+                }}
+              >
+                <Ionicons name="navigate" size={18} color="#10B981" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: isDark ? "#34D399" : "#065F46" }}>
+                  {checkingInLocation ? "GPS स्थान मिळवत आहे..." : "📍 चालू रिअल-टाईम स्थान पाठवा"}
+                </Text>
+                <Text style={{ fontSize: 11, color: isDark ? "#94A3B8" : "#4B5563" }}>
+                  थेट GPS द्वारे चालू ठिकाण ॲडमिनला पाठवण्यासाठी टॅप करा
+                </Text>
+              </View>
+            </View>
+            {checkingInLocation ? (
+              <ActivityIndicator size="small" color="#10B981" />
+            ) : (
+              <View
+                style={{
+                  backgroundColor: "#10B981",
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 8,
+                }}
+              >
+                <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "700" }}>चेक-इन</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* Village Selector Horizontal Chips (ONLY actual villages, NO 'सर्व गावे') */}

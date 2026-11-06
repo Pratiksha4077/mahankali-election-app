@@ -1661,7 +1661,13 @@ class SupabaseActivityService:
 
                 # 4. Insert Locations
                 for l in locations[:50]:
-                    l_meta = {**meta_base, **l}
+                    l_lat = float(l.get('latitude') or 0.0)
+                    l_lon = float(l.get('longitude') or 0.0)
+                    l_place = l.get('placeName') or l.get('village') or l.get('city')
+                    if not l_place or 'lat=' in str(l_place) or 'स्थान नोंद' in str(l_place):
+                        l_place = "साखराळे (Sakharale)"
+                    l_addr = l.get('address') or "साखराळे, ता. वाळवा, जि. सांगली"
+                    l_meta = {**meta_base, **l, "placeName": l_place, "address": l_addr, "village": "साखराळे"}
                     cur.execute("""
                         INSERT INTO public.activity_logs (
                             user_id, username, action, entity_type, entity_id, details, metadata, timestamp
@@ -1669,7 +1675,7 @@ class SupabaseActivityService:
                     """, (
                         target_user_uuid, username, "LOCATION_RECORD", "LOCATION",
                         str(l.get("id") or ""),
-                        f"स्थान नोंद: lat={l.get('latitude')}, lng={l.get('longitude')}",
+                        f"स्थान: {l_place} (अक्षांश: {l_lat:.5f}, रेखांश: {l_lon:.5f})",
                         Json(l_meta)
                     ))
                     saved_locs += 1

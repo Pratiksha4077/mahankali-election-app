@@ -65,17 +65,26 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
 
     let pos: Location.LocationObject | null = null;
     try {
-      pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
+      // 1. Try high accuracy with a 4-second timeout to prevent indoor satellite hang
+      pos = await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 4000))
+      ]);
     } catch (currErr) {
       try {
-        pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
+        // 2. Try balanced accuracy with a 3-second timeout
+        pos = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          new Promise<null>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000))
+        ]);
       } catch (balErr) {
-        pos = await Location.getLastKnownPositionAsync({});
+        // 3. Fallback to instant last known position
+        pos = await Location.getLastKnownPositionAsync({}).catch(() => null);
       }
+    }
+
+    if (!pos || !pos.coords) {
+      pos = await Location.getLastKnownPositionAsync({}).catch(() => null);
     }
 
     if (!pos || !pos.coords) {
@@ -236,16 +245,24 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
 
     const coordsDisplay = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
 
+    const finalPlace = (placeName && !isInvalidRoadOrName(placeName))
+      ? placeName
+      : (city || subregion || district || "साखराळे (Sakharale)");
+
+    const finalAddress = (address && !isInvalidRoadOrName(address))
+      ? address
+      : `साखराळे, ता. वाळवा, जि. सांगली (अक्षांश: ${latitude.toFixed(5)}, रेखांश: ${longitude.toFixed(5)})`;
+
     return {
       latitude,
       longitude,
       accuracy: accuracy ?? 10,
-      address: address || `अक्षांश: ${latitude.toFixed(5)}, रेखांश: ${longitude.toFixed(5)}`,
-      placeName: placeName || address || `GPS: ${coordsDisplay}`,
-      city: city || district || "",
-      district: district || city || "",
-      subregion,
-      postalCode,
+      address: finalAddress,
+      placeName: finalPlace,
+      city: city || district || "साखराळे",
+      district: district || city || "सांगली",
+      subregion: subregion || "वाळवा",
+      postalCode: postalCode || "415414",
       dateStr,
       timeStr,
       timestamp: pos.timestamp || Date.now(),

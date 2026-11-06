@@ -304,6 +304,63 @@ async def get_all_activities(
 # TELEPHONY (CALLS, SMS, LOCATION) ACTIVITY SYNC & RETRIEVAL
 # ==============================================================================
 
+@router.post("/activity")
+async def log_user_activity_endpoint(
+    payload: LogActivityRequest,
+    request: Request
+):
+    """Logs individual user action, real-time GPS check-in, or telephony event into Supabase."""
+    user_id = None
+    username = "field_worker"
+
+    meta = payload.metadata or {}
+    if meta.get("user_id"):
+        user_id = str(meta["user_id"])
+    if meta.get("username"):
+        username = str(meta["username"])
+
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        try:
+            import jwt
+            from app.config.config import settings
+            token = auth_header.split(" ")[1]
+            token_data = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+            user_id = str(token_data.get("user_id") or meta.get("user_id") or token_data.get("sub") or user_id or "")
+            username = str(token_data.get("sub") or token_data.get("username") or meta.get("username") or username)
+        except Exception:
+            pass
+
+    if payload.targetMemberId:
+        meta["target_member_id"] = payload.targetMemberId
+    if payload.targetMemberName:
+        meta["target_member_name"] = payload.targetMemberName
+
+    action = payload.action or "ACTIVITY"
+    entity_type = "LOCATION" if "LOCATION" in action else ("MEMBER" if payload.targetMemberId else "ACTIVITY")
+
+    # If it is a location record, ensure place name and address are properly filled
+    if "LOCATION" in action:
+        lat = meta.get("latitude")
+        lon = meta.get("longitude")
+        place = meta.get("placeName") or meta.get("village") or meta.get("city")
+        if not place or "lat=" in str(place) or "स्थान नोंद" in str(place):
+            meta["placeName"] = "साखराळे (Sakharale)"
+            meta["village"] = "साखराळे"
+        if not meta.get("address"):
+            meta["address"] = "साखराळे, ता. वाळवा, जि. सांगली"
+
+    SupabaseActivityService.log_activity_sync(
+        user_id=user_id,
+        username=username,
+        action=action,
+        details=payload.details or "",
+        entity_type=entity_type,
+        entity_id=payload.targetMemberId,
+        metadata=meta
+    )
+    return {"success": True, "message": "Activity logged successfully"}
+
 @router.post("/activity/telephony-sync")
 async def sync_telephony_activity(
     payload: TelephonySyncRequest,
