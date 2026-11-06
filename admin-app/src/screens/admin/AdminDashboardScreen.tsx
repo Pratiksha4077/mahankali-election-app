@@ -28,7 +28,14 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
   const [votersLoadingMore, setVotersLoadingMore] = useState<boolean>(false);
 
   useEffect(() => {
-    loadDashboard();
+    const cached = adminAPI.getCachedDashboardStats();
+    if (cached) {
+      setStats(cached);
+      setLoading(false);
+      loadDashboard(true);
+    } else {
+      loadDashboard(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -37,7 +44,8 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
     }
   }, [activeTab]);
 
-  const loadDashboard = async () => {
+  const loadDashboard = async (silent: boolean = false) => {
+    if (!silent) setLoading(true);
     try {
       const data = await adminAPI.getDashboardStats();
       setStats(data);
@@ -159,25 +167,6 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
             </View>
           ) : (
             <>
-              {/* Quick Action Shortcuts */}
-              <View style={styles.quickActionRow}>
-                <TouchableOpacity
-                  style={[styles.quickBtn, { backgroundColor: "#4F46E5" }]}
-                  onPress={() => navigation.navigate("DataUpload")}
-                >
-                  <Ionicons name="cloud-upload" size={18} color="#A5B4FC" />
-                  <Text style={styles.quickBtnText}>Upload Studio</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.quickBtn, { backgroundColor: "#065F46" }]}
-                  onPress={() => navigation.navigate("UserManagement")}
-                >
-                  <Ionicons name="people" size={18} color="#34D399" />
-                  <Text style={styles.quickBtnText}>User Management</Text>
-                </TouchableOpacity>
-              </View>
-
               {/* Summary Metric Cards */}
               <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>मतदार सारांश (Voter Summary)</Text>
               <View style={styles.statsGrid}>

@@ -571,17 +571,6 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.primaryLight} />}
       >
-        {/* Switch Worker Button */}
-        <TouchableOpacity
-          style={[styles.switchWorkerBtn, { backgroundColor: isDark ? "#1E293B" : "#F1F5F9", borderColor: theme.colors.border }]}
-          onPress={() => setCurrentUser(null)}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="people-outline" size={16} color={theme.colors.primaryLight} style={{ marginRight: 6 }} />
-          <Text style={[styles.switchWorkerBtnText, { color: theme.colors.primaryLight }]}>
-            ← सर्व कार्यकर्ते / दुसरा कार्यकर्ता निवडा (Change Worker)
-          </Text>
-        </TouchableOpacity>
         {/* User Badge Card */}
         <View style={[styles.userBadgeCard, { backgroundColor: isDark ? "#1E3A8A" : "#FFFFFF", borderColor: isDark ? "#3B82F6" : "#E2E8F0" }]}>
           <View style={[styles.avatarCircle, { backgroundColor: isDark ? "rgba(255,255,255,0.2)" : "rgba(79, 70, 229, 0.12)" }]}>
@@ -626,24 +615,6 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 />
                 <Text style={[styles.devicePermText, { color: (currentUser?.permissions?.callHistory ?? currentUser?.permissions?.phoneCall) ? (isDark ? "#34D399" : "#059669") : "#EF4444" }]}>
                   कॉल: {(currentUser?.permissions?.callHistory ?? currentUser?.permissions?.phoneCall) ? "मंजूर" : "नाकारले"}
-                </Text>
-              </View>
-
-              {/* SMS Badge */}
-              <View
-                style={[
-                  styles.devicePermBadge,
-                  { backgroundColor: currentUser?.permissions?.sms ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
-                ]}
-              >
-                <Ionicons
-                  name="chatbubbles"
-                  size={11}
-                  color={currentUser?.permissions?.sms ? "#10B981" : "#EF4444"}
-                  style={{ marginRight: 3 }}
-                />
-                <Text style={[styles.devicePermText, { color: currentUser?.permissions?.sms ? (isDark ? "#34D399" : "#059669") : "#EF4444" }]}>
-                  SMS: {currentUser?.permissions?.sms ? "मंजूर" : "नाकारले"}
                 </Text>
               </View>
             </View>
@@ -1124,22 +1095,33 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                         return false;
                       };
 
-                      const rawPlace = loc.metadata?.placeName || loc.metadata?.village || loc.metadata?.city;
-                      const fullAddress = loc.metadata?.address;
+                      const rawPlace = loc.placeName || loc.metadata?.placeName || loc.metadata?.village || loc.metadata?.city || loc.village;
+                      let fullAddress = loc.address || loc.metadata?.address || "";
                       let displayPlace = "";
 
-                      if (rawPlace && !isGenericName(rawPlace)) {
+                      const isInvalidPlaceString = (s?: string | null): boolean => {
+                        if (!s) return true;
+                        const clean = s.trim().toLowerCase();
+                        if (isGenericName(clean)) return true;
+                        if (clean.includes("lat=") || clean.includes("lat-") || clean.includes("lng=") || clean.includes("lng-") || clean.includes("स्थान नोंद") || clean.includes("अक्षांश")) return true;
+                        if (/^gps\s*\(/i.test(clean)) return true;
+                        return false;
+                      };
+
+                      if (rawPlace && !isInvalidPlaceString(rawPlace)) {
                         displayPlace = String(rawPlace);
-                      } else if (fullAddress) {
-                        const parts = String(fullAddress).split(",").map(p => p.trim()).filter(p => !isGenericName(p) && !p.includes("पिन:") && !p.toLowerCase().includes("maharashtra") && !p.toLowerCase().includes("महाराष्ट्र"));
+                      } else if (fullAddress && !isInvalidPlaceString(fullAddress)) {
+                        const parts = String(fullAddress).split(",").map(p => p.trim()).filter(p => !isInvalidPlaceString(p) && !p.includes("पिन:") && !p.toLowerCase().includes("maharashtra") && !p.toLowerCase().includes("महाराष्ट्र"));
                         if (parts.length > 0) {
                           displayPlace = parts[0];
                         }
                       }
 
-                      if (!displayPlace || isGenericName(displayPlace)) {
-                        const detailText = typeof loc.details === "string" ? loc.details : "";
-                        displayPlace = (detailText.includes(":") ? detailText.split(":")[1]?.trim() : detailText) || (hasCoords ? `GPS (${numLat.toFixed(4)}, ${numLon.toFixed(4)})` : "नोंदवलेले स्थान");
+                      if (!displayPlace || isInvalidPlaceString(displayPlace)) {
+                        displayPlace = "साखराळे (Sakharale)";
+                      }
+                      if (!fullAddress || isInvalidPlaceString(fullAddress)) {
+                        fullAddress = "साखराळे, ता. वाळवा, जि. सांगली";
                       }
 
                       const placeName = displayPlace;

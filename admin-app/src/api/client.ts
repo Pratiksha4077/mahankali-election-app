@@ -403,9 +403,12 @@ export const reportAPI = {
 
 // ----------------- ADMIN API -----------------
 let cachedDashboardStats: { data: DashboardStats; timestamp: number } | null = null;
-const DASHBOARD_CACHE_TTL = 5000; // 5 seconds
+const DASHBOARD_CACHE_TTL = 30000; // 30 seconds cache for fast tab switches
 
 export const adminAPI = {
+  getCachedDashboardStats: (): DashboardStats | null => {
+    return cachedDashboardStats ? cachedDashboardStats.data : null;
+  },
   getDashboardStats: async (forceRefresh: boolean = false): Promise<DashboardStats> => {
     const now = Date.now();
     if (!forceRefresh && cachedDashboardStats && now - cachedDashboardStats.timestamp < DASHBOARD_CACHE_TTL) {
