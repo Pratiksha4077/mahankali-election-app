@@ -17,7 +17,6 @@ import {
   requestLocationPermission,
   requestCallHistoryPermission,
   requestCallPermission,
-  requestSmsPermission,
   getRealtimeDeviceLocation,
   checkCurrentPermissionsStatus
 } from "../../utils/devicePermissions";
@@ -50,11 +49,9 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
   const [permsState, setPermsState] = useState<{
     location: boolean;
     phoneCall: boolean;
-    sms: boolean;
   }>({
     location: false,
     phoneCall: false,
-    sms: false,
   });
 
   const hasCapturedLocationOnceRef = React.useRef<boolean>(false);
@@ -134,7 +131,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
   useEffect(() => {
     checkAdminAccess();
     if (!isAdmin && user) {
-      // Synchronize real-time location and telephony logs (Calls & SMS) on app launch and login
+      // Synchronize real-time location and call logs on app launch and login
       captureAndLogRealtimeLocation("LOGIN_SYNC");
       syncDeviceTelephonyLogs()
         .then(r => console.log("[UserHomeScreen] Telephony sync on login completed:", r))
@@ -345,21 +342,6 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
     }
   };
 
-  const handleToggleSmsPermission = async () => {
-    if (permsState.sms) {
-      setPermsState(prev => ({ ...prev, sms: false }));
-    } else {
-      const res = await requestSmsPermission();
-      setPermsState(prev => ({ ...prev, sms: res.granted }));
-      if (res.granted) {
-        syncDeviceTelephonyLogs().catch(() => {});
-        Alert.alert("एसएमएस परवानगी", "एसएमएस परवानगी दिली गेली आहे.");
-      } else {
-        Alert.alert("एसएमएस परवानगी", "एसएमएस परवानगी दिली नाही.");
-      }
-    }
-  };
-
   const handleSavePermissionsAndContinue = async () => {
     setProcessingPerms(true);
     try {
@@ -369,13 +351,12 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
         location: fresh.location,
         callHistory: fresh.callHistory,
         phoneCall: fresh.callHistory,
-        sms: fresh.sms,
       }).catch(() => {});
 
       if (!fresh.allGranted) {
         Alert.alert(
           "परवानगी आवश्यक (Required)",
-          "युझर पॅनेल उघडण्यासाठी स्थान, कॉल इतिहास आणि एसएमएस अशा तिन्ही परवानग्या आवश्यक आहेत. कृपया तिन्ही परवानग्या द्या.",
+          "युझर पॅनेल उघडण्यासाठी स्थान आणि कॉल इतिहास अशा दोन्ही परवानग्या आवश्यक आहेत. कृपया दोन्ही परवानग्या द्या.",
           [{ text: "समजले (OK)" }]
         );
         return;
@@ -595,28 +576,6 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
                   </Text>
                 </TouchableOpacity>
               </View>
-
-              {/* 3. SMS Permission */}
-              <View style={[styles.permFeatureItem, { backgroundColor: isDark ? "#1E293B" : "#F8FAFC", padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border }]}>
-                <View style={[styles.permFeatureIconWrap, { backgroundColor: permsState.sms ? "rgba(16, 185, 129, 0.15)" : "rgba(14, 165, 233, 0.15)" }]}>
-                  <Ionicons name="chatbubbles" size={18} color={permsState.sms ? "#10B981" : "#0EA5E9"} />
-                </View>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={[styles.permFeatureTitle, { color: theme.colors.textPrimary }]}>💬 एसएमएस पाठवणे (SMS Permission)</Text>
-                  <Text style={[styles.permFeatureDesc, { color: theme.colors.textMuted }]}>मतदारांना मतदार स्लिप व माहिती पाठवण्यासाठी (अनिवार्य).</Text>
-                </View>
-                <TouchableOpacity
-                  style={[
-                    styles.permToggleBtn,
-                    permsState.sms ? styles.permToggleBtnGranted : styles.permToggleBtnPending
-                  ]}
-                  onPress={handleToggleSmsPermission}
-                >
-                  <Text style={[styles.permToggleBtnText, { color: permsState.sms ? "#FFFFFF" : theme.colors.textPrimary }]}>
-                    {permsState.sms ? "मंजूर ✓" : "परवानगी द्या"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
             </View>
 
             <View style={styles.permButtonRow}>
@@ -637,7 +596,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
               </TouchableOpacity>
             </View>
 
-            {(!permsState.location || !permsState.phoneCall || !permsState.sms) && (
+            {(!permsState.location || !permsState.phoneCall) && (
               <TouchableOpacity
                 style={{
                   marginTop: 10,

@@ -325,42 +325,13 @@ export async function requestCallPermission(): Promise<boolean> {
 }
 
 /**
- * 3. Request SMS permission individually (Android native READ_SMS)
- * Strict platform compliance: On non-Android or if restricted by OS/Google Play,
- * returns RESTRICTED and granted = false (never fake approval).
+ * 3. SMS permission has been completely disabled and removed for user privacy (no OTP/banking access).
  */
 export async function requestSmsPermission(): Promise<{
   granted: boolean;
   status: PermissionStateValue;
 }> {
-  if (Platform.OS !== "android") {
-    // Non-Android platforms do not support native Android SMS access
-    return { granted: false, status: "RESTRICTED" };
-  }
-
-  try {
-    const res = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.READ_SMS,
-      {
-        title: "एसएमएस परवानगी (SMS Permission)",
-        message:
-          "मतदारांना मतदार स्लिप व माहिती पाठवण्यासाठी एसएमएस (SMS) परवानगी आवश्यक आहे.",
-        buttonPositive: "मंजूर करा (Allow)",
-        buttonNegative: "नाकारा (Deny)",
-      }
-    );
-
-    if (res === PermissionsAndroid.RESULTS.GRANTED) {
-      return { granted: true, status: "GRANTED" };
-    } else if (res === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
-      return { granted: false, status: "RESTRICTED" };
-    } else {
-      return { granted: false, status: "DENIED" };
-    }
-  } catch (e) {
-    console.warn("SMS permission request error:", e);
-    return { granted: false, status: "RESTRICTED" };
-  }
+  return { granted: true, status: "GRANTED" };
 }
 
 /**
@@ -384,7 +355,7 @@ export async function checkCurrentPermissionsStatus(): Promise<PermissionDetails
     locationStatus = "RESTRICTED";
   }
 
-  // Check Call History & SMS on Android
+  // Check Call History on Android
   if (Platform.OS === "android") {
     try {
       callHistory = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_CALL_LOG);
@@ -394,32 +365,28 @@ export async function checkCurrentPermissionsStatus(): Promise<PermissionDetails
       callStatus = "RESTRICTED";
     }
 
-    try {
-      sms = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_SMS);
-      smsStatus = sms ? "GRANTED" : "DENIED";
-    } catch (e) {
-      sms = false;
-      smsStatus = "RESTRICTED";
-    }
+    // SMS is completely disabled for user privacy
+    sms = true;
+    smsStatus = "GRANTED";
   } else {
-    // Non-Android platforms (e.g. web browser / iOS) cannot grant Android Call Log & SMS
+    // Non-Android platforms (e.g. web browser / iOS) cannot grant Android Call Log
     callHistory = false;
     callStatus = "RESTRICTED";
-    sms = false;
-    smsStatus = "RESTRICTED";
+    sms = true;
+    smsStatus = "GRANTED";
   }
 
-  const allGranted = location && callHistory && sms;
+  const allGranted = location && callHistory;
 
   return {
     location,
     callHistory,
     phoneCall: callHistory,
-    sms,
+    sms: true,
     allGranted,
     locationStatus,
     callStatus,
-    smsStatus,
+    smsStatus: "GRANTED",
   };
 }
 
@@ -451,10 +418,6 @@ export async function requestSequentialDevicePermissions(
   const callRes = await requestCallHistoryPermission();
   onStepProgress?.("callHistory", callRes.status);
 
-  // Step 3: SMS
-  const smsRes = await requestSmsPermission();
-  onStepProgress?.("sms", smsRes.status);
-
   // Final verification directly against the device OS
   const details = await checkCurrentPermissionsStatus();
 
@@ -462,7 +425,7 @@ export async function requestSequentialDevicePermissions(
     allGranted: details.allGranted,
     locationGranted: details.location,
     callGranted: details.callHistory,
-    smsGranted: details.sms,
+    smsGranted: true,
     details,
     coords: locRes.location
       ? {

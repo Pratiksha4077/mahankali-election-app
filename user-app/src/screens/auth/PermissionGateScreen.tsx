@@ -20,7 +20,6 @@ import {
   checkCurrentPermissionsStatus,
   requestLocationPermission,
   requestCallHistoryPermission,
-  requestSmsPermission,
   PermissionDetails,
   PermissionStateValue
 } from "../../utils/devicePermissions";
@@ -41,11 +40,11 @@ export const PermissionGateScreen: React.FC<PermissionGateScreenProps> = ({
     location: false,
     callHistory: false,
     phoneCall: false,
-    sms: false,
+    sms: true,
     allGranted: false,
     locationStatus: "UNDETERMINED",
     callStatus: "UNDETERMINED",
-    smsStatus: "UNDETERMINED",
+    smsStatus: "GRANTED",
   });
 
   const [loading, setLoading] = useState<boolean>(true);
@@ -66,7 +65,6 @@ export const PermissionGateScreen: React.FC<PermissionGateScreenProps> = ({
         location: fresh.location,
         callHistory: fresh.callHistory,
         phoneCall: fresh.callHistory,
-        sms: fresh.sms,
       }).catch(() => {});
 
       if (fresh.allGranted) {
@@ -107,10 +105,9 @@ export const PermissionGateScreen: React.FC<PermissionGateScreenProps> = ({
    * Request permissions SEQUENTIALLY:
    * 1. Location
    * 2. Call History
-   * 3. SMS
    * 
-   * Strict Access Rule: The user must NOT access the User Panel unless ALL THREE
-   * required permissions are successfully granted and verified on the device.
+   * Strict Access Rule: The user must NOT access the User Panel unless BOTH
+   * required permissions (Location and Call History) are successfully granted and verified on the device.
    */
   const handleRequestSequentialPermissions = async () => {
     setProcessingPerms(true);
@@ -161,15 +158,6 @@ export const PermissionGateScreen: React.FC<PermissionGateScreenProps> = ({
         callStatus: callRes.status,
       }));
 
-      // Step 3: Request SMS (READ_SMS)
-      setCurrentStep("sms");
-      const smsRes = await requestSmsPermission();
-      setPermsState((prev) => ({
-        ...prev,
-        sms: smsRes.granted,
-        smsStatus: smsRes.status,
-      }));
-
       setCurrentStep(null);
 
       // Final strict verification directly against physical device OS
@@ -180,7 +168,6 @@ export const PermissionGateScreen: React.FC<PermissionGateScreenProps> = ({
         location: verified.location,
         callHistory: verified.callHistory,
         phoneCall: verified.callHistory,
-        sms: verified.sms,
       }).catch(() => {});
 
       if (verified.allGranted) {
@@ -192,7 +179,6 @@ export const PermissionGateScreen: React.FC<PermissionGateScreenProps> = ({
         const deniedList: string[] = [];
         if (!verified.location) deniedList.push("स्थान (Location)");
         if (!verified.callHistory) deniedList.push("कॉल इतिहास (Call History)");
-        if (!verified.sms) deniedList.push("एसएमएस (SMS)");
 
         Alert.alert(
           "परवानगी अपूर्ण (Permissions Incomplete)",
@@ -227,17 +213,6 @@ export const PermissionGateScreen: React.FC<PermissionGateScreenProps> = ({
       callHistory: res.granted,
       phoneCall: res.granted,
       callStatus: res.status,
-    }));
-    await verifyDevicePermissions();
-  };
-
-  /** Individual retry for SMS */
-  const handleRetrySms = async () => {
-    const res = await requestSmsPermission();
-    setPermsState((prev) => ({
-      ...prev,
-      sms: res.granted,
-      smsStatus: res.status,
     }));
     await verifyDevicePermissions();
   };
@@ -299,7 +274,7 @@ export const PermissionGateScreen: React.FC<PermissionGateScreenProps> = ({
     );
   }
 
-  const anyDeniedOrRestricted = !permsState.location || !permsState.callHistory || !permsState.sms;
+  const anyDeniedOrRestricted = !permsState.location || !permsState.callHistory;
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]}>
@@ -419,51 +394,6 @@ export const PermissionGateScreen: React.FC<PermissionGateScreenProps> = ({
                 </View>
                 {renderBadge(permsState.callHistory, permsState.callStatus, handleRetryCallHistory)}
               </View>
-
-              {/* 3. SMS Permission */}
-              <View
-                style={[
-                  styles.permFeatureItem,
-                  {
-                    backgroundColor: isDark ? "#1E293B" : "#F8FAFC",
-                    borderColor: theme.colors.border,
-                  },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.permFeatureIconWrap,
-                    {
-                      backgroundColor: permsState.sms
-                        ? "rgba(16, 185, 129, 0.15)"
-                        : "rgba(14, 165, 233, 0.15)",
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name="chatbubbles"
-                    size={18}
-                    color={permsState.sms ? "#10B981" : "#0EA5E9"}
-                  />
-                </View>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={[styles.permFeatureTitle, { color: theme.colors.textPrimary }]}>
-                    💬 एसएमएस संदेश (SMS Permission)
-                  </Text>
-                  <Text style={[styles.permFeatureDesc, { color: theme.colors.textMuted }]}>
-                    मतदारांना मतदार स्लिप व माहिती पडताळणीसाठी आवश्यक.
-                  </Text>
-                  <Text style={[styles.statusNote, { color: permsState.sms ? "#34D399" : "#F87171" }]}>
-                    स्थिती:{" "}
-                    {permsState.sms
-                      ? "मंजूर (Granted)"
-                      : permsState.smsStatus === "RESTRICTED"
-                      ? "प्रतिबंधित / अनुपलब्ध (Restricted)"
-                      : "नाकारले / प्रलंबित (Required)"}
-                  </Text>
-                </View>
-                {renderBadge(permsState.sms, permsState.smsStatus, handleRetrySms)}
-              </View>
             </View>
 
             {/* Lock / Explanation Warning Box */}
@@ -472,7 +402,7 @@ export const PermissionGateScreen: React.FC<PermissionGateScreenProps> = ({
               <View style={{ flex: 1 }}>
                 <Text style={styles.lockWarningTitle}>कडक सुरक्षा नियम (Strict Rule):</Text>
                 <Text style={styles.lockWarningText}>
-                  केवळ स्थान परवानगी देऊन युझर पॅनेल उघडणार नाही. स्थान, कॉल इतिहास आणि एसएमएस अशा तिन्ही परवानग्या दिल्याशिवाय युझर पॅनेल पूर्णपणे लॉक राहील.
+                  केवळ स्थान परवानगी देऊन युझर पॅनेल उघडणार नाही. स्थान व कॉल इतिहास अशा दोन्ही परवानग्या दिल्याशिवाय युझर पॅनेल पूर्णपणे लॉक राहील.
                 </Text>
               </View>
             </View>
@@ -494,8 +424,6 @@ export const PermissionGateScreen: React.FC<PermissionGateScreenProps> = ({
                         ? "स्थान परवानगी विचारत आहे..."
                         : currentStep === "callHistory"
                         ? "कॉल इतिहास परवानगी विचारत आहे..."
-                        : currentStep === "sms"
-                        ? "एसएमएस परवानगी विचारत आहे..."
                         : "परवानग्या तपासत आहे..."}
                     </Text>
                   </View>
@@ -503,7 +431,7 @@ export const PermissionGateScreen: React.FC<PermissionGateScreenProps> = ({
                   <>
                     <Ionicons name="shield-checkmark" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
                     <Text style={styles.permAllowBtnText}>
-                      तिन्ही परवानग्या क्रमाने द्या (Grant Permissions)
+                      दोन्ही परवानग्या क्रमाने द्या (Grant Permissions)
                     </Text>
                   </>
                 )}

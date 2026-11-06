@@ -125,7 +125,6 @@ export const UserRootNavigator: React.FC = () => {
           location: status.location,
           callHistory: status.callHistory,
           phoneCall: status.callHistory,
-          sms: status.sms,
         })
         .catch(() => {});
     } catch (e) {

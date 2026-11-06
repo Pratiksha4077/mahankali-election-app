@@ -285,24 +285,6 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
                           कॉल: {isCall ? "मंजूर" : "नाकारले"}
                         </Text>
                       </View>
-
-                      {/* SMS Permission Badge */}
-                      <View
-                        style={[
-                          styles.permBadge,
-                          { backgroundColor: isSms ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
-                        ]}
-                      >
-                        <Ionicons
-                          name="chatbubbles"
-                          size={10}
-                          color={isSms ? "#10B981" : "#EF4444"}
-                          style={{ marginRight: 2 }}
-                        />
-                        <Text style={[styles.permBadgeText, { color: isSms ? "#34D399" : "#F87171" }]}>
-                          SMS: {isSms ? "मंजूर" : "नाकारले"}
-                        </Text>
-                      </View>
                     </View>
                   );
                 })()}
@@ -312,10 +294,10 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
                 <TouchableOpacity
                   style={styles.historyLink}
                   onPress={() => navigation.navigate("UserActivity", { user: item })}
-                  accessibilityLabel="View Call, SMS and Location History"
+                  accessibilityLabel="View Call and Location History"
                 >
                   <Text style={[styles.historyLinkText, { color: isDark ? "#93C5FD" : "#2563EB" }]}>
-                    📞 Call • 💬 SMS • 📍 Location History →
+                    📞 Call • 📍 Location History →
                   </Text>
                 </TouchableOpacity>
 

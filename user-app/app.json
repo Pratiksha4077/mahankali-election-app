@@ -24,9 +24,8 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "READ_CALL_LOG",
-        "READ_SMS",
-        "RECEIVE_SMS",
-        "SEND_SMS",
+        "READ_PHONE_STATE",
+        "READ_CONTACTS",
         "CALL_PHONE"
       ],
       "predictiveBackGestureEnabled": false

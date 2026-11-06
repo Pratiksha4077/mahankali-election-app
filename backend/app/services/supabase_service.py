@@ -159,7 +159,7 @@ class SupabaseUserService:
     @staticmethod
     def _normalize_permissions(raw_perms: Any) -> Dict[str, bool]:
         if raw_perms is None:
-            return {"location": True, "callHistory": True, "call_history": True, "phoneCall": True, "sms": True}
+            return {"location": True, "callHistory": True, "call_history": True, "phoneCall": True}
         if isinstance(raw_perms, str):
             try:
                 raw_perms = json.loads(raw_perms)
@@ -170,13 +170,11 @@ class SupabaseUserService:
 
         is_loc = bool(raw_perms.get("location", True))
         is_call = bool(raw_perms.get("callHistory", raw_perms.get("call_history", raw_perms.get("phoneCall", True))))
-        is_sms = bool(raw_perms.get("sms", True))
         return {
             "location": is_loc,
             "callHistory": is_call,
             "call_history": is_call,
-            "phoneCall": is_call,
-            "sms": is_sms
+            "phoneCall": is_call
         }
 
     @staticmethod
@@ -1600,13 +1598,11 @@ class SupabaseActivityService:
         locations: Optional[List[Dict[str, Any]]] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Saves batch telephony logs (calls, SMS, locations) directly into Supabase activity_logs."""
+        """Saves batch telephony logs (calls & locations; SMS completely disabled) directly into Supabase activity_logs."""
         calls = calls or []
-        sms = sms or []
         locations = locations or []
         meta_base = metadata or {}
         saved_calls = 0
-        saved_sms = 0
         saved_locs = 0
 
         try:
@@ -1632,34 +1628,24 @@ class SupabaseActivityService:
                         target_user_uuid = r[0]
 
                 # 2. Insert Calls
-                for c in calls[:100]:
-                    c_meta = {**meta_base, **c, "call_status": call_status}
+                for c in calls[:150]:
+                    c_phone = c.get("phoneNumber") or c.get("phone") or c.get("number") or ""
+                    c_name = c.get("name") or c.get("caller_name") or ""
+                    c_type = c.get("callType") or c.get("type") or "CALL"
+                    c_meta = {**meta_base, **c, "phoneNumber": c_phone, "name": c_name, "callType": c_type, "call_status": call_status}
                     cur.execute("""
                         INSERT INTO public.activity_logs (
                             user_id, username, action, entity_type, entity_id, details, metadata, timestamp
                         ) VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
                     """, (
                         target_user_uuid, username, "CALL_LOG", "CALL",
-                        str(c.get("id") or c.get("syncKey") or ""),
-                        f"कॉल नोंद: {c.get('phoneNumber', '')} ({c.get('type', '')})",
+                        str(c.get("id") or c.get("syncKey") or c.get("recordId") or ""),
+                        f"कॉल नोंद: {c_phone} {f'({c_name})' if c_name else ''} [{c_type}]",
                         Json(c_meta)
                     ))
                     saved_calls += 1
 
-                # 3. Insert SMS
-                for s in sms[:100]:
-                    s_meta = {**meta_base, **s, "sms_status": sms_status}
-                    cur.execute("""
-                        INSERT INTO public.activity_logs (
-                            user_id, username, action, entity_type, entity_id, details, metadata, timestamp
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
-                    """, (
-                        target_user_uuid, username, "SMS_LOG", "SMS",
-                        str(s.get("id") or s.get("syncKey") or ""),
-                        f"SMS नोंद: {s.get('address', s.get('phoneNumber', ''))} ({s.get('type', '')})",
-                        Json(s_meta)
-                    ))
-                    saved_sms += 1
+                # 3. SMS is intentionally disabled for privacy & security (no bank/OTP data stored)
 
                 # 4. Insert Locations
                 for l in locations[:50]:
@@ -1682,13 +1668,12 @@ class SupabaseActivityService:
                         UPDATE public.users
                         SET last_activity = NOW(),
                             permissions = jsonb_set(
-                                jsonb_set(COALESCE(permissions, '{}'::jsonb), '{call_history}', %s::jsonb),
-                                '{sms}', %s::jsonb
+                                COALESCE(permissions, '{}'::jsonb),
+                                '{call_history}', %s::jsonb
                             )
                         WHERE id = %s
                     """, (
                         json.dumps(call_status == "GRANTED"),
-                        json.dumps(sms_status == "GRANTED"),
                         target_user_uuid
                     ))
 
@@ -1696,12 +1681,12 @@ class SupabaseActivityService:
             return {
                 "success": True,
                 "saved_calls": saved_calls,
-                "saved_sms": saved_sms,
+                "saved_sms": 0,
                 "saved_locations": saved_locs,
                 "callCount": saved_calls,
-                "smsCount": saved_sms,
+                "smsCount": 0,
                 "call_status": call_status,
-                "sms_status": sms_status
+                "sms_status": "DISABLED"
             }
         except Exception as e:
             logger.error(f"[SupabaseActivityService] Telephony sync error: {e}")
@@ -1709,7 +1694,7 @@ class SupabaseActivityService:
                 "success": False,
                 "error": str(e),
                 "saved_calls": saved_calls,
-                "saved_sms": saved_sms,
+                "saved_sms": 0,
                 "saved_locations": saved_locs
             }
 
@@ -1723,7 +1708,7 @@ class SupabaseActivityService:
         limit: int = 50,
         max_total: int = 250
     ) -> Dict[str, Any]:
-        """Queries structured call, sms, and location activities for a user."""
+        """Queries structured call and location activities for a user (SMS removed)."""
         try:
             conn = get_supabase_conn()
             offset = max(0, (page - 1) * limit)
@@ -1760,41 +1745,48 @@ class SupabaseActivityService:
                 for r in cur.fetchall():
                     item = dict(r)
                     meta = item.get("metadata") or {}
+                    raw_phone = meta.get("phoneNumber") or meta.get("phone") or meta.get("number")
+                    if not raw_phone and item.get("details"):
+                        clean_dt = item["details"].replace("कॉल नोंद: ", "")
+                        raw_phone = clean_dt.split()[0] if clean_dt else ""
+
+                    c_name = meta.get("name") or meta.get("caller_name") or ""
+                    c_dur = meta.get("duration") or 0
+                    c_type = meta.get("callType") or meta.get("type") or "OUTGOING"
+
                     calls.append({
                         "id": str(item["id"]),
-                        "phoneNumber": meta.get("phoneNumber") or meta.get("number") or item.get("details", ""),
-                        "caller_name": meta.get("name") or meta.get("caller_name") or "",
-                        "name": meta.get("name") or meta.get("caller_name") or "",
-                        "duration": meta.get("duration") or 0,
-                        "type": meta.get("type") or "OUTGOING",
+                        "phoneNumber": raw_phone or "",
+                        "phone": raw_phone or "",
+                        "number": raw_phone or "",
+                        "caller_name": c_name,
+                        "name": c_name,
+                        "duration": c_dur,
+                        "type": c_type,
+                        "callType": c_type,
+                        "details": item.get("details", ""),
                         "timestamp": item.get("timestamp").isoformat() if item.get("timestamp") else None,
+                        "metadata": {
+                            **meta,
+                            "phoneNumber": raw_phone,
+                            "phone": raw_phone,
+                            "name": c_name,
+                            "caller_name": c_name,
+                            "duration": c_dur,
+                            "callType": c_type,
+                        },
                         **meta
                     })
                 call_count_sql = f"SELECT count(*) FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('CALL_LOG', 'CALL_INITIATED', 'CALL')"
                 cur.execute(call_count_sql, tuple(params))
                 call_count = cur.fetchone()["count"]
 
-                # 2. SMS
-                sms_q = f"SELECT * FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('SMS_LOG', 'SMS_INITIATED', 'SMS') ORDER BY timestamp DESC LIMIT %s OFFSET %s"
-                cur.execute(sms_q, tuple(params + [fetch_limit, offset]))
-                for r in cur.fetchall():
-                    item = dict(r)
-                    meta = item.get("metadata") or {}
-                    sms.append({
-                        "id": str(item["id"]),
-                        "address": meta.get("address") or meta.get("phoneNumber") or item.get("details", ""),
-                        "phoneNumber": meta.get("address") or meta.get("phoneNumber") or "",
-                        "body": meta.get("body") or meta.get("snippet") or item.get("details", ""),
-                        "type": meta.get("type") or "INBOX",
-                        "timestamp": item.get("timestamp").isoformat() if item.get("timestamp") else None,
-                        **meta
-                    })
-                sms_count_sql = f"SELECT count(*) FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('SMS_LOG', 'SMS_INITIATED', 'SMS')"
-                cur.execute(sms_count_sql, tuple(params))
-                sms_count = cur.fetchone()["count"]
+                # 2. SMS is removed - return 0 / empty
+                sms = []
+                sms_count = 0
 
-                # 3. Locations
-                loc_q = f"SELECT * FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('LOCATION_RECORD', 'LOCATION_PING', 'LOCATION') ORDER BY timestamp DESC LIMIT %s OFFSET %s"
+                # 3. Locations (including LOCATION_CHECKIN from real device check-ins)
+                loc_q = f"SELECT * FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('LOCATION_RECORD', 'LOCATION_PING', 'LOCATION', 'LOCATION_CHECKIN') ORDER BY timestamp DESC LIMIT %s OFFSET %s"
                 cur.execute(loc_q, tuple(params + [fetch_limit, offset]))
                 for r in cur.fetchall():
                     item = dict(r)
@@ -1804,10 +1796,14 @@ class SupabaseActivityService:
                         "latitude": meta.get("latitude") or 0.0,
                         "longitude": meta.get("longitude") or 0.0,
                         "accuracy": meta.get("accuracy") or 0,
+                        "placeName": meta.get("placeName") or meta.get("address") or item.get("details", ""),
+                        "address": meta.get("address") or meta.get("placeName") or item.get("details", ""),
+                        "details": item.get("details", ""),
                         "timestamp": item.get("timestamp").isoformat() if item.get("timestamp") else None,
+                        "metadata": meta,
                         **meta
                     })
-                loc_count_sql = f"SELECT count(*) FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('LOCATION_RECORD', 'LOCATION_PING', 'LOCATION')"
+                loc_count_sql = f"SELECT count(*) FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('LOCATION_RECORD', 'LOCATION_PING', 'LOCATION', 'LOCATION_CHECKIN')"
                 cur.execute(loc_count_sql, tuple(params))
                 location_count = cur.fetchone()["count"]
 
@@ -1815,19 +1811,19 @@ class SupabaseActivityService:
 
             return {
                 "calls": calls,
-                "sms": sms,
+                "sms": [],
                 "locations": locations,
                 "call_count": call_count,
-                "sms_count": sms_count,
+                "sms_count": 0,
                 "location_count": location_count,
                 "call_status": "GRANTED" if call_count > 0 else "UNKNOWN",
-                "sms_status": "GRANTED" if sms_count > 0 else "UNKNOWN",
+                "sms_status": "DISABLED",
                 "last_telephony_sync": calls[0]["timestamp"] if calls else None,
                 "pagination": {
                     "page": page,
                     "limit": limit,
                     "calls": {"page": page, "total": call_count, "has_more": ((page * limit) < call_count)},
-                    "sms": {"page": page, "total": sms_count, "has_more": ((page * limit) < sms_count)},
+                    "sms": {"page": page, "total": 0, "has_more": false},
                     "locations": {"page": page, "total": location_count, "has_more": ((page * limit) < location_count)}
                 }
             }

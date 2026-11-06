@@ -794,24 +794,6 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 style={[
                   styles.statPill,
                   {
-                    backgroundColor: expandedSection === "sms"
-                      ? (isDark ? "rgba(96, 165, 250, 0.2)" : "#EFF6FF")
-                      : (isDark ? theme.colors.surface : "#FFFFFF"),
-                    borderColor: expandedSection === "sms" ? "#3B82F6" : (isDark ? "rgba(96, 165, 250, 0.4)" : "#BFDBFE")
-                  }
-                ]}
-                onPress={() => toggleSection("sms")}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="chatbubble" size={16} color={isDark ? "#60A5FA" : "#2563EB"} />
-                <Text style={[styles.statNum, { color: isDark ? "#60A5FA" : "#2563EB" }]}>{activityData.sms_count}</Text>
-                <Text style={[styles.statLbl, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>SMS/WA</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.statPill,
-                  {
                     backgroundColor: expandedSection === "locations"
                       ? (isDark ? "rgba(251, 191, 36, 0.2)" : "#FEF3C7")
                       : (isDark ? theme.colors.surface : "#FFFFFF"),
@@ -940,9 +922,13 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                   activityData.calls.map((call, idx) => {
                     const cid = call.id || `call_${idx}`;
                     const isSelected = selectedIds.has(cid);
-                    const callTitle = call.targetMemberName || call.metadata?.name || call.metadata?.voter || "फोन कॉल";
-                    const callPhone = call.metadata?.phone || call.metadata?.phoneNumber || call.details || "फोन नंबर उपलब्ध नाही";
-                    const callTypeStr = call.metadata?.callTypeMarathi || call.metadata?.callType || "कॉल";
+                    const rawName = call.name || call.caller_name || call.metadata?.name || call.metadata?.caller_name || call.targetMemberName;
+                    const rawPhone = call.phoneNumber || call.phone || call.number || call.metadata?.phoneNumber || call.metadata?.phone || (typeof call.details === "string" ? call.details.replace("कॉल नोंद: ", "").split(" ")[0] : "");
+                    const callTitle = rawName ? String(rawName) : (rawPhone ? String(rawPhone) : "फोन कॉल");
+                    const callPhone = rawPhone ? String(rawPhone) : "फोन नंबर उपलब्ध नाही";
+                    const rawType = call.callType || call.type || call.metadata?.callType || "CALL";
+                    const callTypeStr = rawType === "INCOMING" ? "इनकमिंग" : rawType === "OUTGOING" ? "आउटगोइंग" : rawType === "MISSED" ? "मिस्ड" : rawType;
+                    const callDur = call.duration ?? call.metadata?.duration ?? 0;
 
                     return (
                       <View
@@ -976,7 +962,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                           </View>
                           <Text style={[styles.itemDetail, { color: isDark ? theme.colors.textSecondary : "#475569" }]}>
                             {callPhone}
-                            {call.metadata?.duration !== undefined && call.metadata?.duration > 0 ? ` • कालावधी: ${call.metadata.duration} से.` : ""}
+                            {callDur > 0 ? ` • कालावधी: ${callDur} से.` : ""}
                             {call.metadata?.village ? ` • गाव: ${call.metadata.village}` : ""}
                           </Text>
                           <Text style={[styles.itemTime, { color: isDark ? "#64748B" : "#94A3B8" }]}>
@@ -1035,244 +1021,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
               </View>
             )}
 
-            {/* Card 2: SMS & WhatsApp History */}
-            <TouchableOpacity
-              style={[
-                styles.activityCard,
-                {
-                  backgroundColor: isDark ? theme.colors.card : "#FFFFFF",
-                  borderColor: expandedSection === "sms"
-                    ? (isDark ? "#60A5FA" : "#3B82F6")
-                    : (isDark ? theme.colors.border : "#E2E8F0")
-                }
-              ]}
-              onPress={() => toggleSection("sms")}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: isDark ? "#1E3A8A" : "#EFF6FF" }]}>
-                <Ionicons name="chatbubbles" size={22} color={isDark ? "#60A5FA" : "#2563EB"} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <View style={styles.cardTitleRow}>
-                  <Text style={[styles.cardTitle, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>एसएमएस व व्हॉट्सॲप इतिहास (SMS History)</Text>
-                  <View style={[styles.pillBadge, { backgroundColor: isDark ? "#1E3A8A" : "#DBEAFE" }]}>
-                    <Text style={[styles.pillText, { color: isDark ? "#60A5FA" : "#1D4ED8" }]}>{activityData.sms_count} Messages</Text>
-                  </View>
-                </View>
-                <Text style={[styles.cardSubtitle, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>
-                  {activityData.sms_count > 0
-                    ? `एकूण ${activityData.sms_count} संदेश/मेटाडेटा नोंदवले`
-                    : activityData.sms_status === "RESTRICTED"
-                    ? "डिव्हाइस ॲक्सेस प्रतिबंधित (Restricted by Policy)"
-                    : activityData.sms_status === "DENIED"
-                    ? "एसएमएस परवानगी नाकारली (Permission Denied)"
-                    : activityData.sms_status === "UNAVAILABLE"
-                    ? "एसएमएस मॉड्यूल उपलब्ध नाही (Module Unavailable)"
-                    : "डिव्हाइसवर संदेश इतिहास आढळला नाही (0 Messages)"}
-                </Text>
-              </View>
-              <Ionicons
-                name={expandedSection === "sms" ? "chevron-down" : "chevron-forward"}
-                size={20}
-                color={isDark ? theme.colors.textMuted : "#94A3B8"}
-              />
-            </TouchableOpacity>
-
-            {expandedSection === "sms" && (
-              <View style={[styles.subListCard, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: isDark ? theme.colors.border : "#E2E8F0" }]}>
-                <View style={styles.subListHeaderRow}>
-                  <Text style={[styles.subListTitle, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>एसएमएस व व्हॉट्सॲप ({activityData.sms.length}):</Text>
-                  {activityData.sms.length > 0 && (
-                    <View style={{ flexDirection: "row", gap: 8 }}>
-                      <TouchableOpacity
-                        style={[styles.sectionActionBtn, { borderColor: isDark ? "#3B82F6" : "#93C5FD", backgroundColor: isDark ? "transparent" : "#EFF6FF" }]}
-                        onPress={() => {
-                          const ids = activityData.sms.map(s => s.id).filter(Boolean);
-                          const allSelected = ids.every(id => selectedIds.has(id));
-                          setSelectedIds(prev => {
-                            const next = new Set(prev);
-                            ids.forEach(id => (allSelected ? next.delete(id) : next.add(id)));
-                            return next;
-                          });
-                        }}
-                      >
-                        <Ionicons name="checkbox-outline" size={14} color={isDark ? "#60A5FA" : "#2563EB"} />
-                        <Text style={[styles.sectionActionBtnText, { color: isDark ? "#60A5FA" : "#2563EB" }]}>सर्व निवडा</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.sectionActionBtn, { borderColor: "#EF4444", backgroundColor: isDark ? "transparent" : "#FEF2F2" }]}
-                        onPress={() => handleClearSection("sms")}
-                      >
-                        <Ionicons name="trash-outline" size={14} color="#EF4444" />
-                        <Text style={[styles.sectionActionBtnText, { color: "#EF4444" }]}>सर्व हटवा</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </View>
-
-                {activityData.sms.length === 0 ? (
-                  <View style={styles.emptyDataBox}>
-                    <Ionicons
-                      name={
-                        activityData.sms_status === "RESTRICTED"
-                          ? "shield-outline"
-                          : activityData.sms_status === "DENIED"
-                          ? "close-circle-outline"
-                          : "chatbubble-outline"
-                      }
-                      size={28}
-                      color={
-                        activityData.sms_status === "RESTRICTED"
-                          ? "#F59E0B"
-                          : activityData.sms_status === "DENIED"
-                          ? "#EF4444"
-                          : (isDark ? theme.colors.textMuted : "#94A3B8")
-                      }
-                    />
-                    <Text style={[
-                      styles.emptySubText,
-                      { color: isDark ? theme.colors.textMuted : "#64748B" },
-                      activityData.sms_status === "RESTRICTED" && { color: isDark ? "#FBBF24" : "#D97706" },
-                      activityData.sms_status === "DENIED" && { color: "#EF4444" }
-                    ]}>
-                      {activityData.sms_status === "RESTRICTED"
-                        ? "डिव्हाइस ॲक्सेस प्रतिबंधित (Restricted by Android / Google Play Policy)\nएसएमएस धोरणानुसार ॲक्सेस प्रतिबंधित आहे. बनावट संदेश नोंदी तयार केल्या जात नाहीत."
-                        : activityData.sms_status === "DENIED"
-                        ? "परवानगी नाकारली (Permission Denied on Device)\nवापरकर्त्याने डिव्हाइसवर एसएमएस परवानगी नाकारली आहे."
-                        : activityData.sms_status === "UNAVAILABLE"
-                        ? "एसएमएस मॉड्यूल उपलब्ध नाही (Native Module Unavailable)\nडिव्हाइस बिल्डमध्ये एसएमएस इंटिग्रेशन उपलब्ध नाही."
-                        : "डिव्हाइसवर संदेश इतिहास आढळला नाही (0 Messages)\nपरवानगी मंजूर आहे, परंतु फोनवर संदेश उपलब्ध नाहीत."}
-                    </Text>
-                  </View>
-                ) : (
-                  activityData.sms.map((msg, idx) => {
-                    const mid = msg.id || `sms_${idx}`;
-                    const isSelected = selectedIds.has(mid);
-                    const msgTitle = msg.targetMemberName || msg.metadata?.voter || msg.metadata?.address || msg.metadata?.phone || "मतदार संदेश";
-                    const fullSmsBody = msg.metadata?.body || msg.metadata?.message || msg.metadata?.preview || (msg.details !== "संदेश पाठवला" ? msg.details : null);
-
-                    return (
-                      <View
-                        key={mid}
-                        style={[
-                          styles.subListItem,
-                          { borderBottomColor: isDark ? theme.colors.border : "#F1F5F9" },
-                          isSelected && (isDark ? styles.subListItemSelected : { backgroundColor: "#EFF6FF", borderRadius: 6, paddingHorizontal: 6 })
-                        ]}
-                      >
-                        <TouchableOpacity
-                          style={styles.checkboxTouch}
-                          onPress={() => toggleSelectItem(mid)}
-                        >
-                          <Ionicons
-                            name={isSelected ? "checkbox" : "square-outline"}
-                            size={20}
-                            color={isSelected ? "#3B82F6" : (isDark ? theme.colors.textMuted : "#94A3B8")}
-                          />
-                        </TouchableOpacity>
-
-                        <View style={[styles.itemIconWrap, { backgroundColor: isDark ? "#1E3A8A" : "#EFF6FF" }]}>
-                          <Ionicons
-                            name={msg.action?.includes("WHATSAPP") ? "logo-whatsapp" : "chatbubble"}
-                            size={16}
-                            color={msg.action?.includes("WHATSAPP") ? "#22C55E" : (isDark ? "#60A5FA" : "#2563EB")}
-                          />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                            <Text style={[styles.itemTitle, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>{msgTitle}</Text>
-                            {msg.metadata?.type ? (
-                              <View style={{ backgroundColor: isDark ? "rgba(96, 165, 250, 0.15)" : "#EFF6FF", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                                <Text style={{ fontSize: 10, color: isDark ? "#93C5FD" : "#2563EB", fontWeight: "600" }}>{msg.metadata.type}</Text>
-                              </View>
-                            ) : null}
-                          </View>
-
-                          {/* Full SMS Body text bubble */}
-                          {fullSmsBody ? (
-                            <View
-                              style={{
-                                backgroundColor: isDark ? "rgba(30, 58, 138, 0.25)" : "#F8FAFC",
-                                borderColor: isDark ? "rgba(96, 165, 250, 0.3)" : "#E2E8F0",
-                                borderWidth: 1,
-                                borderRadius: 8,
-                                padding: 8,
-                                marginVertical: 5
-                              }}
-                            >
-                              <Text style={{ fontSize: 10, fontWeight: "700", color: isDark ? "#93C5FD" : "#475569", marginBottom: 2 }}>
-                                {msg.action?.includes("WHATSAPP") ? "व्हॉट्सॲप संदेश मजकूर (WhatsApp Message):" : "एसएमएस मजकूर (SMS Body):"}
-                              </Text>
-                              <Text
-                                style={{ fontSize: 12, color: isDark ? "#F1F5F9" : "#1E293B", lineHeight: 18 }}
-                                selectable
-                              >
-                                {fullSmsBody}
-                              </Text>
-                            </View>
-                          ) : null}
-
-                          <Text style={[styles.itemDetail, { color: isDark ? theme.colors.textSecondary : "#475569" }]}>
-                            {msg.metadata?.phone ? `मोबाईल: ${msg.metadata.phone}` : (msg.details || "संदेश पाठवला")}
-                            {msg.metadata?.date ? ` • तारीख: ${msg.metadata.date}` : ""}
-                          </Text>
-                          <Text style={[styles.itemTime, { color: isDark ? "#64748B" : "#94A3B8" }]}>
-                            {msg.timestamp ? new Date(msg.timestamp).toLocaleString("mr-IN") : "अलीकडे"}
-                          </Text>
-                        </View>
-
-                        <TouchableOpacity
-                          style={styles.deleteSingleBtn}
-                          onPress={() => handleDeleteSingle(mid, msgTitle)}
-                        >
-                          <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  })
-                )}
-
-                {/* SMS & WhatsApp History Pagination Controls */}
-                {activityData.sms.length > 0 && (
-                  <View style={styles.paginationBox}>
-                    <Text style={[styles.paginationCountText, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>
-                      दाखवले: {activityData.sms.length} / {activityData.sms_count > 250 ? `250 (एकूण ${activityData.sms_count})` : activityData.sms_count} मेसेज
-                    </Text>
-                    {paginationState.sms.loading ? (
-                      <View style={styles.paginationLoadingRow}>
-                        <ActivityIndicator size="small" color="#3B82F6" />
-                        <Text style={[styles.paginationLoadingText, { color: isDark ? "#60A5FA" : "#2563EB" }]}>
-                          पुढील ५० संदेश लोड होत आहेत...
-                        </Text>
-                      </View>
-                    ) : paginationState.sms.hasMore ? (
-                      <TouchableOpacity
-                        style={[
-                          styles.loadMoreBtn,
-                          {
-                            borderColor: isDark ? "#60A5FA" : "#3B82F6",
-                            backgroundColor: isDark ? "rgba(59, 130, 246, 0.15)" : "#EFF6FF"
-                          }
-                        ]}
-                        onPress={() => loadNextPage("sms")}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="arrow-down-circle-outline" size={16} color={isDark ? "#60A5FA" : "#2563EB"} style={{ marginRight: 6 }} />
-                        <Text style={[styles.loadMoreBtnText, { color: isDark ? "#60A5FA" : "#2563EB" }]}>
-                          आणखी ५० संदेश दाखवा (Load Next 50)
-                        </Text>
-                      </TouchableOpacity>
-                    ) : activityData.sms_count > 50 ? (
-                      <Text style={[styles.paginationAllLoadedText, { color: isDark ? theme.colors.textMuted : "#94A3B8" }]}>
-                        ✓ सर्व संदेश लोड झाले आहेत
-                      </Text>
-                    ) : null}
-                  </View>
-                )}
-              </View>
-            )}
-
-            {/* Card 3: Location History */}
+            {/* Card 2: Location History */}
             <TouchableOpacity
               style={[
                 styles.activityCard,
