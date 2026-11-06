@@ -1814,8 +1814,10 @@ class SupabaseActivityService:
                 "sms": [],
                 "locations": locations,
                 "call_count": call_count,
+                "calls_count": call_count,
                 "sms_count": 0,
                 "location_count": location_count,
+                "locations_count": location_count,
                 "call_status": "GRANTED" if call_count > 0 else "UNKNOWN",
                 "sms_status": "DISABLED",
                 "last_telephony_sync": calls[0]["timestamp"] if calls else None,
@@ -1823,7 +1825,7 @@ class SupabaseActivityService:
                     "page": page,
                     "limit": limit,
                     "calls": {"page": page, "total": call_count, "has_more": ((page * limit) < call_count)},
-                    "sms": {"page": page, "total": 0, "has_more": false},
+                    "sms": {"page": page, "total": 0, "has_more": False},
                     "locations": {"page": page, "total": location_count, "has_more": ((page * limit) < location_count)}
                 }
             }
