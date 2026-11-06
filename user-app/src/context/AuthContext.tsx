@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { User, UserRole } from "../models/types";
-import { authAPI, setAuthToken } from "../api/client";
+import { authAPI, setAuthToken, logUserActivity } from "../api/client";
 import { appStorage } from "../utils/storage";
+import { getRealtimeDeviceLocation } from "../utils/devicePermissions";
 
 interface AuthContextType {
   user: User | null;
@@ -53,6 +54,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(res.user);
       await appStorage.setItem("election_user_info", JSON.stringify(res.user));
       await appStorage.setItem("election_active_panel", "USER");
+
+      // Instantly capture real-time GPS location and log check-in for Admin App
+      setTimeout(() => {
+        getRealtimeDeviceLocation()
+          .then(async (loc) => {
+            if (!loc) return;
+            const placeName = loc.placeName || loc.address || `GPS: ${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`;
+            const now = new Date();
+            const dateStr = loc.dateStr || now.toLocaleDateString("en-GB");
+            const timeStr = loc.timeStr || now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+
+            await logUserActivity({
+              action: "LOCATION_CHECKIN",
+              userId: res.user.id,
+              username: res.user.username,
+              details: `स्थान: ${placeName} (अक्षांश: ${loc.latitude.toFixed(5)}, रेखांश: ${loc.longitude.toFixed(5)}) • दिनांक: ${dateStr}, वेळ: ${timeStr}`,
+              metadata: {
+                latitude: loc.latitude,
+                longitude: loc.longitude,
+                accuracy: loc.accuracy,
+                address: loc.address,
+                placeName: placeName,
+                city: loc.city,
+                district: loc.district,
+                subregion: loc.subregion,
+                postalCode: loc.postalCode,
+                village: loc.placeName || loc.city || loc.district || "",
+                date: dateStr,
+                time: timeStr,
+                formattedDateTime: `${dateStr}, ${timeStr}`,
+                trigger: "USER_LOGIN_DIRECT"
+              }
+            });
+          })
+          .catch(() => {});
+      }, 300);
+
       return true;
     } catch (e: any) {
       throw e;

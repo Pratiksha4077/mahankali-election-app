@@ -84,6 +84,18 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
     }
 
     if (!pos || !pos.coords) {
+      try {
+        // 3. Try lowest accuracy (cell tower / Wi-Fi) with 3-second timeout
+        pos = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Lowest }),
+          new Promise<null>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000))
+        ]);
+      } catch (lowestErr) {
+        pos = await Location.getLastKnownPositionAsync({}).catch(() => null);
+      }
+    }
+
+    if (!pos || !pos.coords) {
       pos = await Location.getLastKnownPositionAsync({}).catch(() => null);
     }
 

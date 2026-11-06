@@ -331,86 +331,117 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
     });
   };
 
-  const handleDeleteSingle = (activityId: string, itemTitle: string) => {
-    Alert.alert(
-      "नोंद हटवा (Soft Delete)",
-      `'${itemTitle}' ही नोंद ॲडमिन पॅनेलवरून हटवायची आहे का? (डेटाबेसमध्ये ही नोंद सुरक्षित राहील)`,
-      [
+  const showConfirmDialog = (
+    title: string,
+    message: string,
+    onConfirm: () => Promise<void> | void
+  ) => {
+    if (Platform.OS === "web") {
+      const ok = typeof window !== "undefined" ? window.confirm(`${title}\n\n${message}`) : true;
+      if (ok) {
+        onConfirm();
+      }
+    } else {
+      Alert.alert(title, message, [
         { text: "रद्द करा", style: "cancel" },
-        {
-          text: "हटवा",
-          style: "destructive",
-          onPress: async () => {
-            const uid = String(currentUser?.id || currentUser?._id || "");
-            setIsDeleting(true);
-            try {
-              await adminAPI.deleteSingleActivity(uid, activityId);
-              loadUserActivities();
-            } catch (e) {
-              Alert.alert("त्रुटी", "नोंद हटवताना अडचण आली.");
-            } finally {
-              setIsDeleting(false);
-            }
-          }
+        { text: "हटवा", style: "destructive", onPress: onConfirm }
+      ]);
+    }
+  };
+
+  const handleDeleteSingle = (activityId: string, itemTitle: string) => {
+    showConfirmDialog(
+      "नोंद हटवा",
+      `'${itemTitle}' ही नोंद ॲडमिन पॅनेलवरून हटवायची आहे का?`,
+      async () => {
+        const uid = String(currentUser?.id || currentUser?._id || "88888888-8888-8888-8888-888888888888");
+        // Optimistic UI removal
+        setActivityData(prev => ({
+          ...prev,
+          calls: prev.calls.filter(c => c.id !== activityId),
+          locations: prev.locations.filter(l => l.id !== activityId),
+          call_count: Math.max(0, prev.call_count - (prev.calls.some(c => c.id === activityId) ? 1 : 0)),
+          location_count: Math.max(0, prev.location_count - (prev.locations.some(l => l.id === activityId) ? 1 : 0)),
+        }));
+        setSelectedIds(prev => {
+          const next = new Set(prev);
+          next.delete(activityId);
+          return next;
+        });
+
+        setIsDeleting(true);
+        try {
+          await adminAPI.deleteSingleActivity(uid, activityId);
+        } catch (e) {
+          console.warn("Delete single error:", e);
+        } finally {
+          setIsDeleting(false);
+          loadUserActivities();
         }
-      ]
+      }
     );
   };
 
   const handleDeleteSelected = () => {
     if (selectedIds.size === 0) return;
-    Alert.alert(
-      "निवडलेल्या नोंदी हटवा (Soft Delete)",
-      `तुम्ही निवडलेल्या ${selectedIds.size} नोंदी ॲडमिन पॅनेलवरून हटवायच्या आहेत का? (डेटाबेसमध्ये नोंदी सुरक्षित राहतील)`,
-      [
-        { text: "रद्द करा", style: "cancel" },
-        {
-          text: "हटवा",
-          style: "destructive",
-          onPress: async () => {
-            const uid = String(currentUser?.id || currentUser?._id || "");
-            setIsDeleting(true);
-            try {
-              await adminAPI.deleteBatchActivities(uid, Array.from(selectedIds));
-              setSelectedIds(new Set());
-              setSelectionMode(false);
-              loadUserActivities();
-            } catch (e) {
-              Alert.alert("त्रुटी", "नोंदी हटवताना अडचण आली.");
-            } finally {
-              setIsDeleting(false);
-            }
-          }
+    const count = selectedIds.size;
+    showConfirmDialog(
+      "निवडलेल्या नोंदी हटवा",
+      `तुम्ही निवडलेल्या ${count} नोंदी ॲडमिन पॅनेलवरून हटवायच्या आहेत का?`,
+      async () => {
+        const uid = String(currentUser?.id || currentUser?._id || "88888888-8888-8888-8888-888888888888");
+        const toDelete = Array.from(selectedIds);
+
+        // Optimistic UI removal
+        setActivityData(prev => ({
+          ...prev,
+          calls: prev.calls.filter(c => !selectedIds.has(c.id)),
+          locations: prev.locations.filter(l => !selectedIds.has(l.id)),
+          call_count: Math.max(0, prev.call_count - prev.calls.filter(c => selectedIds.has(c.id)).length),
+          location_count: Math.max(0, prev.location_count - prev.locations.filter(l => selectedIds.has(l.id)).length),
+        }));
+        setSelectedIds(new Set());
+        setSelectionMode(false);
+
+        setIsDeleting(true);
+        try {
+          await adminAPI.deleteBatchActivities(uid, toDelete);
+        } catch (e) {
+          console.warn("Delete batch error:", e);
+        } finally {
+          setIsDeleting(false);
+          loadUserActivities();
         }
-      ]
+      }
     );
   };
 
   const handleClearSection = (section: "calls" | "sms" | "locations") => {
     const secName = section === "calls" ? "कॉल इतिहास" : section === "sms" ? "एसएमएस इतिहास" : "लोकेशन इतिहास";
-    Alert.alert(
-      `${secName} साफ करा (Soft Delete)`,
-      `या विभागातील नोंदी ॲडमिन पॅनेलवरून हटवल्या जातील (डेटाबेसमधून कायमच्या नष्ट होणार नाहीत). खात्री करा?`,
-      [
-        { text: "रद्द करा", style: "cancel" },
-        {
-          text: "सर्व हटवा",
-          style: "destructive",
-          onPress: async () => {
-            const uid = String(currentUser?.id || currentUser?._id || "");
-            setIsDeleting(true);
-            try {
-              await adminAPI.clearUserActivities(uid, section.toUpperCase());
-              setSelectedIds(new Set());
-              loadUserActivities();
-            } catch (e) {
-              Alert.alert("त्रुटी", "इतिहास हटवताना अडचण आली.");
-            } finally {
-              setIsDeleting(false);
-            }
-          }
+    showConfirmDialog(
+      `${secName} साफ करा`,
+      `या विभागातील सर्व नोंदी ॲडमिन पॅनेलवरून हटवायच्या आहेत का?`,
+      async () => {
+        const uid = String(currentUser?.id || currentUser?._id || "88888888-8888-8888-8888-888888888888");
+        // Optimistic UI removal
+        if (section === "calls") {
+          setActivityData(prev => ({ ...prev, calls: [], call_count: 0 }));
+        } else if (section === "locations") {
+          setActivityData(prev => ({ ...prev, locations: [], location_count: 0 }));
         }
-      ]
+        setSelectedIds(new Set());
+        setSelectionMode(false);
+
+        setIsDeleting(true);
+        try {
+          await adminAPI.clearUserActivities(uid, section.toUpperCase());
+        } catch (e) {
+          console.warn("Clear section error:", e);
+        } finally {
+          setIsDeleting(false);
+          loadUserActivities();
+        }
+      }
     );
   };
 

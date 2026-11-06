@@ -671,22 +671,57 @@ export const adminAPI = {
   },
 
   deleteSingleActivity: async (userId: string, activityId: string) => {
-    const res = await apiClient.delete(`/admin/users/${userId}/activity/${activityId}`);
-    return res.data;
+    try {
+      const res = await apiClient.delete(`/admin/users/${userId}/activity/${activityId}`);
+      return res.data;
+    } catch {
+      const res = await apiClient.post(`/admin/users/${userId}/activity/delete`, {
+        activity_ids: [activityId]
+      });
+      return res.data;
+    }
   },
 
   deleteBatchActivities: async (userId: string, activityIds: string[]) => {
-    const res = await apiClient.delete(`/admin/users/${userId}/activity`, {
-      data: { activity_ids: activityIds }
-    });
-    return res.data;
+    if (!activityIds || activityIds.length === 0) return { success: true, deleted: 0 };
+    try {
+      const res = await apiClient.post(`/admin/users/${userId}/activity/delete`, {
+        activity_ids: activityIds,
+        ids: activityIds
+      });
+      if (res?.data?.success) return res.data;
+    } catch (e1) {
+      // Fallback to parallel single deletes
+    }
+
+    try {
+      await Promise.all(
+        activityIds.map(actId =>
+          apiClient.delete(`/admin/users/${userId}/activity/${actId}`).catch(() => null)
+        )
+      );
+      return { success: true, deleted: activityIds.length };
+    } catch (e2) {
+      const res = await apiClient.delete(`/admin/users/${userId}/activity`, {
+        data: { activity_ids: activityIds, ids: activityIds },
+        params: { ids: activityIds.join(",") }
+      });
+      return res.data;
+    }
   },
 
   clearUserActivities: async (userId: string, actionType?: string) => {
-    const res = await apiClient.delete(`/admin/users/${userId}/activity`, {
-      params: { delete_all: true, action_type: actionType }
-    });
-    return res.data;
+    try {
+      const res = await apiClient.post(`/admin/users/${userId}/activity/delete`, {}, {
+        params: { delete_all: true, action_type: actionType }
+      });
+      return res.data;
+    } catch {
+      const res = await apiClient.delete(`/admin/users/${userId}/activity`, {
+        params: { delete_all: true, action_type: actionType }
+      });
+      return res.data;
+    }
   },
 
   getAuditLogs: async (action?: string) => {

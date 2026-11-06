@@ -419,10 +419,26 @@ async def delete_single_activity(
     deleted = SupabaseActivityService.delete_activities([activity_id], user_id=user_id)
     return {"success": True, "deleted": deleted}
 
+@router.post("/{user_id}/activity/delete")
+async def delete_activities_post(
+    user_id: str,
+    payload: Optional[DeleteActivityPayload] = None,
+    delete_all: Optional[bool] = Query(False),
+    action_type: Optional[str] = Query(None),
+    admin: AuthUser = Depends(require_admin)
+):
+    """Admin batch deletes activity logs via POST."""
+    id_list = []
+    if payload:
+        id_list = payload.activity_ids or payload.ids or []
+    deleted = SupabaseActivityService.delete_activities(id_list, user_id=user_id)
+    return {"success": True, "deleted": deleted}
+
 @router.delete("/{user_id}/activity")
 async def delete_activities(
     user_id: str,
     payload: Optional[DeleteActivityPayload] = None,
+    ids: Optional[str] = Query(None),
     delete_all: Optional[bool] = Query(False),
     action_type: Optional[str] = Query(None),
     admin: AuthUser = Depends(require_admin)
@@ -435,8 +451,8 @@ async def delete_activities(
             with conn.cursor() as cur:
                 if action_type:
                     cur.execute(
-                        "DELETE FROM public.activity_logs WHERE (user_id::text = %s OR username = %s) AND action = %s;",
-                        (str(user_id), str(user_id), action_type)
+                        "DELETE FROM public.activity_logs WHERE (user_id::text = %s OR username = %s) AND (action = %s OR entity_type = %s);",
+                        (str(user_id), str(user_id), action_type, action_type)
                     )
                 else:
                     cur.execute(
@@ -447,8 +463,10 @@ async def delete_activities(
         finally:
             conn.close()
 
-    ids = []
+    id_list = []
     if payload:
-        ids = payload.activity_ids or payload.ids or []
-    deleted = SupabaseActivityService.delete_activities(ids, user_id=user_id)
+        id_list = payload.activity_ids or payload.ids or []
+    if not id_list and ids:
+        id_list = [x.strip() for x in ids.split(",") if x.strip()]
+    deleted = SupabaseActivityService.delete_activities(id_list, user_id=user_id)
     return {"success": True, "deleted": deleted}
