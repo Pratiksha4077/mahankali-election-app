@@ -27,12 +27,13 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
 
   const DEFAULT_SAKHARALE: Village = {
     id: "11111111-1111-1111-1111-111111111111",
-    name: "Sakharale",
     name_en: "Sakharale",
     name_mr: "साखराळे",
     taluka: "वाळवा",
     district: "सांगली",
-    total_voters: 0
+    total_voters: 5693,
+    active_voters: 5693,
+    deceased_voters: 0
   };
 
   const [villages, setVillages] = useState<Village[]>([DEFAULT_SAKHARALE]);

@@ -29,8 +29,10 @@ const DEFAULT_SAKHARALE: Village = {
   name_en: "Sakharale",
   taluka: "वाळवा",
   district: "सांगली",
-  pincode: "415414",
+  pin_code: "415414",
   total_voters: 5693,
+  active_voters: 5693,
+  deceased_voters: 0
 };
 
 export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ navigation, route }) => {

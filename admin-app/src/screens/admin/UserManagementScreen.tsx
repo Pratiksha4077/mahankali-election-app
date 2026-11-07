@@ -107,9 +107,9 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
     const uName = (user.username || "").toLowerCase();
     const defaultPw =
       uName === "karan" ? "patil@123" :
-      uName === "praji" ? "patil@123" :
-      uName === "sush" ? "patil@123" :
-      uName === "admin" ? "admin123" : "";
+        uName === "praji" ? "patil@123" :
+          uName === "sush" ? "patil@123" :
+            uName === "admin" ? "admin123" : "";
     setFormPassword(defaultPw);
     setShowPassword(false);
     setFormRole(user.role);
@@ -186,15 +186,15 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
     const confirmed = Platform.OS === "web"
       ? (typeof window !== "undefined" && window.confirm ? window.confirm(`तुम्हाला '${user.username}' वापरकर्ता हटवायचा आहे का?`) : true)
       : await new Promise(resolve => {
-          Alert.alert(
-            "खात्री करा",
-            `तुम्हाला ${user.username} वापरकर्ता हटवायचा आहे का?`,
-            [
-              { text: "रद्द करा", style: "cancel", onPress: () => resolve(false) },
-              { text: "हटवा", style: "destructive", onPress: () => resolve(true) }
-            ]
-          );
-        });
+        Alert.alert(
+          "खात्री करा",
+          `तुम्हाला ${user.username} वापरकर्ता हटवायचा आहे का?`,
+          [
+            { text: "रद्द करा", style: "cancel", onPress: () => resolve(false) },
+            { text: "हटवा", style: "destructive", onPress: () => resolve(true) }
+          ]
+        );
+      });
 
     if (!confirmed) return;
     try {
@@ -284,7 +284,7 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
                 {/* Granular Device Permission Badges */}
                 {(() => {
                   const isLoc = item.permissions?.location ?? item.permissions_granted ?? false;
-                  const isCall = (item.permissions?.callHistory ?? item.permissions?.call_history ?? item.permissions?.phoneCall ?? item.permissions_granted) ?? false;
+                  const isCall = (item.permissions?.callHistory ?? (item.permissions as any)?.call_history ?? item.permissions?.phoneCall ?? item.permissions_granted) ?? false;
                   const isSms = item.permissions?.sms ?? item.permissions_granted ?? false;
 
                   return (

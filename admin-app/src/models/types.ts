@@ -33,8 +33,8 @@ export interface Village {
   district?: string;
   pin_code?: string;
   total_voters: number;
-  active_voters: number;
-  deceased_voters: number;
+  active_voters?: number;
+  deceased_voters?: number;
 }
 
 export interface Category {
