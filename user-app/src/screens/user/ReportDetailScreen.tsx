@@ -321,29 +321,31 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
         </ScrollView>
       </View>
 
-      {/* Summary Banner */}
-      <View style={[styles.summaryCard, { backgroundColor: isDark ? "#1E3A8A" : theme.colors.card, borderColor: isDark ? "#3B82F6" : theme.colors.border }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.summaryTitle, { color: isDark ? "#FFFFFF" : theme.colors.textPrimary }]}>
-            {reportType === "surname" ? "Surname-Wise Voter Report (आडनाव अहवाल)" : t(titleKey as any)}
-          </Text>
-          <Text style={[styles.summarySubtitle, { color: isDark ? "#93C5FD" : theme.colors.textSecondary }]}>
-            {reportType === "surname" ? `साखराळे गाव • एकूण ${summaryGroups.length} आडनावे सापडली` : "Total Voters Found"}
-          </Text>
-        </View>
-        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-          {reportType === "surname" && (
-            <View style={[styles.countPill, { backgroundColor: isDark ? "#1E293B" : "#DBEAFE", borderColor: isDark ? "#38BDF8" : "#93C5FD" }]}>
-              <Text style={[styles.countPillText, { color: isDark ? "#93C5FD" : "#1D4ED8", fontSize: 13 }]}>
-                {summaryGroups.length} आडनावे
-              </Text>
+      {/* Summary Banner (Only shown when not drilled down into a specific surname) */}
+      {selectedSurname === null && (
+        <View style={[styles.summaryCard, { backgroundColor: isDark ? "#1E3A8A" : theme.colors.card, borderColor: isDark ? "#3B82F6" : theme.colors.border }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.summaryTitle, { color: isDark ? "#FFFFFF" : theme.colors.textPrimary }]}>
+              {reportType === "surname" ? "Surname-Wise Voter Report (आडनाव अहवाल)" : t(titleKey as any)}
+            </Text>
+            <Text style={[styles.summarySubtitle, { color: isDark ? "#93C5FD" : theme.colors.textSecondary }]}>
+              {reportType === "surname" ? `साखराळे गाव • एकूण ${summaryGroups.length} आडनावे सापडली` : "Total Voters Found"}
+            </Text>
+          </View>
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+            {reportType === "surname" && (
+              <View style={[styles.countPill, { backgroundColor: isDark ? "#1E293B" : "#DBEAFE", borderColor: isDark ? "#38BDF8" : "#93C5FD" }]}>
+                <Text style={[styles.countPillText, { color: isDark ? "#93C5FD" : "#1D4ED8", fontSize: 13 }]}>
+                  {summaryGroups.length} आडनावे
+                </Text>
+              </View>
+            )}
+            <View style={[styles.countPill, { backgroundColor: isDark ? "#1E293B" : theme.colors.surface, borderColor: isDark ? "#38BDF8" : theme.colors.border }]}>
+              <Text style={[styles.countPillText, { color: isDark ? "#FFFFFF" : theme.colors.primary }]}>{totalCount} मतदार</Text>
             </View>
-          )}
-          <View style={[styles.countPill, { backgroundColor: isDark ? "#1E293B" : theme.colors.surface, borderColor: isDark ? "#38BDF8" : theme.colors.border }]}>
-            <Text style={[styles.countPillText, { color: isDark ? "#FFFFFF" : theme.colors.primary }]}>{totalCount} मतदार</Text>
           </View>
         </View>
-      </View>
+      )}
 
       {/* Alphabet Filter Bar for Alphabetical List */}
       {reportType === "alphabetical" && (
@@ -690,27 +692,22 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
                     onPress={() => handleSelectSurname(surnameName)}
                     activeOpacity={0.7}
                   >
-                    <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0 }}>
                       <View style={[styles.surnameIconCircle, { backgroundColor: isDark ? "#1E293B" : "#E0F2FE" }]}>
-                        <Ionicons name="person" size={18} color={theme.colors.primaryLight} />
+                        <Ionicons name="person" size={14} color={theme.colors.primaryLight} />
                       </View>
-                      <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={[styles.surnameCardTitle, { color: theme.colors.textPrimary }]}>
-                          {surnameName}
-                        </Text>
-                        <Text style={[styles.surnameCardSub, { color: theme.colors.textMuted }]}>
-                          या आडनावातील मतदार पाहण्यासाठी टॅप करा
-                        </Text>
-                      </View>
+                      <Text style={[styles.surnameCardTitle, { color: theme.colors.textPrimary, marginLeft: 10 }]} numberOfLines={1}>
+                        {surnameName}
+                      </Text>
                     </View>
 
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                      <View style={[styles.groupBadge, { backgroundColor: theme.colors.cardElevated, borderColor: theme.colors.borderLight }]}>
-                        <Text style={[styles.groupBadgeText, { color: theme.colors.primaryLight }]}>
-                          {item.count || item.total_voters} मतदार
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <View style={[styles.groupBadge, { backgroundColor: theme.colors.cardElevated, borderColor: theme.colors.borderLight, paddingHorizontal: 10, paddingVertical: 3 }]}>
+                        <Text style={[styles.groupBadgeText, { color: theme.colors.primaryLight, fontSize: 13, fontWeight: "700" }]}>
+                          {item.count || item.total_voters}
                         </Text>
                       </View>
-                      <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
+                      <Ionicons name="chevron-forward" size={16} color={theme.colors.textMuted} />
                     </View>
                   </TouchableOpacity>
                 );
@@ -1197,20 +1194,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginHorizontal: 16,
-    marginVertical: 4,
-    padding: 14,
-    borderRadius: 12,
+    marginVertical: 3,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 10,
     borderWidth: 1,
   },
   surnameIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
   surnameCardTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "700",
   },
   surnameCardSub: {

@@ -206,7 +206,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
         village_id: selectedVillageId || undefined,
         q: debouncedSearch || undefined,
         page: pageToLoad,
-        limit: 30
+        limit: 50
       });
 
       let items: Member[] = res.items || [];
@@ -234,7 +234,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
         }
       }
 
-      setHasMore(items.length === 30 && (pageToLoad * 30 < total));
+      setHasMore(items.length === 50 && (pageToLoad * 50 < total));
       setPage(pageToLoad);
     } catch (err) {
       console.error("Failed to load members:", err);

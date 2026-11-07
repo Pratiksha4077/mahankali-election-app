@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
@@ -34,7 +35,7 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
             setLoading(false);
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     })();
   }, []);
 
@@ -60,7 +61,7 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
       if (Array.isArray(data)) {
         setUsers(data);
         if (activeTab === "all" && data.length > 0) {
-          appStorage.setItem("cached_admin_users", JSON.stringify(data)).catch(() => {});
+          appStorage.setItem("cached_admin_users", JSON.stringify(data)).catch(() => { });
         }
       }
     } finally {
