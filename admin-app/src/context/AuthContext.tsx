@@ -49,7 +49,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .then((res: any) => {
               if (res?.data) {
                 setUser(res.data);
-                appStorage.setItem("election_user_info", JSON.stringify(res.data)).catch(() => {});
+                appStorage.setItem("election_user_info", JSON.stringify(res.data)).catch(() => { });
               }
             })
             .catch(async (err: any) => {
@@ -80,7 +80,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setUser(res.data);
             }
           }
-        } catch (e) {}
+        } catch (e) { }
       }
     });
     return () => sub.remove();
@@ -96,7 +96,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(res.data);
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   };
 
   const login = async (username: string, password: string): Promise<boolean> => {
@@ -124,7 +124,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await appStorage.removeItem("election_auth_token");
   };
 
-  const switchPanel = () => {};
+  const switchPanel = () => { };
 
   const updateUserPermissions = async (granted: boolean) => {
     if (!user) return;
