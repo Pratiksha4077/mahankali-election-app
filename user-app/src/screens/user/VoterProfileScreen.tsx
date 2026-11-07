@@ -16,40 +16,43 @@ import { getRealtimeDeviceLocation } from "../../utils/devicePermissions";
 
 export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
   const { memberId } = route.params || { memberId: "m-1" };
+  const initialMember: Member | null = route.params?.member || null;
   const { t } = useLanguage();
   const { user } = useAuth();
   const { theme, isDark } = useTheme();
 
-  const [member, setMember] = useState<Member | null>(null);
+  const [member, setMember] = useState<Member | null>(initialMember);
   const [categories, setCategories] = useState<Category[]>([]);
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
 
-  // Editable form fields
-  const [mobileNumber, setMobileNumber] = useState("");
-  const [address, setAddress] = useState("");
-  const [isDeceased, setIsDeceased] = useState(false);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(undefined);
+  // Editable form fields initialized immediately from initialMember for 0ms transition
+  const [mobileNumber, setMobileNumber] = useState(initialMember?.mobile_number || (initialMember as any)?.mobileNumber || "");
+  const [address, setAddress] = useState(initialMember?.address || "");
+  const [isDeceased, setIsDeceased] = useState(initialMember?.status === "DECEASED" || initialMember?.is_deceased === true);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(
+    (initialMember?.category_id || initialMember?.category?.id) ? (initialMember?.category_id || initialMember?.category?.id) : undefined
+  );
 
   // Social & Professional Demographics
-  const [fatherName, setFatherName] = useState("");
-  const [religion, setReligion] = useState("");
-  const [caste, setCaste] = useState("");
-  const [designation, setDesignation] = useState("");
-  const [profession, setProfession] = useState("");
+  const [fatherName, setFatherName] = useState(initialMember?.father_name || initialMember?.relative_name_mr || (initialMember as any)?.relative?.nameMarathi || "");
+  const [religion, setReligion] = useState(initialMember?.religion || "");
+  const [caste, setCaste] = useState(initialMember?.caste || "");
+  const [designation, setDesignation] = useState(initialMember?.designation || "");
+  const [profession, setProfession] = useState(initialMember?.profession || "");
   const [savingSocial, setSavingSocial] = useState(false);
 
   // Comprehensive Voter Details Edit Modal State
   const [editModalVisible, setEditModalVisible] = useState(false);
-  const [editFullNameMr, setEditFullNameMr] = useState("");
-  const [editFullNameEn, setEditFullNameEn] = useState("");
-  const [editSerialNo, setEditSerialNo] = useState("");
-  const [editEpicNo, setEditEpicNo] = useState("");
-  const [editHouseNo, setEditHouseNo] = useState("");
-  const [editAge, setEditAge] = useState("");
-  const [editGender, setEditGender] = useState("Male");
-  const [editMobile, setEditMobile] = useState("");
-  const [editAddress, setEditAddress] = useState("");
+  const [editFullNameMr, setEditFullNameMr] = useState(initialMember?.full_name_mr || "");
+  const [editFullNameEn, setEditFullNameEn] = useState(initialMember?.full_name_en || "");
+  const [editSerialNo, setEditSerialNo] = useState(initialMember?.serial_number ? String(initialMember.serial_number) : "");
+  const [editEpicNo, setEditEpicNo] = useState(initialMember?.epic_number || "");
+  const [editHouseNo, setEditHouseNo] = useState(initialMember?.house_number || "");
+  const [editAge, setEditAge] = useState(initialMember?.age ? String(initialMember.age) : "");
+  const [editGender, setEditGender] = useState(initialMember?.gender || "Male");
+  const [editMobile, setEditMobile] = useState(initialMember?.mobile_number || "");
+  const [editAddress, setEditAddress] = useState(initialMember?.address || "");
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Family Members Management State
@@ -63,7 +66,7 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
   const [newFamilyMobile, setNewFamilyMobile] = useState("");
   const [newFamilyAge, setNewFamilyAge] = useState("");
   const [addingFamily, setAddingFamily] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialMember);
 
   useEffect(() => {
     loadData();
@@ -71,10 +74,13 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
   }, [memberId]);
 
   const loadData = async () => {
-    setLoading(true);
+    if (!initialMember && !member) {
+      setLoading(true);
+    }
     try {
-      const cats = await categoryAPI.getCategories();
-      setCategories(cats);
+      categoryAPI.getCategories().then(cats => {
+        if (cats && cats.length > 0) setCategories(cats);
+      }).catch(() => {});
 
       const m = await memberAPI.getMemberDetail(memberId);
       if (m) {

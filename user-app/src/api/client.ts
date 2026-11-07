@@ -292,11 +292,33 @@ export const villageAPI = {
     if (!forceRefresh && cachedVillages && now - cachedVillages.timestamp < MASTER_DATA_CACHE_TTL) {
       return cachedVillages.data;
     }
+    if (!cachedVillages) {
+      try {
+        const stored = await appStorage.getItem("cached_villages_list");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            cachedVillages = { data: parsed, timestamp: now };
+            if (!forceRefresh) {
+              apiClient.get("/villages").then(res => {
+                const list = Array.isArray(res.data) ? res.data : [];
+                if (list.length > 0) {
+                  cachedVillages = { data: list, timestamp: Date.now() };
+                  appStorage.setItem("cached_villages_list", JSON.stringify(list)).catch(() => {});
+                }
+              }).catch(() => {});
+              return parsed;
+            }
+          }
+        }
+      } catch (e) {}
+    }
     try {
       const res = await apiClient.get("/villages");
       const list = Array.isArray(res.data) ? res.data : [];
       if (list.length > 0) {
         cachedVillages = { data: list, timestamp: now };
+        appStorage.setItem("cached_villages_list", JSON.stringify(list)).catch(() => {});
       }
       return list;
     } catch (e) {
@@ -305,6 +327,7 @@ export const villageAPI = {
   },
   invalidateCache: () => {
     cachedVillages = null;
+    appStorage.removeItem("cached_villages_list").catch(() => {});
   }
 };
 
@@ -388,15 +411,33 @@ export const reportAPI = {
     }
   },
 
-  getDrilldownMembers: async (reportType: string, key: string, villageId?: string, page: number = 1, limit: number = 50) => {
+  getDrilldownMembers: async (
+    reportType: string,
+    key: string,
+    villageId?: string,
+    page: number = 1,
+    limit: number = 50,
+    search?: string
+  ) => {
     try {
       const res = await apiClient.get("/reports/drilldown", {
-        params: { report_type: reportType, key, village_id: villageId, page, limit }
+        params: { report_type: reportType, key, village_id: villageId, page, limit, search: search || undefined }
       });
-      const data = res.data?.items || res.data?.data || res.data;
-      return Array.isArray(data) ? data : [];
+      const items = Array.isArray(res.data?.items) ? res.data.items : Array.isArray(res.data) ? res.data : [];
+      (items as any).total = res.data?.total ?? items.length;
+      (items as any).page = res.data?.page ?? page;
+      (items as any).pages = res.data?.pages ?? (items.length > 0 ? Math.ceil((res.data?.total ?? items.length) / limit) : 1);
+      (items as any).hasMore = res.data?.hasMore ?? false;
+      (items as any).items = items;
+      return items;
     } catch (e) {
-      return [];
+      const empty: any[] = [];
+      (empty as any).total = 0;
+      (empty as any).page = 1;
+      (empty as any).pages = 1;
+      (empty as any).hasMore = false;
+      (empty as any).items = [];
+      return empty;
     }
   }
 };

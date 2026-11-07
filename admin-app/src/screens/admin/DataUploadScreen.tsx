@@ -25,12 +25,22 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
   const { t } = useLanguage();
   const { theme, isDark } = useTheme();
 
-  const [villages, setVillages] = useState<Village[]>([]);
-  const [selectedVillage, setSelectedVillage] = useState<Village | null>(null);
+  const DEFAULT_SAKHARALE: Village = {
+    id: "11111111-1111-1111-1111-111111111111",
+    name: "Sakharale",
+    name_en: "Sakharale",
+    name_mr: "साखराळे",
+    taluka: "वाळवा",
+    district: "सांगली",
+    total_voters: 0
+  };
+
+  const [villages, setVillages] = useState<Village[]>([DEFAULT_SAKHARALE]);
+  const [selectedVillage, setSelectedVillage] = useState<Village | null>(DEFAULT_SAKHARALE);
   const [fileQueue, setFileQueue] = useState<QueuedFile[]>([]);
   const [uploading, setUploading] = useState<boolean>(false);
   const [uploadProgressText, setUploadProgressText] = useState<string>("");
-  const [loadingVillages, setLoadingVillages] = useState<boolean>(true);
+  const [loadingVillages, setLoadingVillages] = useState<boolean>(false);
   const [clearBeforeUpload, setClearBeforeUpload] = useState<boolean>(false);
   const [clearing, setClearing] = useState<boolean>(false);
 
@@ -88,30 +98,23 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
     loadPastImports();
   }, []);
 
-  const DEFAULT_SAKHARALE: Village = {
-    id: "11111111-1111-1111-1111-111111111111",
-    name: "Sakharale",
-    name_en: "Sakharale",
-    name_mr: "साखराळे",
-    taluka: "वाळवा",
-    district: "सांगली",
-    total_voters: 0
-  };
-
-  const loadVillages = async () => {
+  const loadVillages = async (silent: boolean = true) => {
+    if (!silent && villages.length === 0) setLoadingVillages(true);
     try {
       const list = await villageAPI.getVillages();
       if (list && list.length > 0) {
         setVillages(list);
         const sakharele = list.find(v => v.name_mr?.includes("साखराळे") || v.name_en?.toLowerCase().includes("sakhar"));
-        setSelectedVillage(sakharele || list[0]);
+        setSelectedVillage(prev => prev || sakharele || list[0]);
       } else {
+        setVillages([DEFAULT_SAKHARALE]);
+        setSelectedVillage(prev => prev || DEFAULT_SAKHARALE);
+      }
+    } catch (err) {
+      if (villages.length === 0) {
         setVillages([DEFAULT_SAKHARALE]);
         setSelectedVillage(DEFAULT_SAKHARALE);
       }
-    } catch (err) {
-      setVillages([DEFAULT_SAKHARALE]);
-      setSelectedVillage(DEFAULT_SAKHARALE);
     } finally {
       setLoadingVillages(false);
     }

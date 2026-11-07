@@ -60,6 +60,13 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
     return () => clearTimeout(handler);
   }, [surnameSearchQuery]);
 
+  // Server-side search trigger when typing inside selected surname
+  useEffect(() => {
+    if (selectedSurname) {
+      handleSelectSurname(selectedSurname, 1, debouncedSurnameSearch);
+    }
+  }, [debouncedSurnameSearch]);
+
   // Drilldown state for expandable groups (Family, Religion, Caste, etc.)
   const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
   const [groupMembersMap, setGroupMembersMap] = useState<Record<string, Member[]>>({});
@@ -161,16 +168,17 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
     }
   };
 
-  const handleSelectSurname = async (surname: string, page: number = 1) => {
+  const handleSelectSurname = async (surname: string, page: number = 1, searchQuery?: string) => {
     setSelectedSurname(surname);
-    if (page === 1) {
+    if (page === 1 && searchQuery === undefined) {
       setSurnameSearchQuery("");
       setDebouncedSurnameSearch("");
     }
     setSurnamePage(page);
     setLoadingSurnameVoters(true);
     try {
-      const res: any = await reportAPI.getDrilldownMembers("surname", surname, selectedVillageId || undefined, page, PAGE_SIZE);
+      const q = typeof searchQuery === "string" ? searchQuery : debouncedSurnameSearch;
+      const res: any = await reportAPI.getDrilldownMembers("surname", surname, selectedVillageId || undefined, page, PAGE_SIZE, q);
       const rawMembers = Array.isArray(res) ? res : res?.items || res?.data || [];
       const members = (rawMembers || []).filter((m: any) => !isTestVoter(m));
       setSurnameVoters(members);
@@ -475,7 +483,7 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[styles.voterRow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-                  onPress={() => navigation.navigate("VoterProfile", { memberId: item.id })}
+                  onPress={() => navigation.navigate("VoterProfile", { memberId: item.id, member: item })}
                 >
                   <View style={[styles.voterAvatar, { backgroundColor: isDark ? "#1E293B" : theme.colors.surface }]}>
                     <Ionicons name="person" size={20} color={isDark ? "#93C5FD" : theme.colors.primaryLight} />
@@ -580,7 +588,7 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
           renderItem={({ item }) => (
             <TouchableOpacity
               style={[styles.voterRow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-              onPress={() => navigation.navigate("VoterProfile", { memberId: item.id })}
+              onPress={() => navigation.navigate("VoterProfile", { memberId: item.id, member: item })}
             >
               <View style={[styles.voterAvatar, { backgroundColor: isDark ? "#1E293B" : theme.colors.surface }]}>
                 <Ionicons name="person" size={20} color={isDark ? "#93C5FD" : theme.colors.primaryLight} />

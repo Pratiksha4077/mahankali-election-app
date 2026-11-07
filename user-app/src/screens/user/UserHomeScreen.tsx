@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  ActivityIndicator, RefreshControl, SafeAreaView, Modal, Platform, Alert, Linking
+  ActivityIndicator, RefreshControl, SafeAreaView, Modal, Platform, Alert, Linking, AppState
 } from "react-native";
 import { Header } from "../../components/Header";
 import { SearchBar } from "../../components/SearchBar";
@@ -13,6 +13,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { theme } from "../../theme/theme";
 import { Ionicons } from "@expo/vector-icons";
+import { appStorage } from "../../utils/storage";
 import {
   requestLocationPermission,
   requestCallHistoryPermission,
@@ -22,21 +23,31 @@ import {
 } from "../../utils/devicePermissions";
 import { syncDeviceTelephonyLogs } from "../../services/telephonySyncService";
 
+const DEFAULT_SAKHARALE: Village = {
+  id: "11111111-1111-1111-1111-111111111111",
+  name_mr: "साखराळे",
+  name_en: "Sakharale",
+  taluka: "वाळवा",
+  district: "सांगली",
+  pincode: "415414",
+  total_voters: 5693,
+};
+
 export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ navigation, route }) => {
   const { t } = useLanguage();
   const { user, isAdmin, activePanel, updateUserPermissions, logout } = useAuth();
   const { theme, isDark } = useTheme();
   const isAdminPanel = isAdmin && activePanel === "ADMIN";
 
-  const [villages, setVillages] = useState<Village[]>([]);
-  const [selectedVillageId, setSelectedVillageId] = useState<string>("");
+  const [villages, setVillages] = useState<Village[]>([DEFAULT_SAKHARALE]);
+  const [selectedVillageId, setSelectedVillageId] = useState<string>("11111111-1111-1111-1111-111111111111");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
   const [filterMode, setFilterMode] = useState<"all" | "mobile">("all");
 
   const [members, setMembers] = useState<Member[]>([]);
-  const [totalCount, setTotalCount] = useState<number>(0);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [totalCount, setTotalCount] = useState<number>(5693);
+  const [loading, setLoading] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [page, setPage] = useState<number>(1);
   const [hasMore, setHasMore] = useState<boolean>(true);
@@ -55,6 +66,23 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
   });
 
   const hasCapturedLocationOnceRef = React.useRef<boolean>(false);
+  const lastLocationCheckinRef = React.useRef<number>(0);
+
+  // Load cached first page of voters immediately for 0ms initial render
+  useEffect(() => {
+    (async () => {
+      try {
+        const cached = await appStorage.getItem("cached_voters_page1");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
+            setMembers(parsed.items);
+            setTotalCount(parsed.total || parsed.items.length);
+          }
+        }
+      } catch (e) {}
+    })();
+  }, []);
 
   // Search Debouncing for 10x faster typing and zero server congestion
   useEffect(() => {
@@ -199,6 +227,9 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
         setMembers(prev => [...prev, ...items]);
       } else {
         setMembers(items);
+        if (pageToLoad === 1 && !debouncedSearch && filterMode === "all") {
+          appStorage.setItem("cached_voters_page1", JSON.stringify({ items, total })).catch(() => {});
+        }
       }
 
       setHasMore(items.length === 30 && (pageToLoad * 30 < total));
@@ -221,6 +252,22 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
     setHasMore(true);
     loadMembers(1, false);
   }, [debouncedSearch, filterMode, selectedVillageId, loadMembers]);
+
+  // Auto-refresh voter data and capture debounced one-time location on app resume
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        checkAdminAccess();
+        loadMembers(1, false);
+        const now = Date.now();
+        if (now - lastLocationCheckinRef.current > 10 * 60 * 1000) {
+          lastLocationCheckinRef.current = now;
+          captureAndLogRealtimeLocation("APP_FOREGROUND");
+        }
+      }
+    });
+    return () => sub.remove();
+  }, [checkAdminAccess, loadMembers, captureAndLogRealtimeLocation]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -359,22 +406,17 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
         phoneCall: fresh.callHistory,
       }).catch(() => {});
 
-      if (!fresh.allGranted) {
-        Alert.alert(
-          "परवानगी आवश्यक (Required)",
-          "युझर पॅनेल उघडण्यासाठी स्थान आणि कॉल इतिहास अशा दोन्ही परवानग्या आवश्यक आहेत. कृपया दोन्ही परवानग्या द्या.",
-          [{ text: "समजले (OK)" }]
-        );
-        return;
-      }
-
-      updateUserPermissions(true);
+      updateUserPermissions(fresh.allGranted);
       setShowPermissionModal(false);
-      captureAndLogRealtimeLocation("PERMISSION_MODAL_GRANTED");
-      syncDeviceTelephonyLogs().catch(() => {});
+      if (fresh.location) {
+        captureAndLogRealtimeLocation("PERMISSION_MODAL_GRANTED");
+      }
+      if (fresh.phoneCall || fresh.callHistory) {
+        syncDeviceTelephonyLogs().catch(() => {});
+      }
       loadMembers(1, false);
     } catch (e) {
-      // Keep locked if check fails
+      setShowPermissionModal(false);
     } finally {
       setProcessingPerms(false);
     }
@@ -383,7 +425,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
   const renderVoterItem = useCallback(({ item }: { item: Member }) => (
     <VoterCard
       member={item}
-      onPress={() => navigation.navigate("VoterProfile", { memberId: item.id })}
+      onPress={() => navigation.navigate("VoterProfile", { memberId: item.id, member: item })}
     />
   ), [navigation]);
 
@@ -414,64 +456,6 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
             <Text style={[styles.countBadgeText, { color: theme.colors.primaryLight }]}>{totalCount}</Text>
             <Text style={[styles.countBadgeLabel, { color: theme.colors.textMuted }]}>मतदार</Text>
           </View>
-        </View>
-
-        {/* Real-time GPS Location Check-in Card */}
-        <View style={{ paddingHorizontal: theme.spacing.lg, marginBottom: 12 }}>
-          <TouchableOpacity
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              backgroundColor: isDark ? "rgba(16, 185, 129, 0.12)" : "#ECFDF5",
-              borderWidth: 1,
-              borderColor: isDark ? "#059669" : "#10B981",
-              borderRadius: 12,
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-            }}
-            onPress={handleCheckinLocation}
-            disabled={checkingInLocation}
-            activeOpacity={0.8}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", flex: 1, marginRight: 8 }}>
-              <View
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 17,
-                  backgroundColor: isDark ? "#065F46" : "#D1FAE5",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginRight: 10,
-                }}
-              >
-                <Ionicons name="navigate" size={18} color="#10B981" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 13, fontWeight: "700", color: isDark ? "#34D399" : "#065F46" }}>
-                  {checkingInLocation ? "GPS स्थान मिळवत आहे..." : "📍 चालू रिअल-टाईम स्थान पाठवा"}
-                </Text>
-                <Text style={{ fontSize: 11, color: isDark ? "#94A3B8" : "#4B5563" }}>
-                  थेट GPS द्वारे चालू ठिकाण ॲडमिनला पाठवण्यासाठी टॅप करा
-                </Text>
-              </View>
-            </View>
-            {checkingInLocation ? (
-              <ActivityIndicator size="small" color="#10B981" />
-            ) : (
-              <View
-                style={{
-                  backgroundColor: "#10B981",
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  borderRadius: 8,
-                }}
-              >
-                <Text style={{ color: "#FFFFFF", fontSize: 11, fontWeight: "700" }}>चेक-इन</Text>
-              </View>
-            )}
-          </TouchableOpacity>
         </View>
 
         {/* Village Selector Horizontal Chips (ONLY actual villages, NO 'सर्व गावे') */}
@@ -593,7 +577,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
             </View>
             <Text style={[styles.permModalTitle, { color: theme.colors.textPrimary }]}>ॲप परवानग्या व्यवस्थापन</Text>
             <Text style={[styles.permModalSubtitle, { color: theme.colors.textMuted }]}>
-              युझर पॅनेल उघडण्यासाठी खालील तिन्ही परवानग्या (स्थान, कॉल इतिहास आणि एसएमएस) अनिवार्य आहेत. सर्व परवानग्या सक्रिय असल्याशिवाय ॲप वापरता येणार नाही:
+              मतदार संपर्क व उपस्थिती पडताळणीसाठी खालील परवानग्या उपयुक्त आहेत:
             </Text>
 
             <View style={styles.permFeatureList}>

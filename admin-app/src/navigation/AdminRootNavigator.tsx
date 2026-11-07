@@ -93,8 +93,16 @@ const AdminTabs: React.FC = () => {
 };
 
 export const AdminRootNavigator: React.FC = () => {
-  const { isAuthenticated, isAdmin } = useAuth();
+  const { isAuthenticated, isAdmin, isRestoringSession } = useAuth();
   const { theme, isDark } = useTheme();
+
+  if (isRestoringSession) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.colors.background, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color="#F59E0B" />
+      </View>
+    );
+  }
 
   const navTheme = isDark
     ? {

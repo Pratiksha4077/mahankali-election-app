@@ -544,9 +544,21 @@ class SupabaseUserService:
 # 2. SUPABASE VILLAGE SERVICE
 # ==============================================================================
 
+_VILLAGES_CACHE: Dict[str, Any] = {"data": None, "timestamp": 0}
+
 class SupabaseVillageService:
     @staticmethod
-    def get_villages() -> List[Dict[str, Any]]:
+    def invalidate_cache():
+        global _VILLAGES_CACHE
+        _VILLAGES_CACHE = {"data": None, "timestamp": 0}
+
+    @staticmethod
+    def get_villages(force_refresh: bool = False) -> List[Dict[str, Any]]:
+        global _VILLAGES_CACHE
+        now = time.time()
+        if not force_refresh and _VILLAGES_CACHE["data"] is not None and (now - _VILLAGES_CACHE["timestamp"] < 180):
+            return _VILLAGES_CACHE["data"]
+
         conn = get_supabase_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -568,7 +580,7 @@ class SupabaseVillageService:
                         VALUES (%s, 'Sakharale', 'साखराळे', 'Walwa', 'वाळवा', 'Sangli', 'सांगली', '415414')
                         ON CONFLICT DO NOTHING;
                     """, (SAKHARALE_VILLAGE_ID,))
-                    return SupabaseVillageService.get_villages()
+                    return SupabaseVillageService.get_villages(force_refresh=True)
 
                 result = []
                 for r in rows:
@@ -597,6 +609,7 @@ class SupabaseVillageService:
                             "totalFamilies": fams
                         }
                     })
+                _VILLAGES_CACHE = {"data": result, "timestamp": now}
                 return result
         finally:
             conn.close()
@@ -949,7 +962,13 @@ class SupabaseReportService:
         conn = get_supabase_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("""
+                where_clauses = ["is_deleted = false", "status != 'DECEASED'"]
+                params = []
+                if village_id and str(village_id).strip() and str(village_id).strip().lower() not in ["all", "none", "null"]:
+                    where_clauses.append("village_id = %s")
+                    params.append(str(village_id).strip())
+                where_str = f"WHERE {' AND '.join(where_clauses)}"
+                cur.execute(f"""
                     SELECT 
                         COALESCE(
                             NULLIF(TRIM(surname_marathi), ''),
@@ -960,10 +979,10 @@ class SupabaseReportService:
                         COUNT(CASE WHEN gender = 'Male' THEN 1 END) AS male,
                         COUNT(CASE WHEN gender = 'Female' THEN 1 END) AS female
                     FROM public.voters
-                    WHERE is_deleted = false AND status != 'DECEASED'
+                    {where_str}
                     GROUP BY 1
                     ORDER BY count DESC, surname ASC;
-                """)
+                """, tuple(params))
                 rows = cur.fetchall()
                 results = []
                 for r in rows:
@@ -1001,16 +1020,30 @@ class SupabaseReportService:
                 where_clauses = ["is_deleted = false"]
                 params = []
 
+                if village_id and str(village_id).strip() and str(village_id).strip().lower() not in ["all", "none", "null"]:
+                    where_clauses.append("village_id = %s")
+                    params.append(str(village_id).strip())
+
                 if rtype == "surname":
-                    where_clauses.append("""
-                        (
-                            surname_marathi ILIKE %s OR
-                            surname ILIKE %s OR
-                            split_part(TRIM(full_name_marathi), ' ', 1) ILIKE %s OR
-                            full_name_marathi ILIKE %s
-                        )
-                    """)
-                    params.extend([k, k, k, f"%{k}%"])
+                    if k == "इतर":
+                        where_clauses.append("""
+                            (
+                                surname_marathi IS NULL OR TRIM(surname_marathi) = '' OR
+                                split_part(TRIM(full_name_marathi), ' ', 1) IS NULL OR TRIM(split_part(TRIM(full_name_marathi), ' ', 1)) = ''
+                            )
+                        """)
+                    else:
+                        where_clauses.append("""
+                            (
+                                TRIM(surname_marathi) ILIKE %s OR
+                                TRIM(surname) ILIKE %s OR
+                                split_part(TRIM(full_name_marathi), ' ', 1) ILIKE %s OR
+                                split_part(TRIM(full_name), ' ', 1) ILIKE %s OR
+                                full_name_marathi ILIKE %s OR
+                                full_name ILIKE %s
+                            )
+                        """)
+                        params.extend([k, k, k, k, f"%{k}%", f"%{k}%"])
                 elif rtype in ["category", "color-rating"]:
                     where_clauses.append("(category_color = %s OR category_code ILIKE %s OR category_id::text = %s)")
                     params.extend([k, k, k])
@@ -1060,8 +1093,8 @@ class SupabaseReportService:
 
                 if search and search.strip():
                     sp = f"%{search.strip()}%"
-                    where_clauses.append("(full_name_marathi ILIKE %s OR mobile_number ILIKE %s OR epic_number ILIKE %s)")
-                    params.extend([sp, sp, sp])
+                    where_clauses.append("(full_name_marathi ILIKE %s OR full_name ILIKE %s OR mobile_number ILIKE %s OR epic_number ILIKE %s)")
+                    params.extend([sp, sp, sp, sp])
 
                 where_str = f"WHERE {' AND '.join(where_clauses)}"
 
@@ -1966,6 +1999,7 @@ class SupabaseVoterImportService:
                 f"[SupabaseCleanup] Cleanup complete. Voters deleted: {result['voters_deleted']}, "
                 f"remaining: {result['voters_remaining']}, verified: {result['verified']}"
             )
+            SupabaseVillageService.invalidate_cache()
             return result
         except Exception as e:
             if conn:
@@ -2213,6 +2247,7 @@ class SupabaseVoterImportService:
 
         conn.close()
         SupabaseDashboardService.invalidate_cache()
+        SupabaseVillageService.invalidate_cache()
         logger.info(f"[SupabaseVoterImportService] Successfully imported {imported_count}/{total_rows} voters for file {file_name}")
 
         return {

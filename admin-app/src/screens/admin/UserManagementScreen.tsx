@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  SafeAreaView, Alert, Modal, TextInput, Switch, Platform
+  SafeAreaView, Alert, Modal, TextInput, Switch, Platform, AppState, RefreshControl
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
@@ -11,6 +11,7 @@ import { User } from "../../models/types";
 import { theme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
+import { appStorage } from "../../utils/storage";
 
 export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { t } = useLanguage();
@@ -19,6 +20,23 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
   const [users, setUsers] = useState<User[]>([]);
   const [activeTab, setActiveTab] = useState<"all" | "disabled">("all");
   const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+
+  // Load cached users on mount for 0ms initial render
+  useEffect(() => {
+    (async () => {
+      try {
+        const cached = await appStorage.getItem("cached_admin_users");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setUsers(parsed);
+            setLoading(false);
+          }
+        }
+      } catch (e) {}
+    })();
+  }, []);
 
   // Modal State for Add / Edit
   const [modalVisible, setModalVisible] = useState(false);
@@ -34,18 +52,39 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
 
+  const loadUsers = useCallback(async (isRefresh: boolean = false) => {
+    if (!isRefresh && users.length === 0) setLoading(true);
+    if (isRefresh) setRefreshing(true);
+    try {
+      const data = await adminAPI.getUsers(activeTab === "disabled" ? false : undefined);
+      if (Array.isArray(data)) {
+        setUsers(data);
+        if (activeTab === "all" && data.length > 0) {
+          appStorage.setItem("cached_admin_users", JSON.stringify(data)).catch(() => {});
+        }
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [activeTab, users.length]);
+
   useEffect(() => {
     loadUsers();
   }, [activeTab]);
 
-  const loadUsers = async () => {
-    setLoading(true);
-    try {
-      const data = await adminAPI.getUsers(activeTab === "disabled" ? false : undefined);
-      setUsers(data);
-    } finally {
-      setLoading(false);
-    }
+  // Foreground auto-refresh
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        loadUsers(true);
+      }
+    });
+    return () => sub.remove();
+  }, [loadUsers]);
+
+  const handleRefresh = () => {
+    loadUsers(true);
   };
 
   const handleOpenAdd = () => {
@@ -339,6 +378,13 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
             </View>
           )}
           contentContainerStyle={{ paddingBottom: 80 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={theme.colors.primaryLight}
+            />
+          }
         />
 
         {/* Floating Add User Button (+) (Matches Screenshot Page 1 & 5) */}
