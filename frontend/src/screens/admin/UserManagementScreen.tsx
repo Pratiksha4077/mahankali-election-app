@@ -12,9 +12,9 @@ import { theme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 
-export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
+export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
   const { t } = useLanguage();
-  const { theme, isDark } = useTheme();
+  const { isDark } = useTheme();
 
   const [users, setUsers] = useState<User[]>([]);
   const [activeTab, setActiveTab] = useState<"all" | "disabled">("all");

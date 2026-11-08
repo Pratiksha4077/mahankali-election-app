@@ -428,6 +428,9 @@ async def delete_activities_post(
     admin: AuthUser = Depends(require_admin)
 ):
     """Admin batch deletes activity logs via POST."""
+    if delete_all:
+        return await delete_activities(user_id=user_id, delete_all=True, action_type=action_type, admin=admin)
+
     id_list = []
     if payload:
         id_list = payload.activity_ids or payload.ids or []
@@ -449,15 +452,29 @@ async def delete_activities(
         conn.autocommit = True
         try:
             with conn.cursor() as cur:
-                if action_type:
+                user_match = "(user_id::text = %s OR username = %s OR metadata->>'user_id' = %s OR metadata->>'username' = %s)"
+                user_params = [str(user_id), str(user_id), str(user_id), str(user_id)]
+
+                act_norm = (action_type or "").strip().upper()
+                if act_norm in ("LOCATION", "LOCATIONS"):
                     cur.execute(
-                        "DELETE FROM public.activity_logs WHERE (user_id::text = %s OR username = %s) AND (action = %s OR entity_type = %s);",
-                        (str(user_id), str(user_id), action_type, action_type)
+                        f"DELETE FROM public.activity_logs WHERE {user_match} AND (action IN ('LOCATION_RECORD', 'LOCATION_PING', 'LOCATION', 'LOCATION_CHECKIN') OR entity_type = 'LOCATION');",
+                        tuple(user_params)
+                    )
+                elif act_norm in ("CALL", "CALLS"):
+                    cur.execute(
+                        f"DELETE FROM public.activity_logs WHERE {user_match} AND (action IN ('CALL_LOG', 'CALL_INITIATED', 'CALL') OR entity_type = 'CALL');",
+                        tuple(user_params)
+                    )
+                elif act_norm in ("SMS",):
+                    cur.execute(
+                        f"DELETE FROM public.activity_logs WHERE {user_match} AND (action IN ('SMS_LOG', 'SMS') OR entity_type = 'SMS');",
+                        tuple(user_params)
                     )
                 else:
                     cur.execute(
-                        "DELETE FROM public.activity_logs WHERE user_id::text = %s OR username = %s;",
-                        (str(user_id), str(user_id))
+                        f"DELETE FROM public.activity_logs WHERE {user_match};",
+                        tuple(user_params)
                     )
                 return {"success": True, "deleted": cur.rowcount}
         finally:

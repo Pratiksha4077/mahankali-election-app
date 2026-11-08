@@ -12,8 +12,8 @@ import { theme } from "../../theme/theme";
 
 type ActiveTab = "analysis" | "voters";
 
-export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
-  const { theme, isDark } = useTheme();
+export const AdminDashboardScreen: React.FC<any> = ({ navigation }) => {
+  const { isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<ActiveTab>("analysis");
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState<boolean>(true);

@@ -21,9 +21,9 @@ interface QueuedFile {
   uri?: string;
 }
 
-export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
+export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
   const { t } = useLanguage();
-  const { theme, isDark } = useTheme();
+  const { isDark } = useTheme();
 
   const DEFAULT_SAKHARALE: Village = {
     id: "11111111-1111-1111-1111-111111111111",
@@ -114,6 +114,16 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
       setLoadingJobs(false);
     }
   };
+
+  // Auto-refresh past imports while any job is in progress
+  useEffect(() => {
+    const hasActive = importJobs.some(j => j.status === "processing" || j.status === "pending");
+    if (!hasActive) return;
+    const timer = setInterval(() => {
+      loadPastImports();
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [importJobs]);
 
   const handleDeleteJob = (job: any) => {
     setJobToDelete(job);

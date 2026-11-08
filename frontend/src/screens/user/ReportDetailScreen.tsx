@@ -186,35 +186,6 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
         onBack={() => navigation.goBack()}
       />
 
-      {/* Village Dropdown Filter Bar */}
-      <View style={[styles.villageSelectorCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-        <Text style={[styles.villageSelectorLabel, { color: theme.colors.textMuted }]}>
-          गाव निवडा (Filter by Village):
-        </Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.villageChipsScroll}>
-          <TouchableOpacity
-            style={[styles.smallChip, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, selectedVillageId === null && styles.activeSmallChip]}
-            onPress={() => setSelectedVillageId(null)}
-          >
-            <Ionicons name="home-outline" size={14} color={selectedVillageId === null ? "#FFFFFF" : theme.colors.textSecondary} style={{ marginRight: 4 }} />
-            <Text style={[styles.smallChipText, { color: theme.colors.textSecondary }, selectedVillageId === null && styles.activeSmallChipText]}>
-              All Villages
-            </Text>
-          </TouchableOpacity>
-          {villages.map((v) => (
-            <TouchableOpacity
-              key={v.id}
-              style={[styles.smallChip, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, selectedVillageId === v.id && styles.activeSmallChip]}
-              onPress={() => setSelectedVillageId(v.id)}
-            >
-              <Text style={[styles.smallChipText, { color: theme.colors.textSecondary }, selectedVillageId === v.id && styles.activeSmallChipText]}>
-                {v.name_mr || v.name_en}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
       {/* Blue Summary Banner */}
       <View style={[styles.summaryCard, { backgroundColor: isDark ? "#1E3A8A" : theme.colors.card, borderColor: isDark ? "#3B82F6" : theme.colors.border }]}>
         <View>
@@ -269,7 +240,7 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
               <View style={{ flex: 1 }}>
                 <Text style={[styles.voterName, { color: theme.colors.textPrimary }]}>{item.full_name_mr || item.full_name_en}</Text>
                 <Text style={[styles.voterIdText, { color: theme.colors.textSecondary }]}>
-                  ID: {item.epic_number || `voter_${item.serial_number}`} | {item.village_name_mr || "साखराळे"}
+                  {item.epic_number ? `EPIC: ${item.epic_number}` : `अनुक्रमांक: ${item.serial_number}`}
                 </Text>
               </View>
               {item.status === "DECEASED" && (
@@ -336,8 +307,8 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
                       </Text>
                     )}
                   </View>
-                  <View style={[styles.groupBadge, { backgroundColor: theme.colors.cardElevated, borderColor: theme.colors.borderLight }]}>
-                    <Text style={[styles.groupBadgeText, { color: theme.colors.primaryLight }]}>{item.count || item.total_voters}</Text>
+                  <View style={[styles.groupBadge, { backgroundColor: isDark ? "#1E293B" : "#F1F5F9", borderColor: theme.colors.borderLight }]}>
+                    <Text style={[styles.groupBadgeText, { color: theme.colors.primaryLight }]}>[ {item.count || item.total_voters} ]</Text>
                   </View>
                 </TouchableOpacity>
 
@@ -590,7 +561,7 @@ const styles = StyleSheet.create({
   groupContainer: {
     backgroundColor: theme.colors.card,
     marginHorizontal: theme.spacing.lg,
-    marginVertical: 4,
+    marginVertical: 2.5,
     borderRadius: theme.borderRadius.md,
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -603,31 +574,32 @@ const styles = StyleSheet.create({
   groupCardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 14,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
   },
   groupName: {
     color: theme.colors.textPrimary,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "700",
   },
   groupSub: {
     color: theme.colors.textMuted,
-    fontSize: 11,
-    marginTop: 2,
+    fontSize: 10,
+    marginTop: 1,
     marginLeft: 26,
   },
   groupBadge: {
     backgroundColor: theme.colors.cardElevated,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: theme.borderRadius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: theme.colors.borderLight,
   },
   groupBadgeText: {
     color: theme.colors.primaryLight,
-    fontSize: 13,
-    fontWeight: "800",
+    fontSize: 12,
+    fontWeight: "700",
   },
   drilldownListWrapper: {
     borderTopWidth: 1,

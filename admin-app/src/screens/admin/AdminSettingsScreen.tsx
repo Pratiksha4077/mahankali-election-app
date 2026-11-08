@@ -10,9 +10,9 @@ import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { theme } from "../../theme/theme";
 
-export const SettingsSyncScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
+export const SettingsSyncScreen: React.FC<any> = ({ navigation }) => {
   const { user, isAdmin, activePanel, logout } = useAuth();
-  const { theme, isDark, setThemeMode } = useTheme();
+  const { isDark, setThemeMode } = useTheme();
 
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState("");

@@ -2005,11 +2005,20 @@ class SupabaseActivityService:
         """Deletes activity log records by IDs."""
         if not ids:
             return 0
+        clean_ids = [str(x).strip() for x in ids if str(x).strip()]
+        if not clean_ids:
+            return 0
         try:
             conn = get_supabase_conn()
             conn.autocommit = True
             with conn.cursor() as cur:
-                cur.execute("DELETE FROM public.activity_logs WHERE id::text = ANY(%s);", (ids,))
+                cur.execute("""
+                    DELETE FROM public.activity_logs
+                    WHERE id::text = ANY(%s)
+                       OR entity_id = ANY(%s)
+                       OR metadata->>'id' = ANY(%s)
+                       OR metadata->>'recordId' = ANY(%s);
+                """, (clean_ids, clean_ids, clean_ids, clean_ids))
                 deleted = cur.rowcount
             conn.close()
             return deleted
@@ -2132,16 +2141,18 @@ class SupabaseVoterImportService:
         file_name: str,
         file_size: int,
         village_id: Optional[str] = None,
-        uploaded_by: str = "admin"
+        uploaded_by: str = "admin",
+        job_uuid: Optional[str] = None,
+        file_uuid: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Processes a single Excel or CSV file:
-        1. Uploads the original file to Cloudinary with EXACT original filename.
-        2. Records the file in Supabase `public.uploaded_files`.
-        3. Creates/updates an import job in Supabase `public.import_jobs`.
-        4. Parses all voter records, deduplicates, and batch inserts directly into Supabase `public.voters`.
-        5. Updates voter counts for Sakharale in `public.villages`.
+        1. Records/updates import job in Supabase `public.import_jobs` & `public.uploaded_files`.
+        2. Parses all voter records, deduplicates, and batch inserts directly into Supabase `public.voters`.
+        3. Updates voter counts for Sakharale in `public.villages`.
+        4. Uploads original file to Cloudinary in background thread.
         """
+        import threading
         from pathlib import Path
         from app.services.cloudinary_service import CloudinaryService
         from app.excel_processing.reader import ExcelReader
@@ -2149,61 +2160,48 @@ class SupabaseVoterImportService:
 
         target_village_id = SAKHARALE_VILLAGE_ID
         conn = get_supabase_conn()
-        conn.autocommit = True
+        conn.autocommit = False
 
-        # 1. Upload original file to Cloudinary with original filename
-        cloudinary_url = None
-        cloudinary_public_id = None
-        try:
-            cld_res = CloudinaryService.upload_file(
-                str(file_path),
-                original_filename=file_name,
-                folder="election_app/voter_lists",
-                resource_type="raw"
-            )
-            if cld_res:
-                cloudinary_url = cld_res.get("secure_url")
-                cloudinary_public_id = cld_res.get("public_id")
-                logger.info(f"[Cloudinary] Successfully uploaded {file_name} -> {cloudinary_url}")
-        except Exception as ce:
-            logger.warning(f"[Cloudinary] Note: Cloudinary upload error: {ce}")
-
-        # 2. Extract booth number from filename (e.g. "61_voters.xlsx" -> "61")
+        # 1. Extract booth number from filename (e.g. "61_voters.xlsx" -> "61")
         stem = Path(file_name).stem
         booth_match = re.search(r'\d+', stem)
         booth_number = booth_match.group(0) if booth_match else "62"
 
-        # 3. Create entry in public.uploaded_files & public.import_jobs
-        file_uuid = str(uuid.uuid4())
-        job_uuid = str(uuid.uuid4())
+        # 2. Use or create entry in public.uploaded_files & public.import_jobs
+        f_uuid = file_uuid or str(uuid.uuid4())
+        j_uuid = job_uuid or str(uuid.uuid4())
         file_ext = Path(file_name).suffix.upper().replace(".", "") or "EXCEL"
 
         with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO public.uploaded_files (
-                    id, file_name, file_type, file_size, cloudinary_url, cloudinary_public_id,
-                    village_id, uploaded_by, total_records, imported_records, status, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-            """, (
-                file_uuid, file_name, file_ext, file_size,
-                cloudinary_url or f"local://{file_name}",
-                cloudinary_public_id, target_village_id, uploaded_by, 0, 0, "PROCESSING"
-            ))
+            if not file_uuid:
+                cur.execute("""
+                    INSERT INTO public.uploaded_files (
+                        id, file_name, file_type, file_size, cloudinary_url, cloudinary_public_id,
+                        village_id, uploaded_by, total_records, imported_records, status, created_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT (id) DO NOTHING;
+                """, (
+                    f_uuid, file_name, file_ext, file_size,
+                    f"local://{file_name}",
+                    None, target_village_id, uploaded_by, 0, 0, "PROCESSING"
+                ))
+            if not job_uuid:
+                cur.execute("""
+                    INSERT INTO public.import_jobs (
+                        id, file_id, file_name, file_type, file_size, village_id, village_name,
+                        status, progress, stage, total_records, valid_records, imported_records,
+                        cloudinary_url, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                    ON CONFLICT (id) DO NOTHING;
+                """, (
+                    j_uuid, f_uuid, file_name, file_ext, file_size,
+                    target_village_id, "साखराळे / Sakharale",
+                    "processing", 20, "Parsing records from file",
+                    0, 0, 0, None
+                ))
+        conn.commit()
 
-            cur.execute("""
-                INSERT INTO public.import_jobs (
-                    id, file_id, file_name, file_type, file_size, village_id, village_name,
-                    status, progress, stage, total_records, valid_records, imported_records,
-                    cloudinary_url, created_at, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
-            """, (
-                job_uuid, file_uuid, file_name, file_ext, file_size,
-                target_village_id, "साखराळे / Sakharale",
-                "processing", 20, "Parsing records from file",
-                0, 0, 0, cloudinary_url
-            ))
-
-        # 4. Read tabular records
+        # 3. Read tabular records
         raw_rows = ExcelReader.read_file(Path(file_path))
         total_rows = len(raw_rows)
         mapper = FieldMapper()
@@ -2290,14 +2288,14 @@ class SupabaseVoterImportService:
                 cat_code,
                 cat_color,
                 "ACTIVE",
-                file_uuid,
+                f_uuid,
                 file_name,
                 file_ext,
-                cloudinary_url,
+                None,
                 uploaded_by
             ))
 
-        # 5. Batch Insert into public.voters
+        # 4. Ultra-Fast Transactional Batch Insert into public.voters
         insert_sql = """
             INSERT INTO public.voters (
                 id, membership_number, epic_number, serial_number, booth_part_number,
@@ -2313,28 +2311,31 @@ class SupabaseVoterImportService:
         """
 
         imported_count = 0
-        CHUNK_SIZE = 500
         with conn.cursor() as cur:
-            for i in range(0, len(voter_records), CHUNK_SIZE):
-                chunk = voter_records[i:i + CHUNK_SIZE]
-                execute_values(cur, insert_sql, chunk)
-                imported_count += len(chunk)
+            if voter_records:
+                execute_values(cur, insert_sql, voter_records, page_size=200)
+                imported_count = len(voter_records)
 
-            # Update village stats
+            # Fast single-query village stats update
             cur.execute("""
                 UPDATE public.villages
-                SET total_voters = (SELECT count(*) FROM public.voters WHERE village_id = public.villages.id AND is_deleted = false),
-                    active_voters = (SELECT count(*) FROM public.voters WHERE village_id = public.villages.id AND status = 'ACTIVE' AND is_deleted = false),
-                    deceased_voters = (SELECT count(*) FROM public.voters WHERE village_id = public.villages.id AND status = 'DECEASED' AND is_deleted = false),
-                    updated_at = NOW()
+                SET (total_voters, active_voters, deceased_voters, updated_at) = (
+                    SELECT 
+                        count(*),
+                        count(*) FILTER (WHERE status = 'ACTIVE'),
+                        count(*) FILTER (WHERE status = 'DECEASED'),
+                        NOW()
+                    FROM public.voters 
+                    WHERE village_id = %s AND is_deleted = false
+                )
                 WHERE id = %s;
-            """, (target_village_id,))
+            """, (target_village_id, target_village_id))
 
             cur.execute("""
                 UPDATE public.uploaded_files
                 SET total_records = %s, imported_records = %s, status = 'COMPLETED'
                 WHERE id = %s;
-            """, (total_rows, imported_count, file_uuid))
+            """, (total_rows, imported_count, f_uuid))
 
             cur.execute("""
                 UPDATE public.import_jobs
@@ -2342,19 +2343,52 @@ class SupabaseVoterImportService:
                     progress = 100, status = 'completed', stage = 'Import completed successfully ✓',
                     updated_at = NOW()
                 WHERE id = %s;
-            """, (total_rows, valid_count, imported_count, job_uuid))
+            """, (total_rows, valid_count, imported_count, j_uuid))
 
+        conn.commit()
         conn.close()
+
+        # Invalidate caches immediately so voters appear instantly in app
         SupabaseDashboardService.invalidate_cache()
         SupabaseVillageService.invalidate_cache()
         logger.info(f"[SupabaseVoterImportService] Successfully imported {imported_count}/{total_rows} voters for file {file_name}")
 
+        # 5. Non-blocking asynchronous Cloudinary backup in background
+        def _bg_cloudinary_upload(f_path, f_name, f_id, j_id):
+            try:
+                cld_res = CloudinaryService.upload_file(
+                    str(f_path),
+                    original_filename=f_name,
+                    folder="election_app/voter_lists",
+                    resource_type="raw"
+                )
+                if cld_res and cld_res.get("secure_url"):
+                    c_url = cld_res["secure_url"]
+                    c_pid = cld_res.get("public_id")
+                    bg_conn = get_supabase_conn()
+                    bg_conn.autocommit = True
+                    try:
+                        with bg_conn.cursor() as bg_cur:
+                            bg_cur.execute("UPDATE public.uploaded_files SET cloudinary_url = %s, cloudinary_public_id = %s WHERE id = %s;", (c_url, c_pid, f_id))
+                            bg_cur.execute("UPDATE public.import_jobs SET cloudinary_url = %s WHERE id = %s;", (c_url, j_id))
+                    finally:
+                        bg_conn.close()
+                    logger.info(f"[Cloudinary] Background upload finished for {f_name} -> {c_url}")
+            except Exception as ce:
+                logger.warning(f"[Cloudinary] Background upload note: {ce}")
+
+        threading.Thread(
+            target=_bg_cloudinary_upload,
+            args=(file_path, file_name, f_uuid, j_uuid),
+            daemon=True
+        ).start()
+
         return {
             "success": True,
-            "file_id": file_uuid,
-            "job_id": job_uuid,
+            "file_id": f_uuid,
+            "job_id": j_uuid,
             "file_name": file_name,
-            "cloudinary_url": cloudinary_url,
+            "cloudinary_url": None,
             "total_records": total_rows,
             "imported_records": imported_count,
             "status": "COMPLETED"

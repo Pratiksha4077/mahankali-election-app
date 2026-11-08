@@ -51,12 +51,21 @@ class FieldMapper:
             if source_key in raw_record:
                 mapped[target_field] = raw_record[source_key]
 
-        # 2. Then apply standard fuzzy matching for unmapped fields
+        # Helper to normalize headers by removing whitespace and punctuation
+        def _clean_header(s: Any) -> str:
+            import re
+            return re.sub(r'[\s_\-\.\(\)\:\/]', '', str(s)).lower()
+
+        # 2. Then apply robust normalized matching for unmapped fields
         for target_field, aliases in DEFAULT_FIELD_MAPPINGS.items():
             if target_field not in mapped:
                 for alias in aliases:
+                    alias_clean = _clean_header(alias)
+                    alias_lower = str(alias).strip().lower()
                     for r_key, r_val in raw_record.items():
-                        if str(r_key).strip().lower() == alias.lower():
+                        r_clean = _clean_header(r_key)
+                        r_lower = str(r_key).strip().lower()
+                        if r_clean == alias_clean or r_lower == alias_lower:
                             mapped[target_field] = r_val
                             break
                     if target_field in mapped:

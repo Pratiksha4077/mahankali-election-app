@@ -524,7 +524,7 @@ export const adminAPI = {
 
   uploadExcel: async (formData: FormData) => {
     const res = await apiClient.post("/admin/import/excel", formData, {
-      headers: { "Content-Type": "multipart/form-data" }
+      timeout: 180000
     });
     return res.data;
   },
