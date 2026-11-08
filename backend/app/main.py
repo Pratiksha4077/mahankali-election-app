@@ -4,9 +4,15 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import logging
+import time
 
 from app.config.config import settings
-from app.services.supabase_service import get_supabase_conn, SupabaseActivityService
+from app.services.supabase_service import (
+    get_supabase_conn,
+    init_supabase_pool,
+    close_supabase_pool,
+    SupabaseActivityService
+)
 
 from app.api import (
     auth, admin_users, admin_dashboard, members, villages, categories,
@@ -17,7 +23,13 @@ logger = logging.getLogger("election_app")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. Connect and verify Supabase PostgreSQL connection
+    # 1. Initialize High-Performance Connection Pool to Supabase PostgreSQL
+    try:
+        init_supabase_pool(minconn=2, maxconn=10)
+    except Exception as e:
+        logger.warning(f"[SupabasePool] Init warning: {e}")
+
+    # 2. Verify Supabase PostgreSQL connection
     try:
         conn = get_supabase_conn()
         with conn.cursor() as cur:
@@ -37,12 +49,24 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    # 3. Gracefully shutdown connection pool
+    close_supabase_pool()
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description="Production-grade Backend API for Election & Voter Management App with Supabase PostgreSQL, Cloudinary File Storage, and Dual Admin/User Panels.",
     lifespan=lifespan
 )
+
+# High-Performance Request Timing Middleware
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    start_time = time.perf_counter()
+    response = await call_next(request)
+    process_time_ms = round((time.perf_counter() - start_time) * 1000, 2)
+    response.headers["X-Process-Time-Ms"] = str(process_time_ms)
+    return response
 
 # High-Performance GZip Compression for Large Payloads (> 1KB)
 app.add_middleware(GZipMiddleware, minimum_size=1000)

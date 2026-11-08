@@ -25,12 +25,23 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
   const { t } = useLanguage();
   const { theme, isDark } = useTheme();
 
-  const [villages, setVillages] = useState<Village[]>([]);
-  const [selectedVillage, setSelectedVillage] = useState<Village | null>(null);
+  const DEFAULT_SAKHARALE: Village = {
+    id: "11111111-1111-1111-1111-111111111111",
+    name_en: "Sakharale",
+    name_mr: "साखराळे",
+    taluka: "वाळवा",
+    district: "सांगली",
+    total_voters: 5693,
+    active_voters: 5693,
+    deceased_voters: 0
+  };
+
+  const [villages, setVillages] = useState<Village[]>([DEFAULT_SAKHARALE]);
+  const [selectedVillage, setSelectedVillage] = useState<Village | null>(DEFAULT_SAKHARALE);
   const [fileQueue, setFileQueue] = useState<QueuedFile[]>([]);
   const [uploading, setUploading] = useState<boolean>(false);
   const [uploadProgressText, setUploadProgressText] = useState<string>("");
-  const [loadingVillages, setLoadingVillages] = useState<boolean>(true);
+  const [loadingVillages, setLoadingVillages] = useState<boolean>(false);
   const [clearBeforeUpload, setClearBeforeUpload] = useState<boolean>(false);
   const [clearing, setClearing] = useState<boolean>(false);
 
@@ -362,7 +373,7 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
 
         {/* STEP 1: Target Village Selection */}
         <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>{t("target_village_selection")}</Text>
-        {loadingVillages ? (
+        {loadingVillages && villages.length === 0 ? (
           <ActivityIndicator color={theme.colors.primaryLight} style={{ marginVertical: 12 }} />
         ) : (
           <View style={[styles.villagePickerCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>

@@ -7,6 +7,7 @@ import time
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 import psycopg2
+from psycopg2 import pool
 from psycopg2.extras import Json, RealDictCursor, execute_values
 
 from app.config.config import settings
@@ -16,13 +17,56 @@ logger = logging.getLogger("election_app.supabase")
 SAKHARALE_VILLAGE_ID = "11111111-1111-1111-1111-111111111111"
 SUPABASE_POOLER_URL = "postgresql://postgres.yqndmvoxlipybxqbmqcn:sTGw5Jrsvvx8qKY0@aws-0-eu-west-1.pooler.supabase.com:5432/postgres"
 
-def get_supabase_conn():
-    """Returns a psycopg2 connection to Supabase PostgreSQL with pooler fallback."""
+_SUPABASE_POOL: Optional[pool.ThreadedConnectionPool] = None
+_LAST_ACTIVITY_MAP: Dict[str, float] = {}
+
+class PooledConnection:
+    """Wrapper around a psycopg2 connection from ThreadedConnectionPool.
+    When .close() is called, it returns the connection back to the pool
+    rather than destroying the underlying socket.
+    """
+    def __init__(self, conn, pool_instance):
+        self._conn = conn
+        self._pool = pool_instance
+        self._closed = False
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def close(self):
+        if not self._closed and self._pool and self._conn:
+            try:
+                if self._conn.closed:
+                    self._pool.putconn(self._conn, close=True)
+                else:
+                    if self._conn.get_transaction_status() != 0:
+                        self._conn.rollback()
+                    self._pool.putconn(self._conn)
+            except Exception as e:
+                logger.warning(f"[SupabasePool] Error returning connection to pool: {e}")
+                try:
+                    self._pool.putconn(self._conn, close=True)
+                except Exception:
+                    pass
+            finally:
+                self._closed = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:
+            try:
+                self._conn.rollback()
+            except Exception:
+                pass
+        self.close()
+
+def _resolve_db_url() -> str:
     db_url = settings.DATABASE_URL
     if not db_url or not db_url.startswith("postgres"):
         db_url = SUPABASE_POOLER_URL
 
-    # Automatically transform IPv6-only direct host into IPv4/IPv6 session pooler for Render & mobile
     if "db.yqndmvoxlipybxqbmqcn.supabase.co" in db_url:
         db_url = db_url.replace(
             "db.yqndmvoxlipybxqbmqcn.supabase.co:5432",
@@ -31,7 +75,51 @@ def get_supabase_conn():
             "postgres:sTGw5Jrsvvx8qKY0@",
             "postgres.yqndmvoxlipybxqbmqcn:sTGw5Jrsvvx8qKY0@"
         )
+    return db_url
 
+def init_supabase_pool(minconn: int = 2, maxconn: int = 10):
+    global _SUPABASE_POOL
+    if _SUPABASE_POOL is not None:
+        return _SUPABASE_POOL
+    db_url = _resolve_db_url()
+    try:
+        _SUPABASE_POOL = pool.ThreadedConnectionPool(
+            minconn=minconn,
+            maxconn=maxconn,
+            dsn=db_url,
+            connect_timeout=10
+        )
+        logger.info(f"[SupabasePool] Initialized ThreadedConnectionPool (min={minconn}, max={maxconn})")
+        return _SUPABASE_POOL
+    except Exception as e:
+        logger.error(f"[SupabasePool] Failed to initialize connection pool: {e}")
+        return None
+
+def close_supabase_pool():
+    global _SUPABASE_POOL
+    if _SUPABASE_POOL is not None:
+        try:
+            _SUPABASE_POOL.closeall()
+            logger.info("[SupabasePool] Connection pool closed.")
+        except Exception as e:
+            logger.warning(f"[SupabasePool] Error closing pool: {e}")
+        finally:
+            _SUPABASE_POOL = None
+
+def get_supabase_conn():
+    """Returns a pooled psycopg2 connection to Supabase PostgreSQL, or creates direct connection if pool unavailable."""
+    global _SUPABASE_POOL
+    if _SUPABASE_POOL is not None:
+        try:
+            raw_conn = _SUPABASE_POOL.getconn()
+            if raw_conn.closed:
+                _SUPABASE_POOL.putconn(raw_conn, close=True)
+                raw_conn = _SUPABASE_POOL.getconn()
+            return PooledConnection(raw_conn, _SUPABASE_POOL)
+        except Exception as e:
+            logger.warning(f"[SupabasePool] Pool checkout failed: {e}. Falling back to direct connect.")
+
+    db_url = _resolve_db_url()
     try:
         return psycopg2.connect(db_url, connect_timeout=10)
     except Exception as e:
@@ -525,19 +613,30 @@ class SupabaseUserService:
 
     @staticmethod
     def update_last_activity(username: str):
-        conn = get_supabase_conn()
-        conn.autocommit = True
+        if not username:
+            return
+        now = time.time()
+        u_key = username.lower().strip()
+        last_t = _LAST_ACTIVITY_MAP.get(u_key, 0)
+        # Throttle DB update to at most once per 5 minutes (300 seconds) per user
+        if (now - last_t) < 300:
+            return
+        _LAST_ACTIVITY_MAP[u_key] = now
+
         try:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    UPDATE public.users
-                    SET last_activity = NOW()
-                    WHERE LOWER(username) = LOWER(%s);
-                """, (username,))
+            conn = get_supabase_conn()
+            conn.autocommit = True
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE public.users
+                        SET last_activity = NOW()
+                        WHERE LOWER(username) = LOWER(%s);
+                    """, (username,))
+            finally:
+                conn.close()
         except Exception:
             pass
-        finally:
-            conn.close()
 
 
 # ==============================================================================

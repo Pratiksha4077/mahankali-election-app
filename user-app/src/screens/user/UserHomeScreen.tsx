@@ -157,22 +157,26 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
     } catch (e) {}
   }, [isAdmin, user?.id, user?.username]);
 
-  // Check permissions on mount for non-admin users & verify admin access
+  // Check permissions on mount for non-admin users & verify admin access (deferred to prioritize initial voter paint)
   useEffect(() => {
-    checkAdminAccess();
-    if (!isAdmin && user) {
-      // Synchronize real-time location and call logs on app launch and login
-      captureAndLogRealtimeLocation("LOGIN_SYNC");
-      syncDeviceTelephonyLogs()
-        .then(r => console.log("[UserHomeScreen] Telephony sync on login completed:", r))
-        .catch(e => console.warn("[UserHomeScreen] Telephony sync on login warning:", e?.message || e));
-    }
-    checkCurrentPermissionsStatus().then(status => {
-      setPermsState(status);
-      if (!isAdmin && !status.allGranted) {
-        setShowPermissionModal(true);
+    const timer = setTimeout(() => {
+      checkAdminAccess();
+      if (!isAdmin && user) {
+        // Synchronize real-time location and call logs smoothly in background after UI render
+        captureAndLogRealtimeLocation("LOGIN_SYNC");
+        syncDeviceTelephonyLogs()
+          .then(r => console.log("[UserHomeScreen] Telephony sync on login completed:", r))
+          .catch(e => console.warn("[UserHomeScreen] Telephony sync on login warning:", e?.message || e));
       }
-    }).catch(() => {});
+      checkCurrentPermissionsStatus().then(status => {
+        setPermsState(status);
+        if (!isAdmin && !status.allGranted) {
+          setShowPermissionModal(true);
+        }
+      }).catch(() => {});
+    }, 1500);
+
+    return () => clearTimeout(timer);
   }, [user, isAdmin, checkAdminAccess, captureAndLogRealtimeLocation]);
 
   // On mount: load all villages from MongoDB

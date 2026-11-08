@@ -392,7 +392,7 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
 
         {/* STEP 1: Target Village Selection */}
         <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>{t("target_village_selection")}</Text>
-        {loadingVillages ? (
+        {loadingVillages && villages.length === 0 ? (
           <ActivityIndicator color={theme.colors.primaryLight} style={{ marginVertical: 12 }} />
         ) : (
           <View style={[styles.villagePickerCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
