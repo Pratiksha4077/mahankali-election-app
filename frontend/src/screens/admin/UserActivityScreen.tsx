@@ -72,7 +72,6 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
         if (freshUser) {
           const uData = freshUser.data || freshUser;
           freshUserData = uData;
-          setCurrentUser(uData);
           const allowed = (uData.accountStatus !== "DISABLED") && (uData.is_active !== false) && (uData.admin_access_allowed !== false);
           setIsAccessAllowed(allowed);
           setHasDevicePerms(Boolean(uData.permissions_granted));
