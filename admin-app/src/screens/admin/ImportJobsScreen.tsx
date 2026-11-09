@@ -6,7 +6,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
 import { adminAPI } from "../../api/client";
-import { theme as baseTheme } from "../../theme/theme";
+import { theme, theme as baseTheme } from "../../theme/theme";
 import { useTheme } from "../../context/ThemeContext";
 
 interface ImportJobItem {

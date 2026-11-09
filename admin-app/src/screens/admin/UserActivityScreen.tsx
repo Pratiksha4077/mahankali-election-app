@@ -9,7 +9,7 @@ import { Header } from "../../components/Header";
 import { adminAPI } from "../../api/client";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
-import { theme as baseTheme } from "../../theme/theme";
+import { theme, theme as baseTheme } from "../../theme/theme";
 
 export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
   const routeUser = route.params?.user;

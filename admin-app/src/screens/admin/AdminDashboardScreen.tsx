@@ -8,7 +8,7 @@ import { Header } from "../../components/Header";
 import { adminAPI, memberAPI } from "../../api/client";
 import { DashboardStats } from "../../models/types";
 import { useTheme } from "../../context/ThemeContext";
-import { theme as baseTheme } from "../../theme/theme";
+import { theme, theme as baseTheme } from "../../theme/theme";
 
 type ActiveTab = "analysis" | "voters";
 

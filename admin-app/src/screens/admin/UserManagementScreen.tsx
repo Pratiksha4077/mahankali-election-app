@@ -9,7 +9,7 @@ import { Header } from "../../components/Header";
 import { Toast } from "../../components/Toast";
 import { adminAPI } from "../../api/client";
 import { User } from "../../models/types";
-import { theme as baseTheme } from "../../theme/theme";
+import { theme, theme as baseTheme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 import { appStorage } from "../../utils/storage";

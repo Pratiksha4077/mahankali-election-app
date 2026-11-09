@@ -8,7 +8,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { Header } from "../../components/Header";
 import { villageAPI, adminAPI } from "../../api/client";
 import { Village, ImportJob } from "../../models/types";
-import { theme as baseTheme } from "../../theme/theme";
+import { theme, theme as baseTheme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 
