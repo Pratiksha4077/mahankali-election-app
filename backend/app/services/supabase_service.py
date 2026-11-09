@@ -1905,7 +1905,10 @@ class SupabaseActivityService:
                     c_type = meta.get("callType") or meta.get("type") or "OUTGOING"
 
                     calls.append({
+                        **meta,
                         "id": str(item["id"]),
+                        "_id": str(item["id"]),
+                        "db_id": str(item["id"]),
                         "phoneNumber": raw_phone or "",
                         "phone": raw_phone or "",
                         "number": raw_phone or "",
@@ -1924,8 +1927,7 @@ class SupabaseActivityService:
                             "caller_name": c_name,
                             "duration": c_dur,
                             "callType": c_type,
-                        },
-                        **meta
+                        }
                     })
                 call_count_sql = f"SELECT count(*) FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('CALL_LOG', 'CALL_INITIATED', 'CALL')"
                 cur.execute(call_count_sql, tuple(params))
@@ -1948,7 +1950,10 @@ class SupabaseActivityService:
                         raw_place = "साखराळे (Sakharale)"
                     raw_addr = meta.get("address") or "साखराळे, ता. वाळवा, जि. सांगली"
                     locations.append({
+                        **meta,
                         "id": str(item["id"]),
+                        "_id": str(item["id"]),
+                        "db_id": str(item["id"]),
                         "latitude": lat,
                         "longitude": lon,
                         "accuracy": meta.get("accuracy") or 0,
@@ -1962,8 +1967,7 @@ class SupabaseActivityService:
                             "placeName": raw_place,
                             "address": raw_addr,
                             "village": meta.get("village") or "साखराळे",
-                        },
-                        **meta
+                        }
                     })
                 loc_count_sql = f"SELECT count(*) FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('LOCATION_RECORD', 'LOCATION_PING', 'LOCATION', 'LOCATION_CHECKIN')"
                 cur.execute(loc_count_sql, tuple(params))
@@ -2017,8 +2021,9 @@ class SupabaseActivityService:
                     WHERE id::text = ANY(%s)
                        OR entity_id = ANY(%s)
                        OR metadata->>'id' = ANY(%s)
-                       OR metadata->>'recordId' = ANY(%s);
-                """, (clean_ids, clean_ids, clean_ids, clean_ids))
+                       OR metadata->>'recordId' = ANY(%s)
+                       OR metadata->>'syncKey' = ANY(%s);
+                """, (clean_ids, clean_ids, clean_ids, clean_ids, clean_ids))
                 deleted = cur.rowcount
             conn.close()
             return deleted
@@ -2158,7 +2163,7 @@ class SupabaseVoterImportService:
         from app.excel_processing.reader import ExcelReader
         from app.pdf_processing.mapper import FieldMapper
 
-        target_village_id = SAKHARALE_VILLAGE_ID
+        target_village_id = village_id or SAKHARALE_VILLAGE_ID
         conn = get_supabase_conn()
         conn.autocommit = False
 

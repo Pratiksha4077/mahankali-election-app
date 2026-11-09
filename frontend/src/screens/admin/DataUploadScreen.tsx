@@ -285,8 +285,10 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
         setUploadProgressText(`अपलोड व प्रक्रिया होत आहे (${i + 1}/${fileQueue.length}): ${item.name}`);
 
         const formData = new FormData();
-        formData.append("village_id", selectedVillage.id);
+        const vId = selectedVillage?.id || DEFAULT_SAKHARALE.id;
+        formData.append("village_id", vId);
         formData.append("auto_commit", "true");
+        formData.append("clear_previous", clearBeforeUpload ? "true" : "false");
 
         if (Platform.OS === "web" && item.fileObj) {
           formData.append("file", item.fileObj);
@@ -304,6 +306,7 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
           await adminAPI.uploadExcel(formData);
           successCount++;
         } catch (err: any) {
+          console.error("Upload file error for", item.name, err?.response?.data || err?.message);
           errors.push(item.name);
         }
       }

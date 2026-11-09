@@ -560,9 +560,9 @@ const styles = StyleSheet.create({
   },
   groupContainer: {
     backgroundColor: theme.colors.card,
-    marginHorizontal: theme.spacing.lg,
-    marginVertical: 2.5,
-    borderRadius: theme.borderRadius.md,
+    marginHorizontal: 12,
+    marginVertical: 1.5,
+    borderRadius: theme.borderRadius.sm,
     borderWidth: 1,
     borderColor: theme.colors.border,
     overflow: "hidden",
@@ -574,8 +574,8 @@ const styles = StyleSheet.create({
   groupCardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 9,
-    paddingHorizontal: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
   },
   groupName: {
     color: theme.colors.textPrimary,
@@ -586,19 +586,19 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     fontSize: 10,
     marginTop: 1,
-    marginLeft: 26,
+    marginLeft: 24,
   },
   groupBadge: {
     backgroundColor: theme.colors.cardElevated,
-    paddingHorizontal: 8,
-    paddingVertical: 2.5,
-    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 5,
     borderWidth: 1,
     borderColor: theme.colors.borderLight,
   },
   groupBadgeText: {
     color: theme.colors.primaryLight,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
   },
   drilldownListWrapper: {

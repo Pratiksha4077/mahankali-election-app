@@ -300,13 +300,13 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
               {reportType === "surname" ? "Surname-Wise Voter Report (आडनाव अहवाल)" : t(titleKey as any)}
             </Text>
             <Text style={[styles.summarySubtitle, { color: isDark ? "#93C5FD" : theme.colors.textSecondary }]}>
-              {reportType === "surname" ? `साखराळे गाव • एकूण ${summaryGroups.length} आडनावे सापडली` : "Total Voters Found"}
+              {reportType === "surname" ? `एकूण ${summaryGroups.length} आडनावे सापडली` : `एकूण ${totalCount} मतदार`}
             </Text>
           </View>
-          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+          <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
             {reportType === "surname" && (
               <View style={[styles.countPill, { backgroundColor: isDark ? "#1E293B" : "#DBEAFE", borderColor: isDark ? "#38BDF8" : "#93C5FD" }]}>
-                <Text style={[styles.countPillText, { color: isDark ? "#93C5FD" : "#1D4ED8", fontSize: 13 }]}>
+                <Text style={[styles.countPillText, { color: isDark ? "#93C5FD" : "#1D4ED8", fontSize: 12 }]}>
                   {summaryGroups.length} आडनावे
                 </Text>
               </View>
@@ -852,35 +852,36 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#1E3A8A", // Blue summary matching screenshot page 11
-    marginHorizontal: theme.spacing.lg,
-    marginVertical: theme.spacing.sm,
-    padding: 16,
-    borderRadius: theme.borderRadius.lg,
+    backgroundColor: "#1E3A8A",
+    marginHorizontal: 12,
+    marginVertical: 4,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: theme.borderRadius.md,
     borderWidth: 1,
     borderColor: "#3B82F6",
   },
   summaryTitle: {
     color: "#FFFFFF",
-    fontSize: theme.typography.sizes.md,
+    fontSize: 14,
     fontWeight: "800",
   },
   summarySubtitle: {
     color: "#93C5FD",
-    fontSize: 12,
+    fontSize: 11,
     marginTop: 2,
   },
   countPill: {
     backgroundColor: "#1E293B",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: theme.borderRadius.sm,
     borderWidth: 1,
     borderColor: "#38BDF8",
   },
   countPillText: {
     color: "#FFFFFF",
-    fontSize: 18,
+    fontSize: 13,
     fontWeight: "800",
   },
   alphabetBarWrapper: {
@@ -968,9 +969,9 @@ const styles = StyleSheet.create({
   },
   groupContainer: {
     backgroundColor: theme.colors.card,
-    marginHorizontal: theme.spacing.lg,
-    marginVertical: 2.5,
-    borderRadius: theme.borderRadius.md,
+    marginHorizontal: 12,
+    marginVertical: 1.5,
+    borderRadius: theme.borderRadius.sm,
     borderWidth: 1,
     borderColor: theme.colors.border,
     overflow: "hidden",
@@ -982,8 +983,8 @@ const styles = StyleSheet.create({
   groupCardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 9,
-    paddingHorizontal: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
   },
   groupName: {
     color: theme.colors.textPrimary,
@@ -994,19 +995,19 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     fontSize: 10,
     marginTop: 1,
-    marginLeft: 26,
+    marginLeft: 24,
   },
   groupBadge: {
     backgroundColor: theme.colors.cardElevated,
-    paddingHorizontal: 8,
-    paddingVertical: 2.5,
-    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 5,
     borderWidth: 1,
     borderColor: theme.colors.borderLight,
   },
   groupBadgeText: {
     color: theme.colors.primaryLight,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
   },
   drilldownListWrapper: {
