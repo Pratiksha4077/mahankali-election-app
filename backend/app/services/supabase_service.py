@@ -2134,9 +2134,9 @@ class SupabaseVoterImportService:
     def clear_all_voters() -> int:
         res = SupabaseVoterImportService.cleanup_database(
             clear_voters=True,
-            clear_import_history=True,
+            clear_import_history=False,
             clear_activity_logs=False,
-            delete_cloudinary_files=True
+            delete_cloudinary_files=False
         )
         return res.get("voters_deleted", 0)
 

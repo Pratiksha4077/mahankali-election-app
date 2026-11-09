@@ -288,7 +288,7 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
         const vId = selectedVillage?.id || DEFAULT_SAKHARALE.id;
         formData.append("village_id", vId);
         formData.append("auto_commit", "true");
-        formData.append("clear_previous", clearBeforeUpload ? "true" : "false");
+        formData.append("clear_previous", "false");
 
         if (Platform.OS === "web" && item.fileObj) {
           formData.append("file", item.fileObj);
@@ -314,10 +314,11 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
       setFileQueue([]);
       await loadPastImports();
 
+      const vName = selectedVillage?.name_mr || selectedVillage?.name_en || "साखराळे";
       if (errors.length === 0) {
         Alert.alert(
           t("upload_success_title"),
-          `'${selectedVillage.name_mr || selectedVillage.name_en}' गावासाठी ${successCount} फाईल्स यशस्वीरित्या पाठवल्या आहेत!`
+          `'${vName}' गावासाठी ${successCount} फाईल्स यशस्वीरित्या समाविष्ट केल्या आहेत!`
         );
       } else {
         Alert.alert(

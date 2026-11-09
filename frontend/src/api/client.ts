@@ -526,9 +526,14 @@ export const adminAPI = {
     const res = await apiClient.post("/admin/import/excel", formData, {
       timeout: 300000,
       headers: {
-        "Content-Type": "multipart/form-data",
+        Accept: "application/json",
       },
-      transformRequest: (data) => data,
+      transformRequest: (data, headers) => {
+        if (headers) {
+          delete (headers as any)["Content-Type"];
+        }
+        return data;
+      },
     });
     return res.data;
   },
