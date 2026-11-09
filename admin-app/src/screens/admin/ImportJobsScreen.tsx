@@ -6,7 +6,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
 import { adminAPI } from "../../api/client";
-import { theme } from "../../theme/theme";
+import { theme as baseTheme } from "../../theme/theme";
+import { useTheme } from "../../context/ThemeContext";
 
 interface ImportJobItem {
   id: string;
@@ -30,6 +31,7 @@ interface ImportJobItem {
 }
 
 export const ImportJobsScreen: React.FC<{ navigation: any; route: any }> = ({ navigation, route }) => {
+  const { theme, isDark } = useTheme();
   const initialJobId = route.params?.jobId;
 
   const [jobs, setJobs] = useState<ImportJobItem[]>([]);

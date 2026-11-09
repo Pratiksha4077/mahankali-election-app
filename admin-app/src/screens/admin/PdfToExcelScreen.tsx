@@ -7,8 +7,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
 import { Toast } from "../../components/Toast";
 import { importAPI, villageAPI } from "../../api/client";
-import { theme } from "../../theme/theme";
+import { theme as baseTheme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
+import { useTheme } from "../../context/ThemeContext";
 
 interface SelectedPdfFile {
   name: string;
@@ -19,6 +20,7 @@ interface SelectedPdfFile {
 
 export const PdfToExcelScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { t } = useLanguage();
+  const { theme, isDark } = useTheme();
 
   const [villages, setVillages] = useState<any[]>([]);
   const [selectedVillageId, setSelectedVillageId] = useState<string>("");

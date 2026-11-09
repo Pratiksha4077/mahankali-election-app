@@ -9,14 +9,14 @@ import { Header } from "../../components/Header";
 import { Toast } from "../../components/Toast";
 import { adminAPI } from "../../api/client";
 import { User } from "../../models/types";
-import { theme } from "../../theme/theme";
+import { theme as baseTheme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 import { appStorage } from "../../utils/storage";
 
 export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
   const { t } = useLanguage();
-  const { isDark } = useTheme();
+  const { theme, isDark } = useTheme();
 
   const [users, setUsers] = useState<User[]>([]);
   const [activeTab, setActiveTab] = useState<"all" | "disabled">("all");
@@ -226,18 +226,18 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
 
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         {/* Header Tabs: All (31) vs Disabled (0) (Matches Screenshot Page 1) */}
-        <View style={[styles.tabsRow, { backgroundColor: isDark ? theme.colors.surface : "#F1F5F9", borderColor: theme.colors.border }]}>
+        <View style={[styles.tabsRow, { backgroundColor: isDark ? theme.colors.surface : "#E2E8F0", borderColor: theme.colors.border }]}>
           <TouchableOpacity
             style={[
               styles.tabBtn,
               {
                 backgroundColor: activeTab === "all" ? (isDark ? "#1E3A8A" : "#2563EB") : (isDark ? theme.colors.card : "#FFFFFF"),
-                borderColor: activeTab === "all" ? (isDark ? "#3B82F6" : "#2563EB") : theme.colors.border
+                borderColor: activeTab === "all" ? (isDark ? "#3B82F6" : "#2563EB") : (isDark ? theme.colors.border : "#CBD5E1")
               }
             ]}
             onPress={() => setActiveTab("all")}
           >
-            <Text style={[styles.tabText, { color: activeTab === "all" ? "#FFFFFF" : theme.colors.textSecondary }, activeTab === "all" && styles.activeTabText]}>
+            <Text style={[styles.tabText, { color: activeTab === "all" ? "#FFFFFF" : (isDark ? theme.colors.textSecondary : "#334155") }, activeTab === "all" && styles.activeTabText]}>
               All ({allCount})
             </Text>
           </TouchableOpacity>
@@ -247,12 +247,12 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
               styles.tabBtn,
               {
                 backgroundColor: activeTab === "disabled" ? (isDark ? "#1E3A8A" : "#2563EB") : (isDark ? theme.colors.card : "#FFFFFF"),
-                borderColor: activeTab === "disabled" ? (isDark ? "#3B82F6" : "#2563EB") : theme.colors.border
+                borderColor: activeTab === "disabled" ? (isDark ? "#3B82F6" : "#2563EB") : (isDark ? theme.colors.border : "#CBD5E1")
               }
             ]}
             onPress={() => setActiveTab("disabled")}
           >
-            <Text style={[styles.tabText, { color: activeTab === "disabled" ? "#FFFFFF" : theme.colors.textSecondary }, activeTab === "disabled" && styles.activeTabText]}>
+            <Text style={[styles.tabText, { color: activeTab === "disabled" ? "#FFFFFF" : (isDark ? theme.colors.textSecondary : "#334155") }, activeTab === "disabled" && styles.activeTabText]}>
               Disabled ({disabledCount})
             </Text>
           </TouchableOpacity>
@@ -526,64 +526,66 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: theme.colors.background,
   },
   container: {
     flex: 1,
-    paddingHorizontal: theme.spacing.lg,
+    paddingHorizontal: baseTheme.spacing.lg,
   },
   tabsRow: {
     flexDirection: "row",
     gap: 12,
     marginVertical: 14,
+    padding: 4,
+    borderRadius: baseTheme.borderRadius.lg,
+    borderWidth: 1,
   },
   tabBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: theme.colors.card,
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: baseTheme.borderRadius.md,
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
-    borderColor: theme.colors.border,
   },
   activeTabBtn: {
     backgroundColor: "#1E3A8A",
     borderColor: "#3B82F6",
   },
   tabText: {
-    color: theme.colors.textSecondary,
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   activeTabText: {
     color: "#FFFFFF",
     fontWeight: "800",
   },
   userCard: {
-    backgroundColor: "#1E293B", // Card matching screenshot page 1
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: baseTheme.borderRadius.lg,
     padding: 16,
     marginVertical: 6,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
   },
   cardTopRow: {
     flexDirection: "row",
     alignItems: "center",
   },
   userName: {
-    color: theme.colors.textPrimary,
     fontSize: 15,
     fontWeight: "800",
   },
   rolePill: {
-    backgroundColor: "#334155",
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,
     marginLeft: 8,
   },
   rolePillText: {
-    color: "#94A3B8",
     fontSize: 10,
     fontWeight: "700",
   },
@@ -615,7 +617,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   detailText: {
-    color: theme.colors.textMuted,
     fontSize: 12,
   },
   cardActionsRow: {
@@ -625,13 +626,11 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.08)",
   },
   historyLink: {
     flex: 1,
   },
   historyLinkText: {
-    color: "#93C5FD",
     fontSize: 12,
     fontWeight: "600",
   },
@@ -643,7 +642,6 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 6,
-    backgroundColor: theme.colors.surface,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -654,7 +652,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: "#065F46", // Dark green FAB matching screenshot page 1
+    backgroundColor: "#10B981",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
@@ -663,7 +661,7 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.75)",
+    backgroundColor: "rgba(0,0,0,0.65)",
     alignItems: "center",
     justifyContent: "center",
     padding: 20,
@@ -671,11 +669,9 @@ const styles = StyleSheet.create({
   modalContent: {
     width: "100%",
     maxWidth: 400,
-    backgroundColor: "#1E293B",
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: baseTheme.borderRadius.lg,
     padding: 20,
     borderWidth: 1,
-    borderColor: theme.colors.border,
   },
   modalHeader: {
     flexDirection: "row",
@@ -683,7 +679,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   modalTitle: {
-    color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "800",
   },
@@ -691,24 +686,21 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   fieldLabel: {
-    color: theme.colors.textSecondary,
     fontSize: 12,
     marginBottom: 4,
+    fontWeight: "600",
   },
   modalInput: {
-    backgroundColor: "#0F172A",
-    borderRadius: theme.borderRadius.md,
+    borderRadius: baseTheme.borderRadius.md,
     borderWidth: 1,
-    borderColor: theme.colors.border,
     paddingHorizontal: 12,
     height: 44,
-    color: "#FFFFFF",
     fontSize: 14,
   },
   passwordInputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: theme.borderRadius.md,
+    borderRadius: baseTheme.borderRadius.md,
     borderWidth: 1,
     paddingHorizontal: 12,
     height: 44,
@@ -734,18 +726,15 @@ const styles = StyleSheet.create({
   roleBtn: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: "#0F172A",
+    borderRadius: baseTheme.borderRadius.md,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: theme.colors.border,
   },
   activeRoleBtn: {
     backgroundColor: "#065F46",
     borderColor: "#10B981",
   },
   roleBtnText: {
-    color: theme.colors.textMuted,
     fontSize: 12,
     fontWeight: "700",
   },
@@ -769,15 +758,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   cancelBtnText: {
-    color: theme.colors.textMuted,
     fontSize: 13,
     fontWeight: "600",
   },
   confirmBtn: {
-    backgroundColor: "#065F46",
+    backgroundColor: "#059669",
     paddingVertical: 10,
     paddingHorizontal: 18,
-    borderRadius: theme.borderRadius.md,
+    borderRadius: baseTheme.borderRadius.md,
     borderWidth: 1,
     borderColor: "#10B981",
   },

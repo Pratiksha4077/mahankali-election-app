@@ -8,13 +8,13 @@ import { Header } from "../../components/Header";
 import { Toast } from "../../components/Toast";
 import { adminAPI } from "../../api/client";
 import { User } from "../../models/types";
-import { theme } from "../../theme/theme";
+import { theme as baseTheme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 
 export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
   const { t } = useLanguage();
-  const { isDark } = useTheme();
+  const { theme, isDark } = useTheme();
 
   const [users, setUsers] = useState<User[]>([]);
   const [activeTab, setActiveTab] = useState<"all" | "disabled">("all");
@@ -177,18 +177,18 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
 
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         {/* Header Tabs: All (31) vs Disabled (0) (Matches Screenshot Page 1) */}
-        <View style={[styles.tabsRow, { backgroundColor: isDark ? theme.colors.surface : "#F1F5F9", borderColor: theme.colors.border }]}>
+        <View style={[styles.tabsRow, { backgroundColor: isDark ? theme.colors.surface : "#E2E8F0", borderColor: theme.colors.border }]}>
           <TouchableOpacity
             style={[
               styles.tabBtn,
               {
                 backgroundColor: activeTab === "all" ? (isDark ? "#1E3A8A" : "#2563EB") : (isDark ? theme.colors.card : "#FFFFFF"),
-                borderColor: activeTab === "all" ? (isDark ? "#3B82F6" : "#2563EB") : theme.colors.border
+                borderColor: activeTab === "all" ? (isDark ? "#3B82F6" : "#2563EB") : (isDark ? theme.colors.border : "#CBD5E1")
               }
             ]}
             onPress={() => setActiveTab("all")}
           >
-            <Text style={[styles.tabText, { color: activeTab === "all" ? "#FFFFFF" : theme.colors.textSecondary }, activeTab === "all" && styles.activeTabText]}>
+            <Text style={[styles.tabText, { color: activeTab === "all" ? "#FFFFFF" : (isDark ? theme.colors.textSecondary : "#334155") }, activeTab === "all" && styles.activeTabText]}>
               All ({allCount})
             </Text>
           </TouchableOpacity>
@@ -198,12 +198,12 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
               styles.tabBtn,
               {
                 backgroundColor: activeTab === "disabled" ? (isDark ? "#1E3A8A" : "#2563EB") : (isDark ? theme.colors.card : "#FFFFFF"),
-                borderColor: activeTab === "disabled" ? (isDark ? "#3B82F6" : "#2563EB") : theme.colors.border
+                borderColor: activeTab === "disabled" ? (isDark ? "#3B82F6" : "#2563EB") : (isDark ? theme.colors.border : "#CBD5E1")
               }
             ]}
             onPress={() => setActiveTab("disabled")}
           >
-            <Text style={[styles.tabText, { color: activeTab === "disabled" ? "#FFFFFF" : theme.colors.textSecondary }, activeTab === "disabled" && styles.activeTabText]}>
+            <Text style={[styles.tabText, { color: activeTab === "disabled" ? "#FFFFFF" : (isDark ? theme.colors.textSecondary : "#334155") }, activeTab === "disabled" && styles.activeTabText]}>
               Disabled ({disabledCount})
             </Text>
           </TouchableOpacity>
@@ -487,12 +487,15 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   userCard: {
-    backgroundColor: "#1E293B", // Card matching screenshot page 1
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: baseTheme.borderRadius.lg,
     padding: 16,
     marginVertical: 6,
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
   },
   cardTopRow: {
     flexDirection: "row",

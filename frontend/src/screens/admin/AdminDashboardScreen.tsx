@@ -8,12 +8,12 @@ import { Header } from "../../components/Header";
 import { adminAPI, memberAPI } from "../../api/client";
 import { DashboardStats } from "../../models/types";
 import { useTheme } from "../../context/ThemeContext";
-import { theme } from "../../theme/theme";
+import { theme as baseTheme } from "../../theme/theme";
 
 type ActiveTab = "analysis" | "voters";
 
 export const AdminDashboardScreen: React.FC<any> = ({ navigation }) => {
-  const { isDark } = useTheme();
+  const { theme, isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<ActiveTab>("analysis");
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -179,7 +179,7 @@ export const AdminDashboardScreen: React.FC<any> = ({ navigation }) => {
               </View>
 
               {/* Summary Metric Cards */}
-              <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>मतदार सारांश (Voter Summary)</Text>
+              <Text style={[styles.sectionHeading, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>मतदार सारांश (Voter Summary)</Text>
               <View style={styles.statsGrid}>
                 <TouchableOpacity
                   style={[styles.statCard, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: "#3B82F6" }]}
@@ -189,7 +189,7 @@ export const AdminDashboardScreen: React.FC<any> = ({ navigation }) => {
                   <View style={[styles.statIconWrap, { backgroundColor: "rgba(59,130,246,0.15)" }]}>
                     <Ionicons name="people-circle-outline" size={22} color="#3B82F6" />
                   </View>
-                  <Text style={[styles.statNumber, { color: theme.colors.textPrimary }]}>{totalVoters.toLocaleString()}</Text>
+                  <Text style={[styles.statNumber, { color: isDark ? "#FFFFFF" : "#1D4ED8" }]}>{totalVoters.toLocaleString()}</Text>
                   <Text style={[styles.statLabel, { color: isDark ? theme.colors.textSecondary : "#475569" }]}>एकूण मतदार</Text>
                   <Text style={[styles.statSubLabel, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>Tap to view list →</Text>
                 </TouchableOpacity>

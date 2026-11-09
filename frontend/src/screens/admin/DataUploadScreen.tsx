@@ -8,7 +8,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { Header } from "../../components/Header";
 import { villageAPI, adminAPI } from "../../api/client";
 import { Village, ImportJob } from "../../models/types";
-import { theme } from "../../theme/theme";
+import { theme as baseTheme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 
@@ -23,7 +23,7 @@ interface QueuedFile {
 
 export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
   const { t } = useLanguage();
-  const { isDark } = useTheme();
+  const { theme, isDark } = useTheme();
 
   const DEFAULT_SAKHARALE: Village = {
     id: "11111111-1111-1111-1111-111111111111",
