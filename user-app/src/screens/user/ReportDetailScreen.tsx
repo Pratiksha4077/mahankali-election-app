@@ -716,7 +716,7 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
                     )}
                   </View>
                   <View style={[styles.groupBadge, { backgroundColor: isDark ? "#1E293B" : "#F1F5F9", borderColor: theme.colors.borderLight }]}>
-                    <Text style={[styles.groupBadgeText, { color: theme.colors.primaryLight }]}>[ {item.count || item.total_voters} ]</Text>
+                    <Text style={[styles.groupBadgeText, { color: theme.colors.primaryLight }]}>{item.count ?? item.total_voters ?? 0}</Text>
                   </View>
                 </TouchableOpacity>
 
@@ -999,11 +999,14 @@ const styles = StyleSheet.create({
   },
   groupBadge: {
     backgroundColor: theme.colors.cardElevated,
-    paddingHorizontal: 7,
+    paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 5,
+    borderRadius: 4,
     borderWidth: 1,
     borderColor: theme.colors.borderLight,
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 26,
   },
   groupBadgeText: {
     color: theme.colors.primaryLight,

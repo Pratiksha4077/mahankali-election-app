@@ -523,19 +523,30 @@ export const adminAPI = {
   },
 
   uploadExcel: async (formData: FormData) => {
-    const res = await apiClient.post("/admin/import/excel", formData, {
-      timeout: 300000,
-      headers: {
-        Accept: "application/json",
-      },
-      transformRequest: (data, headers) => {
-        if (headers) {
-          delete (headers as any)["Content-Type"];
-        }
-        return data;
-      },
+    let token = authToken;
+    if (!token) {
+      try {
+        token = await appStorage.getItem("election_auth_token");
+      } catch {}
+    }
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    const res = await fetch(`${API_BASE_URL}/admin/import/excel`, {
+      method: "POST",
+      headers,
+      body: formData,
     });
-    return res.data;
+    if (!res.ok) {
+      const text = await res.text();
+      let errJson: any;
+      try { errJson = JSON.parse(text); } catch {}
+      throw new Error(errJson?.detail || errJson?.message || `Upload failed (${res.status})`);
+    }
+    return await res.json();
   },
 
   clearAllVoters: async () => {
@@ -600,7 +611,9 @@ export const adminAPI = {
 
   getUserActivity: async (user_id?: string, username?: string) => {
     try {
-      const res = await apiClient.get(`/admin/users/${user_id}/activity`, { params: { limit: 500 } });
+      const params: any = { limit: 500 };
+      if (username) params.username = username;
+      const res = await apiClient.get(`/admin/users/${user_id}/activity`, { params });
       const payload = res.data?.data || res.data;
       if (payload) {
         console.log(

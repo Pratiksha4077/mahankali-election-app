@@ -337,7 +337,18 @@ async def log_user_activity_endpoint(
         meta["target_member_name"] = payload.targetMemberName
 
     action = payload.action or "ACTIVITY"
-    entity_type = "LOCATION" if "LOCATION" in action else ("MEMBER" if payload.targetMemberId else "ACTIVITY")
+    if "CALL" in action:
+        entity_type = "CALL"
+        phone = meta.get("phone") or meta.get("phoneNumber") or meta.get("number")
+        if phone:
+            meta["phoneNumber"] = str(phone)
+            meta["phone"] = str(phone)
+    elif "LOCATION" in action:
+        entity_type = "LOCATION"
+    elif payload.targetMemberId:
+        entity_type = "MEMBER"
+    else:
+        entity_type = "ACTIVITY"
 
     # If it is a location record, ensure place name and address are properly filled
     if "LOCATION" in action:
@@ -452,8 +463,20 @@ async def delete_activities(
         conn.autocommit = True
         try:
             with conn.cursor() as cur:
-                user_match = "(user_id::text = %s OR username = %s OR metadata->>'user_id' = %s OR metadata->>'username' = %s)"
-                user_params = [str(user_id), str(user_id), str(user_id), str(user_id)]
+                # Lookup user to resolve both UUID and username
+                target_uid = str(user_id)
+                target_uname = str(user_id)
+                try:
+                    cur.execute("SELECT id, username FROM public.users WHERE id::text = %s OR LOWER(username) = LOWER(%s) LIMIT 1;", (str(user_id), str(user_id)))
+                    u_row = cur.fetchone()
+                    if u_row:
+                        target_uid = str(u_row[0])
+                        target_uname = str(u_row[1])
+                except Exception:
+                    pass
+
+                user_match = "(user_id::text = %s OR metadata->>'user_id' = %s OR metadata->>'source_user_id' = %s OR LOWER(username) = LOWER(%s))"
+                user_params = [target_uid, target_uid, target_uid, target_uname]
 
                 act_norm = (action_type or "").strip().upper()
                 if act_norm in ("LOCATION", "LOCATIONS"):

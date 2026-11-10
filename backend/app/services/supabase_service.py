@@ -1864,14 +1864,40 @@ class SupabaseActivityService:
             offset = max(0, (page - 1) * limit)
             fetch_limit = min(limit, max_total)
 
+            # Query user permission flags from public.users to accurately reflect GRANTED status
+            call_permitted = False
+            loc_permitted = False
+            try:
+                with conn.cursor(cursor_factory=RealDictCursor) as p_cur:
+                    p_cur.execute(
+                        "SELECT permissions, is_active FROM public.users WHERE id::text = %s OR LOWER(username) = LOWER(%s) LIMIT 1;",
+                        (str(user_id or ""), str(username or user_id or ""))
+                    )
+                    u_row = p_cur.fetchone()
+                    if u_row:
+                        u_perms = u_row.get("permissions") or {}
+                        if isinstance(u_perms, dict):
+                            call_permitted = bool(u_perms.get("call_history") or u_perms.get("callHistory") or u_perms.get("phoneCall"))
+                            loc_permitted = bool(u_perms.get("location"))
+            except Exception as pe:
+                logger.warning(f"Note loading user permissions for status check: {pe}")
+
             where_clauses = []
             params = []
 
-            if user_id:
+            if user_id and username:
                 try:
                     valid_uuid = str(uuid.UUID(str(user_id)))
-                    where_clauses.append("(user_id = %s OR metadata->>'user_id' = %s)")
-                    params.extend([valid_uuid, user_id])
+                    where_clauses.append("(user_id = %s OR metadata->>'user_id' = %s OR metadata->>'source_user_id' = %s OR LOWER(username) = LOWER(%s))")
+                    params.extend([valid_uuid, user_id, user_id, username])
+                except ValueError:
+                    where_clauses.append("(metadata->>'user_id' = %s OR LOWER(username) = LOWER(%s) OR LOWER(username) = LOWER(%s))")
+                    params.extend([user_id, user_id, username])
+            elif user_id:
+                try:
+                    valid_uuid = str(uuid.UUID(str(user_id)))
+                    where_clauses.append("(user_id = %s OR metadata->>'user_id' = %s OR metadata->>'source_user_id' = %s OR LOWER(username) = LOWER(%s))")
+                    params.extend([valid_uuid, user_id, user_id, user_id])
                 except ValueError:
                     where_clauses.append("(metadata->>'user_id' = %s OR LOWER(username) = LOWER(%s))")
                     params.extend([user_id, user_id])
@@ -1889,8 +1915,8 @@ class SupabaseActivityService:
             location_count = 0
 
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # 1. Calls
-                call_q = f"SELECT * FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('CALL_LOG', 'CALL_INITIATED', 'CALL') ORDER BY timestamp DESC LIMIT %s OFFSET %s"
+                # 1. Calls (matches by action or entity_type = 'CALL')
+                call_q = f"SELECT * FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} (action IN ('CALL_LOG', 'CALL_INITIATED', 'CALL') OR entity_type = 'CALL') ORDER BY timestamp DESC LIMIT %s OFFSET %s"
                 cur.execute(call_q, tuple(params + [fetch_limit, offset]))
                 for r in cur.fetchall():
                     item = dict(r)
@@ -1900,7 +1926,7 @@ class SupabaseActivityService:
                         clean_dt = item["details"].replace("कॉल नोंद: ", "")
                         raw_phone = clean_dt.split()[0] if clean_dt else ""
 
-                    c_name = meta.get("name") or meta.get("caller_name") or ""
+                    c_name = meta.get("name") or meta.get("caller_name") or meta.get("target_member_name") or meta.get("voter") or ""
                     c_dur = meta.get("duration") or 0
                     c_type = meta.get("callType") or meta.get("type") or "OUTGOING"
 
@@ -1929,7 +1955,7 @@ class SupabaseActivityService:
                             "callType": c_type,
                         }
                     })
-                call_count_sql = f"SELECT count(*) FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('CALL_LOG', 'CALL_INITIATED', 'CALL')"
+                call_count_sql = f"SELECT count(*) FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} (action IN ('CALL_LOG', 'CALL_INITIATED', 'CALL') OR entity_type = 'CALL')"
                 cur.execute(call_count_sql, tuple(params))
                 call_count = cur.fetchone()["count"]
 
@@ -1937,8 +1963,8 @@ class SupabaseActivityService:
                 sms = []
                 sms_count = 0
 
-                # 3. Locations (including LOCATION_CHECKIN from real device check-ins)
-                loc_q = f"SELECT * FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('LOCATION_RECORD', 'LOCATION_PING', 'LOCATION', 'LOCATION_CHECKIN') ORDER BY timestamp DESC LIMIT %s OFFSET %s"
+                # 3. Locations (matches by action or entity_type = 'LOCATION')
+                loc_q = f"SELECT * FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} (action IN ('LOCATION_RECORD', 'LOCATION_PING', 'LOCATION', 'LOCATION_CHECKIN') OR entity_type = 'LOCATION') ORDER BY timestamp DESC LIMIT %s OFFSET %s"
                 cur.execute(loc_q, tuple(params + [fetch_limit, offset]))
                 for r in cur.fetchall():
                     item = dict(r)
@@ -1969,7 +1995,7 @@ class SupabaseActivityService:
                             "village": meta.get("village") or "साखराळे",
                         }
                     })
-                loc_count_sql = f"SELECT count(*) FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('LOCATION_RECORD', 'LOCATION_PING', 'LOCATION', 'LOCATION_CHECKIN')"
+                loc_count_sql = f"SELECT count(*) FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} (action IN ('LOCATION_RECORD', 'LOCATION_PING', 'LOCATION', 'LOCATION_CHECKIN') OR entity_type = 'LOCATION')"
                 cur.execute(loc_count_sql, tuple(params))
                 location_count = cur.fetchone()["count"]
 
@@ -1984,9 +2010,10 @@ class SupabaseActivityService:
                 "sms_count": 0,
                 "location_count": location_count,
                 "locations_count": location_count,
-                "call_status": "GRANTED" if call_count > 0 else "UNKNOWN",
+                "call_status": "GRANTED" if (call_permitted or call_count > 0) else "DENIED",
+                "location_status": "GRANTED" if (loc_permitted or location_count > 0) else "DENIED",
                 "sms_status": "DISABLED",
-                "last_telephony_sync": calls[0]["timestamp"] if calls else None,
+                "last_telephony_sync": calls[0]["timestamp"] if calls else (locations[0]["timestamp"] if locations else None),
                 "pagination": {
                     "page": page,
                     "limit": limit,
@@ -2006,7 +2033,7 @@ class SupabaseActivityService:
 
     @staticmethod
     def delete_activities(ids: List[str], user_id: Optional[str] = None) -> int:
-        """Deletes activity log records by IDs."""
+        """Deletes activity log records by IDs with full fallback support."""
         if not ids:
             return 0
         clean_ids = [str(x).strip() for x in ids if str(x).strip()]
@@ -2022,8 +2049,9 @@ class SupabaseActivityService:
                        OR entity_id = ANY(%s)
                        OR metadata->>'id' = ANY(%s)
                        OR metadata->>'recordId' = ANY(%s)
-                       OR metadata->>'syncKey' = ANY(%s);
-                """, (clean_ids, clean_ids, clean_ids, clean_ids, clean_ids))
+                       OR metadata->>'syncKey' = ANY(%s)
+                       OR metadata->>'timestamp' = ANY(%s);
+                """, (clean_ids, clean_ids, clean_ids, clean_ids, clean_ids, clean_ids))
                 deleted = cur.rowcount
             conn.close()
             return deleted

@@ -308,7 +308,7 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
                     )}
                   </View>
                   <View style={[styles.groupBadge, { backgroundColor: isDark ? "#1E293B" : "#F1F5F9", borderColor: theme.colors.borderLight }]}>
-                    <Text style={[styles.groupBadgeText, { color: theme.colors.primaryLight }]}>[ {item.count || item.total_voters} ]</Text>
+                    <Text style={[styles.groupBadgeText, { color: theme.colors.primaryLight }]}>{item.count ?? item.total_voters ?? 0}</Text>
                   </View>
                 </TouchableOpacity>
 

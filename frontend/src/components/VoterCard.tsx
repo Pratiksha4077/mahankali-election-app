@@ -137,8 +137,7 @@ export const VoterCard: React.FC<VoterCardProps> = memo(({ member, onPress }) =>
         <View style={styles.locationRow}>
           <Ionicons name="location-sharp" size={14} color={theme.colors.secondary} />
           <Text style={[styles.locationText, { color: theme.colors.textMuted }]} numberOfLines={1}>
-            {villageDisplay ? `${villageDisplay} ` : ""}
-            {member.age ? `• वय: ${member.age} ` : ""}
+            {member.age ? `वय: ${member.age} ` : ""}
             {member.gender ? `• ${member.gender === "Female" ? "स्त्री" : "पुरुष"}` : ""}
           </Text>
         </View>
