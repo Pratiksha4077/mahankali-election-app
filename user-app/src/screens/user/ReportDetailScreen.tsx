@@ -254,7 +254,7 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
           }
         });
       }
-      Linking.openURL(`tel:${num}`).catch(() => {});
+      Linking.openURL(`tel:${num}`).catch(() => { });
     } else {
       Alert.alert("माहिती", "मोबाईल नंबर उपलब्ध नाही.");
     }
@@ -276,7 +276,7 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
           }
         });
       }
-      Linking.openURL(`sms:${num}`).catch(() => {});
+      Linking.openURL(`sms:${num}`).catch(() => { });
     } else {
       Alert.alert("माहिती", "मोबाईल नंबर उपलब्ध नाही.");
     }

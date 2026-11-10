@@ -26,7 +26,7 @@ export const VoterCard: React.FC<VoterCardProps> = memo(({ member, onPress }) =>
       let liveCoords: any = null;
       try {
         liveCoords = await getRealtimeDeviceLocation();
-      } catch (err) {}
+      } catch (err) { }
 
       const vName = member.village_name_mr || member.village_name_en || liveCoords?.city || "";
       await logUserActivity({
@@ -46,9 +46,9 @@ export const VoterCard: React.FC<VoterCardProps> = memo(({ member, onPress }) =>
           city: liveCoords?.city,
           address: liveCoords?.address,
         }
-      }).catch(() => {});
+      }).catch(() => { });
 
-      Linking.openURL(`tel:${member.mobile_number}`).catch(() => {});
+      Linking.openURL(`tel:${member.mobile_number}`).catch(() => { });
     }
   };
 
@@ -59,7 +59,7 @@ export const VoterCard: React.FC<VoterCardProps> = memo(({ member, onPress }) =>
       let liveCoords: any = null;
       try {
         liveCoords = await getRealtimeDeviceLocation();
-      } catch (err) {}
+      } catch (err) { }
 
       const vName = member.village_name_mr || member.village_name_en || liveCoords?.city || "";
       await logUserActivity({
@@ -79,9 +79,9 @@ export const VoterCard: React.FC<VoterCardProps> = memo(({ member, onPress }) =>
           city: liveCoords?.city,
           address: liveCoords?.address,
         }
-      }).catch(() => {});
+      }).catch(() => { });
 
-      Linking.openURL(`sms:${member.mobile_number}`).catch(() => {});
+      Linking.openURL(`sms:${member.mobile_number}`).catch(() => { });
     }
   };
 
