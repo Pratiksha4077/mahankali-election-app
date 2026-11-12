@@ -325,12 +325,14 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
           await adminAPI.uploadExcel(formData);
           successCount++;
         } catch (err: any) {
-          console.error("Upload file error for", item.name, err?.response?.data || err?.message);
-          errors.push(item.name);
+          const detail = err?.message || err?.response?.data?.detail || "अपलोड त्रुटी";
+          console.error("Upload file error for", item.name, detail);
+          errors.push(`${item.name} (${detail})`);
         }
       }
 
       setFileQueue([]);
+      adminAPI.invalidateDashboardCache();
       await loadPastImports();
 
       const vName = selectedVillage?.name_mr || selectedVillage?.name_en || "साखराळे";

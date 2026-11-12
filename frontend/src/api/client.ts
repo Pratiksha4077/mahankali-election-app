@@ -535,18 +535,35 @@ export const adminAPI = {
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
-    const res = await fetch(`${API_BASE_URL}/admin/import/excel`, {
-      method: "POST",
-      headers,
-      body: formData,
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      let errJson: any;
-      try { errJson = JSON.parse(text); } catch {}
-      throw new Error(errJson?.detail || errJson?.message || `Upload failed (${res.status})`);
+    const baseUrl = getServerBaseUrl();
+    const endpoint = `${baseUrl}/admin/import/excel`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: formData,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        const text = await res.text();
+        let errJson: any;
+        try { errJson = JSON.parse(text); } catch {}
+        throw new Error(errJson?.detail || errJson?.message || `Upload failed (${res.status})`);
+      }
+      return await res.json();
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError") {
+        throw new Error("सर्व्हर प्रतिसाद वेळ संपला (Timeout: 120s). फाईल मोठी असू शकते किंवा इंटरनेट मंद आहे.");
+      }
+      throw err;
     }
-    return await res.json();
   },
 
   clearAllVoters: async () => {

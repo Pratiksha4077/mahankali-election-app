@@ -156,24 +156,39 @@ async def clear_all_voters(
 async def upload_and_process_excel(
     file: UploadFile = File(...),
     village_id: Optional[str] = Form(None),
-    clear_previous: bool = Form(False),
+    clear_previous: Optional[Any] = Form(False),
+    auto_commit: Optional[str] = Form(None),
     admin: AuthUser = Depends(require_admin)
 ):
     """
     Admin uploads Excel or CSV file.
-    - Saves original file to disk immediately.
+    - Saves original file to disk immediately with sanitized filename.
     - Parses voter records and inserts directly into Supabase public.voters.
     - Updates village statistics and logs import job in public.import_jobs.
     - Guaranteed synchronous completion: immediate stats visibility.
     """
-    ext = Path(file.filename).suffix.lower()
+    original_name = Path(file.filename).name if file.filename else "voter_list.xlsx"
+    ext = Path(original_name).suffix.lower()
     if ext not in [".xlsx", ".xls", ".csv"]:
         raise HTTPException(status_code=400, detail="फक्त .xlsx, .xls किंवा .csv फाईल्स समर्थित आहेत.")
 
+    # Determine if clearing previous data was requested
+    should_clear = False
     if clear_previous:
+        if isinstance(clear_previous, bool):
+            should_clear = clear_previous
+        elif str(clear_previous).strip().lower() in ["true", "1", "yes"]:
+            should_clear = True
+
+    if should_clear:
+        logger.info(f"Admin {admin.username} requested clear_previous before upload.")
         SupabaseVoterImportService.clear_all_voters()
 
-    file_path = settings.UPLOAD_DIR / file.filename
+    settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    # Sanitize filename for safe filesystem storage
+    safe_disk_name = f"{int(datetime.utcnow().timestamp())}_{re.sub(r'[^a-zA-Z0-9_.-]', '_', original_name)}"
+    file_path = settings.UPLOAD_DIR / safe_disk_name
+
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
@@ -183,7 +198,7 @@ async def upload_and_process_excel(
     try:
         import_res = SupabaseVoterImportService.import_excel_file(
             file_path=file_path,
-            file_name=file.filename,
+            file_name=original_name,
             file_size=file_size,
             village_id=target_village_id,
             uploaded_by=admin.username
@@ -197,7 +212,7 @@ async def upload_and_process_excel(
             action="IMPORT_EXCEL",
             entity_type="IMPORT_JOB",
             entity_id=import_res["job_id"],
-            details=f"Imported {import_res.get('imported_records', 0)} voters from {file.filename} into Supabase",
+            details=f"Imported {import_res.get('imported_records', 0)} voters from {original_name} into Supabase",
             username=admin.username
         )
 
@@ -206,17 +221,17 @@ async def upload_and_process_excel(
             "job_id": import_res["job_id"],
             "jobId": import_res["job_id"],
             "file_id": import_res.get("file_id"),
-            "fileName": file.filename,
-            "file_name": file.filename,
+            "fileName": original_name,
+            "file_name": original_name,
             "totalRecords": import_res.get("total_records", 0),
             "total_records": import_res.get("total_records", 0),
             "importedRecords": import_res.get("imported_records", 0),
             "imported_records": import_res.get("imported_records", 0),
             "status": "COMPLETED",
-            "message": f"'{file.filename}' मधील {import_res.get('imported_records', 0)} मतदार यशस्वीरित्या Supabase मध्ये समाविष्ट करण्यात आले."
+            "message": f"'{original_name}' मधील {import_res.get('imported_records', 0)} मतदार यशस्वीरित्या Supabase मध्ये समाविष्ट करण्यात आले."
         }
     except Exception as e:
-        logger.error(f"Import failed for {file.filename}: {e}")
+        logger.error(f"Import failed for {original_name}: {e}")
         raise HTTPException(status_code=500, detail=f"फाईल प्रक्रिया करताना त्रुटी: {str(e)}")
 
 @router.post("/pdf")

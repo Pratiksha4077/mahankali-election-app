@@ -588,10 +588,47 @@ export const adminAPI = {
   },
 
   uploadExcel: async (formData: FormData) => {
-    const res = await apiClient.post("/admin/import/excel", formData, {
-      headers: { "Content-Type": "multipart/form-data" }
-    });
-    return res.data;
+    let token = authToken;
+    if (!token) {
+      try {
+        token = await appStorage.getItem("election_auth_token");
+      } catch {}
+    }
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    const baseUrl = getServerBaseUrl();
+    const endpoint = `${baseUrl}/admin/import/excel`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: formData,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        const text = await res.text();
+        let errJson: any;
+        try { errJson = JSON.parse(text); } catch {}
+        throw new Error(errJson?.detail || errJson?.message || `Upload failed (${res.status})`);
+      }
+      return await res.json();
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError") {
+        throw new Error("सर्व्हर प्रतिसाद वेळ संपला (Timeout: 120s). फाईल मोठी असू शकते किंवा इंटरनेट मंद आहे.");
+      }
+      throw err;
+    }
   },
 
   clearAllVoters: async () => {
