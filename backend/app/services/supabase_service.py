@@ -109,6 +109,9 @@ def close_supabase_pool():
 def get_supabase_conn():
     """Returns a pooled psycopg2 connection to Supabase PostgreSQL, or creates direct connection if pool unavailable."""
     global _SUPABASE_POOL
+    if _SUPABASE_POOL is None:
+        init_supabase_pool()
+
     if _SUPABASE_POOL is not None:
         try:
             raw_conn = _SUPABASE_POOL.getconn()
@@ -650,13 +653,23 @@ class SupabaseVillageService:
     def invalidate_cache():
         global _VILLAGES_CACHE
         _VILLAGES_CACHE = {"data": None, "timestamp": 0}
+        try:
+            from app.services.cache_service import CacheService
+            CacheService.delete("villages:all")
+        except Exception:
+            pass
 
     @staticmethod
     def get_villages(force_refresh: bool = False) -> List[Dict[str, Any]]:
         global _VILLAGES_CACHE
-        now = time.time()
-        if not force_refresh and _VILLAGES_CACHE["data"] is not None and (now - _VILLAGES_CACHE["timestamp"] < 180):
-            return _VILLAGES_CACHE["data"]
+        from app.services.cache_service import CacheService
+        if not force_refresh:
+            cached = CacheService.get("villages:all")
+            if cached and isinstance(cached, list) and len(cached) > 0:
+                return cached
+            now = time.time()
+            if _VILLAGES_CACHE["data"] is not None and (now - _VILLAGES_CACHE["timestamp"] < 300):
+                return _VILLAGES_CACHE["data"]
 
         conn = get_supabase_conn()
         try:
@@ -664,11 +677,13 @@ class SupabaseVillageService:
                 cur.execute("""
                     SELECT v.id, v.name, v.name_marathi, v.taluka, v.taluka_marathi,
                            v.district, v.district_marathi, v.pin_code,
-                           (SELECT count(*) FROM public.voters WHERE is_deleted = false) AS total_voters,
-                           (SELECT count(*) FROM public.voters WHERE status = 'ACTIVE' AND is_deleted = false) AS active_voters,
-                           (SELECT count(*) FROM public.voters WHERE status = 'DECEASED' AND is_deleted = false) AS deceased_voters,
-                           (SELECT count(*) FROM public.families) AS total_families
+                           COUNT(vt.id) FILTER (WHERE vt.is_deleted = false) AS total_voters,
+                           COUNT(vt.id) FILTER (WHERE vt.status = 'ACTIVE' AND vt.is_deleted = false) AS active_voters,
+                           COUNT(vt.id) FILTER (WHERE vt.status = 'DECEASED' AND vt.is_deleted = false) AS deceased_voters,
+                           COUNT(DISTINCT vt.family_id) AS total_families
                     FROM public.villages v
+                    LEFT JOIN public.voters vt ON vt.village_id = v.id
+                    GROUP BY v.id
                     ORDER BY v.name_marathi ASC;
                 """)
                 rows = cur.fetchall()
@@ -708,7 +723,8 @@ class SupabaseVillageService:
                             "totalFamilies": fams
                         }
                     })
-                _VILLAGES_CACHE = {"data": result, "timestamp": now}
+                _VILLAGES_CACHE = {"data": result, "timestamp": time.time()}
+                CacheService.set("villages:all", result, ttl=300)
                 return result
         finally:
             conn.close()
@@ -842,24 +858,46 @@ class SupabaseMemberService:
 
     @staticmethod
     def get_member_by_id(member_id: str) -> Optional[Dict[str, Any]]:
+        if not member_id:
+            return None
+        from app.services.cache_service import CacheService
+        clean_id = str(member_id).strip()
+        cached = CacheService.get(f"voters:{clean_id}")
+        if cached:
+            return cached
+
         conn = get_supabase_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                where_clauses = ["id::text = %s", "epic_number = %s", "membership_number = %s"]
-                params = [str(member_id), str(member_id), str(member_id)]
-                if str(member_id).isdigit():
-                    where_clauses.append("serial_number = %s")
-                    params.append(int(member_id))
+                # Fast path: Check if valid UUID to hit primary key B-Tree index directly in 0.1ms
+                is_uuid = False
+                try:
+                    uuid.UUID(clean_id)
+                    is_uuid = True
+                except ValueError:
+                    is_uuid = False
 
-                cur.execute(f"""
-                    SELECT * FROM public.voters
-                    WHERE {' OR '.join(where_clauses)}
-                    LIMIT 1;
-                """, tuple(params))
-                row = cur.fetchone()
+                if is_uuid:
+                    cur.execute("SELECT * FROM public.voters WHERE id = %s LIMIT 1;", (clean_id,))
+                    row = cur.fetchone()
+                else:
+                    where_clauses = ["epic_number = %s", "membership_number = %s"]
+                    params = [clean_id, clean_id]
+                    if clean_id.isdigit():
+                        where_clauses.append("serial_number = %s")
+                        params.append(int(clean_id))
+                    cur.execute(f"SELECT * FROM public.voters WHERE {' OR '.join(where_clauses)} LIMIT 1;", tuple(params))
+                    row = cur.fetchone()
+
                 if not row:
                     return None
-                return format_voter_as_member(row)
+                formatted = format_voter_as_member(row)
+                CacheService.set(f"voters:{clean_id}", formatted, ttl=300)
+                if formatted.get("id"):
+                    CacheService.set(f"voters:{formatted['id']}", formatted, ttl=300)
+                if formatted.get("epicNumber"):
+                    CacheService.set(f"voters:{formatted['epicNumber']}", formatted, ttl=300)
+                return formatted
         finally:
             conn.close()
 
@@ -966,6 +1004,8 @@ class SupabaseMemberService:
                 row = cur.fetchone()
                 if not row:
                     return None
+                from app.services.cache_service import CacheService
+                CacheService.invalidate_voter_cache()
                 return format_voter_as_member(row)
         finally:
             conn.close()
@@ -995,7 +1035,11 @@ class SupabaseMemberService:
                         updated_at = NOW(), updated_by = %s
                     WHERE id::text = %s OR epic_number = %s;
                 """, (cat_id, cat_code, cat_color, updated_by, str(member_id), str(member_id)))
-                return cur.rowcount > 0
+                rc = cur.rowcount > 0
+                if rc:
+                    from app.services.cache_service import CacheService
+                    CacheService.invalidate_voter_cache()
+                return rc
         finally:
             conn.close()
 
@@ -1015,7 +1059,11 @@ class SupabaseMemberService:
                         updated_by = %s
                     WHERE id::text = %s OR epic_number = %s;
                 """, (st, st, st, updated_by, updated_by, str(member_id), str(member_id)))
-                return cur.rowcount > 0
+                rc = cur.rowcount > 0
+                if rc:
+                    from app.services.cache_service import CacheService
+                    CacheService.invalidate_voter_cache()
+                return rc
         finally:
             conn.close()
 
@@ -1027,6 +1075,13 @@ class SupabaseMemberService:
 class SupabaseReportService:
     @staticmethod
     def get_summary_report(village_id: Optional[str] = None) -> Dict[str, Any]:
+        from app.services.cache_service import CacheService
+        v_key = str(village_id).strip() if village_id else "all"
+        cache_key = f"reports:summary:{v_key}"
+        cached = CacheService.get(cache_key)
+        if cached:
+            return cached
+
         conn = get_supabase_conn()
         try:
             with conn.cursor() as cur:
@@ -1041,13 +1096,15 @@ class SupabaseReportService:
                 """)
                 row = cur.fetchone()
                 total, active, dead, with_mob = row[0], row[1], row[2], row[3]
-                return {
+                res = {
                     "totalVoters": total,
                     "activeMembers": active,
                     "deceasedMembers": dead,
                     "withMobile": with_mob,
                     "withoutMobile": total - with_mob
                 }
+                CacheService.set(cache_key, res, ttl=300)
+                return res
         finally:
             conn.close()
 
@@ -1056,8 +1113,15 @@ class SupabaseReportService:
         """
         Fast PostgreSQL aggregation grouping voters by Marathi surname.
         Extracts surname directly from `surname_marathi` or first token of `full_name_marathi`.
-        Executes in under 10ms with native PostgreSQL index.
+        Executes in under 10ms with native PostgreSQL index and cached with CacheService.
         """
+        from app.services.cache_service import CacheService
+        v_key = str(village_id).strip() if village_id else "all"
+        cache_key = f"reports:surname:{v_key}"
+        cached = CacheService.get(cache_key)
+        if cached:
+            return cached
+
         conn = get_supabase_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1094,6 +1158,7 @@ class SupabaseReportService:
                         "male": r["male"],
                         "female": r["female"]
                     })
+                CacheService.set(cache_key, results, ttl=300)
                 return results
         finally:
             conn.close()
@@ -1227,6 +1292,14 @@ class SupabaseReportService:
 
     @staticmethod
     def get_alphabetical_report(village_id: Optional[str] = None, letter: Optional[str] = None) -> List[Dict[str, Any]]:
+        from app.services.cache_service import CacheService
+        v_key = str(village_id).strip() if village_id else "all"
+        l_key = str(letter).strip() if letter else "all"
+        cache_key = f"reports:alphabetical:{v_key}:{l_key}"
+        cached = CacheService.get(cache_key)
+        if cached:
+            return cached
+
         conn = get_supabase_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1258,12 +1331,20 @@ class SupabaseReportService:
                         "mobile_number": r["mobile_number"] or "",
                         "status": r["status"]
                     })
+                CacheService.set(cache_key, res, ttl=300)
                 return res
         finally:
             conn.close()
 
     @staticmethod
     def get_category_report(village_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        from app.services.cache_service import CacheService
+        v_key = str(village_id).strip() if village_id else "all"
+        cache_key = f"reports:category:{v_key}"
+        cached = CacheService.get(cache_key)
+        if cached:
+            return cached
+
         conn = get_supabase_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1285,12 +1366,20 @@ class SupabaseReportService:
                         "color": r["color"],
                         "key": r["color"]
                     })
+                CacheService.set(cache_key, res, ttl=300)
                 return res
         finally:
             conn.close()
 
     @staticmethod
     def get_deceased_report(village_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        from app.services.cache_service import CacheService
+        v_key = str(village_id).strip() if village_id else "all"
+        cache_key = f"reports:deceased:{v_key}"
+        cached = CacheService.get(cache_key)
+        if cached:
+            return cached
+
         conn = get_supabase_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1316,6 +1405,7 @@ class SupabaseReportService:
                         "mobile_number": r["mobile_number"] or "",
                         "status": "DECEASED"
                     })
+                CacheService.set(cache_key, res, ttl=300)
                 return res
         finally:
             conn.close()
@@ -2433,6 +2523,11 @@ class SupabaseVoterImportService:
         # Invalidate caches immediately so voters appear instantly in app
         SupabaseDashboardService.invalidate_cache()
         SupabaseVillageService.invalidate_cache()
+        try:
+            from app.services.cache_service import CacheService
+            CacheService.invalidate_voter_cache()
+        except Exception:
+            pass
         logger.info(f"[SupabaseVoterImportService] Successfully imported {imported_count}/{total_rows} voters (duplicates skipped: {duplicate_count}) for file {file_name}")
 
         # 5. Non-blocking asynchronous Cloudinary backup in background
