@@ -16,7 +16,7 @@ interface QueuedFile {
   id: string;
   name: string;
   size: number;
-  type: "EXCEL" | "CSV";
+  type: "EXCEL" | "CSV" | "PDF";
   fileObj?: any;
   uri?: string;
 }
@@ -166,28 +166,20 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
     }
   };
 
-  // Strict file validation: Only .xlsx, .xls, .csv are allowed. PDF is rejected.
+  // Strict file validation: .xlsx, .xls, .csv, and .pdf are all supported
   const validateAndAddFile = (fileName: string, fileSize: number, fileObj?: any, uri?: string): boolean => {
     const ext = fileName.slice(fileName.lastIndexOf(".")).toLowerCase();
 
-    if (ext === ".pdf") {
-      Alert.alert(
-        "पीडीएफ समर्थित नाही (PDF Not Allowed)",
-        `'${fileName}' ही पीडीएफ फाईल आहे. कृपया मतदार यादी एक्सेल (.xlsx, .xls) किंवा सीएसव्ही (.csv) फाईल स्वरूपात निवडा.`
-      );
-      return false;
-    }
-
-    const validExtensions = [".xlsx", ".xls", ".csv"];
+    const validExtensions = [".xlsx", ".xls", ".csv", ".pdf"];
     if (!validExtensions.includes(ext)) {
       Alert.alert(
         t("invalid_file_type") || "अयोग्य फाईल प्रकार",
-        `'${fileName}' हा अयोग्य फाईल प्रकार आहे. फक्त .xlsx, .xls आणि .csv फाईल्स निवडा.`
+        `'${fileName}' हा अयोग्य फाईल प्रकार आहे. फक्त .xlsx, .xls, .csv आणि .pdf फाईल्स निवडा.`
       );
       return false;
     }
 
-    const fileType: "EXCEL" | "CSV" = ext === ".csv" ? "CSV" : "EXCEL";
+    const fileType: "EXCEL" | "CSV" | "PDF" = ext === ".pdf" ? "PDF" : (ext === ".csv" ? "CSV" : "EXCEL");
     const newFile: QueuedFile = {
       id: `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
       name: fileName,
@@ -215,7 +207,7 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
         const input = document.createElement("input");
         input.type = "file";
         input.multiple = true;
-        input.accept = ".xlsx,.xls,.csv";
+        input.accept = ".xlsx,.xls,.csv,.pdf,application/pdf";
         input.onchange = (e: any) => {
           const files: FileList = e.target.files;
           if (files && files.length > 0) {
@@ -240,7 +232,8 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
             "application/vnd.ms-excel",
             "text/csv",
             "text/comma-separated-values",
-            "application/csv"
+            "application/csv",
+            "application/pdf"
           ],
           multiple: true,
           copyToCacheDirectory: true
@@ -309,20 +302,28 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
         formData.append("auto_commit", "true");
         formData.append("clear_previous", "false");
 
+        let mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        const lowerName = item.name.toLowerCase();
+        if (lowerName.endsWith(".pdf")) {
+          mimeType = "application/pdf";
+        } else if (lowerName.endsWith(".csv")) {
+          mimeType = "text/csv";
+        } else if (lowerName.endsWith(".xls")) {
+          mimeType = "application/vnd.ms-excel";
+        }
+
         if (Platform.OS === "web" && item.fileObj) {
           formData.append("file", item.fileObj);
         } else {
           formData.append("file", {
             uri: item.uri || "",
             name: item.name,
-            type: item.name.toLowerCase().endsWith(".csv")
-              ? "text/csv"
-              : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            type: mimeType
           } as any);
         }
 
         try {
-          await adminAPI.uploadExcel(formData);
+          await adminAPI.uploadFile(formData);
           successCount++;
         } catch (err: any) {
           const detail = err?.message || err?.response?.data?.detail || "अपलोड त्रुटी";
@@ -466,10 +467,10 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
             <Ionicons name="folder-open-outline" size={36} color={isDark ? theme.colors.primaryLight : "#4F46E5"} />
           </View>
           <Text style={[styles.dropzoneTitle, { color: theme.colors.textPrimary }]}>
-            एक्सेल किंवा सीएसव्ही फाईल्स निवडा
+            एक्सेल, सीएसव्ही किंवा पीडीएफ फाईल्स निवडा
           </Text>
           <Text style={[styles.dropzoneSub, { color: theme.colors.textMuted }]}>
-            फक्त मतदार यादी .xlsx, .xls किंवा .csv फाईल्स स्वीकारल्या जातात (पीडीएफ फाईल्स समर्थित नाहीत)
+            मतदार यादी .xlsx, .xls, .csv किंवा .pdf फाईल्स स्वीकारल्या जातात (एकाधिक फाईल्स निवडा)
           </Text>
           <View style={styles.browseBtn}>
             <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
@@ -491,7 +492,7 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
 
             {fileQueue.map((file) => (
               <View key={file.id} style={[styles.fileItemCard, { backgroundColor: isDark ? theme.colors.surface : "#FFFFFF", borderColor: theme.colors.border, borderWidth: 1 }]}>
-                <View style={[styles.fileTypeBadge, { backgroundColor: file.type === "CSV" ? "#3B82F6" : "#10B981" }]}>
+                <View style={[styles.fileTypeBadge, { backgroundColor: file.type === "PDF" ? "#EF4444" : (file.type === "CSV" ? "#3B82F6" : "#10B981") }]}>
                   <Text style={styles.fileTypeBadgeText}>{file.type}</Text>
                 </View>
 

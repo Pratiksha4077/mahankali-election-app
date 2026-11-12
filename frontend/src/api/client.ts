@@ -388,6 +388,71 @@ export const reportAPI = {
 let cachedDashboardStats: { data: DashboardStats; timestamp: number } | null = null;
 const DASHBOARD_CACHE_TTL = 5000; // 5 seconds
 
+export const uploadMultipartXHR = (
+  endpoint: string,
+  formData: FormData,
+  token?: string | null,
+  timeoutMs: number = 120000
+): Promise<any> => {
+  return new Promise((resolve, reject) => {
+    if (Platform.OS === "web") {
+      const headers: Record<string, string> = { Accept: "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: formData,
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            const text = await res.text();
+            let errJson: any;
+            try { errJson = JSON.parse(text); } catch {}
+            throw new Error(errJson?.detail || errJson?.message || `Upload failed (${res.status})`);
+          }
+          return res.json();
+        })
+        .then(resolve)
+        .catch(reject);
+      return;
+    }
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", endpoint);
+    xhr.timeout = timeoutMs;
+    xhr.setRequestHeader("Accept", "application/json");
+    if (token) {
+      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const json = JSON.parse(xhr.responseText);
+          resolve(json);
+        } catch {
+          resolve({ success: true, text: xhr.responseText });
+        }
+      } else {
+        let errJson: any;
+        try { errJson = JSON.parse(xhr.responseText); } catch {}
+        const msg = errJson?.detail || errJson?.message || `Upload failed (${xhr.status})`;
+        reject(new Error(msg));
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new Error("सर्व्हरशी संपर्क होऊ शकला नाही. कृपया बॅकएंड आणि इंटरनेट तपासा."));
+    };
+
+    xhr.ontimeout = () => {
+      reject(new Error("सर्व्हर प्रतिसाद वेळ संपला (Timeout: 120s)."));
+    };
+
+    xhr.send(formData);
+  });
+};
+
 export const adminAPI = {
   getDashboardStats: async (forceRefresh: boolean = false): Promise<DashboardStats> => {
     const now = Date.now();
@@ -516,10 +581,26 @@ export const adminAPI = {
   },
 
   uploadPdf: async (formData: FormData) => {
-    const res = await apiClient.post("/admin/import/pdf", formData, {
-      headers: { "Content-Type": "multipart/form-data" }
-    });
-    return res.data;
+    let token = authToken;
+    if (!token) {
+      try {
+        token = await appStorage.getItem("election_auth_token");
+      } catch {}
+    }
+    const baseUrl = getServerBaseUrl();
+    const endpoint = `${baseUrl}/admin/import/upload`;
+    return uploadMultipartXHR(endpoint, formData, token, 120000);
+  },
+  uploadFile: async (formData: FormData) => {
+    let token = authToken;
+    if (!token) {
+      try {
+        token = await appStorage.getItem("election_auth_token");
+      } catch {}
+    }
+    const baseUrl = getServerBaseUrl();
+    const endpoint = `${baseUrl}/admin/import/upload`;
+    return uploadMultipartXHR(endpoint, formData, token, 120000);
   },
 
   uploadExcel: async (formData: FormData) => {
@@ -529,41 +610,9 @@ export const adminAPI = {
         token = await appStorage.getItem("election_auth_token");
       } catch {}
     }
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-    };
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
     const baseUrl = getServerBaseUrl();
     const endpoint = `${baseUrl}/admin/import/excel`;
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000);
-
-    try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers,
-        body: formData,
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        const text = await res.text();
-        let errJson: any;
-        try { errJson = JSON.parse(text); } catch {}
-        throw new Error(errJson?.detail || errJson?.message || `Upload failed (${res.status})`);
-      }
-      return await res.json();
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (err.name === "AbortError") {
-        throw new Error("सर्व्हर प्रतिसाद वेळ संपला (Timeout: 120s). फाईल मोठी असू शकते किंवा इंटरनेट मंद आहे.");
-      }
-      throw err;
-    }
+    return uploadMultipartXHR(endpoint, formData, token, 120000);
   },
 
   clearAllVoters: async () => {

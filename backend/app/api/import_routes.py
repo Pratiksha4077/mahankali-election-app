@@ -148,12 +148,14 @@ async def clear_all_voters(
     return await safe_database_cleanup(req, admin)
 
 # ==============================================================================
-# FILE UPLOAD & PROCESSING (EXCEL / CSV)
+# FILE UPLOAD & PROCESSING (EXCEL / CSV / PDF)
 # ==============================================================================
 
 @router.post("/excel")
 @router.post("/upload")
-async def upload_and_process_excel(
+@router.post("/file")
+@router.post("/pdf")
+async def upload_and_process_file(
     file: UploadFile = File(...),
     village_id: Optional[str] = Form(None),
     clear_previous: Optional[Any] = Form(False),
@@ -161,16 +163,18 @@ async def upload_and_process_excel(
     admin: AuthUser = Depends(require_admin)
 ):
     """
-    Admin uploads Excel or CSV file.
+    Admin uploads Excel (.xlsx, .xls), CSV, or PDF file.
     - Saves original file to disk immediately with sanitized filename.
-    - Parses voter records and inserts directly into Supabase public.voters.
+    - Parses voter records (using ExcelReader for tabular files, or PDF text parser with OCR fallback for PDF).
+    - Deduplicates voters and inserts directly into Supabase public.voters.
     - Updates village statistics and logs import job in public.import_jobs.
+    - Backs up original file to Cloudinary with original filename in background.
     - Guaranteed synchronous completion: immediate stats visibility.
     """
     original_name = Path(file.filename).name if file.filename else "voter_list.xlsx"
     ext = Path(original_name).suffix.lower()
-    if ext not in [".xlsx", ".xls", ".csv"]:
-        raise HTTPException(status_code=400, detail="फक्त .xlsx, .xls किंवा .csv फाईल्स समर्थित आहेत.")
+    if ext not in [".xlsx", ".xls", ".csv", ".pdf"]:
+        raise HTTPException(status_code=400, detail="फक्त .xlsx, .xls, .csv किंवा .pdf फाईल्स समर्थित आहेत.")
 
     # Determine if clearing previous data was requested
     should_clear = False
@@ -196,7 +200,7 @@ async def upload_and_process_excel(
     target_village_id = village_id or SAKHARALE_VILLAGE_ID
 
     try:
-        import_res = SupabaseVoterImportService.import_excel_file(
+        import_res = SupabaseVoterImportService.import_voter_file(
             file_path=file_path,
             file_name=original_name,
             file_size=file_size,
@@ -207,12 +211,13 @@ async def upload_and_process_excel(
         CacheService.invalidate_voter_cache()
         CacheService.invalidate_all_reports()
 
+        action_name = "IMPORT_PDF" if ext == ".pdf" else "IMPORT_EXCEL"
         log_activity(
             user_id=admin.id,
-            action="IMPORT_EXCEL",
+            action=action_name,
             entity_type="IMPORT_JOB",
             entity_id=import_res["job_id"],
-            details=f"Imported {import_res.get('imported_records', 0)} voters from {original_name} into Supabase",
+            details=f"Imported {import_res.get('imported_records', 0)} voters from {original_name} into Supabase (Duplicates skipped: {import_res.get('duplicate_records', 0)})",
             username=admin.username
         )
 
@@ -223,23 +228,19 @@ async def upload_and_process_excel(
             "file_id": import_res.get("file_id"),
             "fileName": original_name,
             "file_name": original_name,
+            "file_type": ext.upper().replace(".", ""),
             "totalRecords": import_res.get("total_records", 0),
             "total_records": import_res.get("total_records", 0),
             "importedRecords": import_res.get("imported_records", 0),
             "imported_records": import_res.get("imported_records", 0),
+            "duplicateRecords": import_res.get("duplicate_records", 0),
+            "duplicate_records": import_res.get("duplicate_records", 0),
             "status": "COMPLETED",
             "message": f"'{original_name}' मधील {import_res.get('imported_records', 0)} मतदार यशस्वीरित्या Supabase मध्ये समाविष्ट करण्यात आले."
         }
     except Exception as e:
         logger.error(f"Import failed for {original_name}: {e}")
         raise HTTPException(status_code=500, detail=f"फाईल प्रक्रिया करताना त्रुटी: {str(e)}")
-
-@router.post("/pdf")
-async def upload_pdf_deprecated():
-    raise HTTPException(
-        status_code=400,
-        detail="PDF अपलोड बंद करण्यात आले आहे. कृपया एक्सेल (.xlsx) किंवा सीएसव्ही (.csv) फाईल वापरा."
-    )
 
 # ==============================================================================
 # IMPORT JOBS & HISTORY

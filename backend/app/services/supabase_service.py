@@ -2179,11 +2179,12 @@ class SupabaseVoterImportService:
         file_uuid: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Processes a single Excel or CSV file:
+        Processes a single Excel (.xlsx, .xls), CSV, or PDF file:
         1. Records/updates import job in Supabase `public.import_jobs` & `public.uploaded_files`.
-        2. Parses all voter records, deduplicates, and batch inserts directly into Supabase `public.voters`.
-        3. Updates voter counts for Sakharale in `public.villages`.
-        4. Uploads original file to Cloudinary in background thread.
+        2. Parses voter records (using ExcelReader for spreadsheets or digital text/OCR for PDFs).
+        3. Deduplicates against existing voter EPIC IDs and batch inserts directly into Supabase `public.voters`.
+        4. Updates voter counts for Sakharale in `public.villages`.
+        5. Uploads original file to Cloudinary preserving original filename in background thread.
         """
         import threading
         from pathlib import Path
@@ -2195,7 +2196,7 @@ class SupabaseVoterImportService:
         conn = get_supabase_conn()
         conn.autocommit = False
 
-        # 1. Extract booth number from filename (e.g. "61_voters.xlsx" -> "61")
+        # 1. Extract booth number from filename (e.g. "61_voters.xlsx" or "61.pdf" -> "61")
         stem = Path(file_name).stem
         booth_match = re.search(r'\d+', stem)
         booth_number = booth_match.group(0) if booth_match else "62"
@@ -2203,7 +2204,8 @@ class SupabaseVoterImportService:
         # 2. Use or create entry in public.uploaded_files & public.import_jobs
         f_uuid = file_uuid or str(uuid.uuid4())
         j_uuid = job_uuid or str(uuid.uuid4())
-        file_ext = Path(file_name).suffix.upper().replace(".", "") or "EXCEL"
+        ext_lower = Path(file_name).suffix.lower()
+        file_ext = ext_lower.upper().replace(".", "") or "EXCEL"
 
         with conn.cursor() as cur:
             if not file_uuid:
@@ -2234,8 +2236,36 @@ class SupabaseVoterImportService:
                 ))
         conn.commit()
 
-        # 3. Read tabular records
-        raw_rows = ExcelReader.read_file(Path(file_path))
+        # 3. Read tabular records from Excel, CSV, or PDF
+        raw_rows = []
+        if ext_lower == ".pdf":
+            from app.pdf_processing.extractor import extract_table_from_pdf
+            from app.pdf_processing.table_parser import parse_records
+            from app.pdf_processing.ocr import OCRProcessor, extract_using_ocr
+
+            logger.info(f"[PDF Import] Extracting text/tables from PDF '{file_name}'...")
+            try:
+                raw_pdf_data = extract_table_from_pdf(file_path)
+                raw_rows = parse_records(raw_pdf_data, file_path)
+            except Exception as e:
+                logger.warning(f"[PDF Import] Digital extraction error for '{file_name}': {e}")
+                raw_rows = []
+
+            # If digital extraction yielded 0 records (e.g. scanned PDF or unmapped Marathi fonts), activate OCR fallback
+            if not raw_rows:
+                logger.info(f"[PDF Import] Digital parsing yielded 0 records for '{file_name}'. Checking OCR fallback...")
+                try:
+                    if OCRProcessor.is_ocr_available():
+                        ocr_data = extract_using_ocr(file_path)
+                        raw_rows = parse_records(ocr_data, file_path)
+                        logger.info(f"[PDF Import] OCR fallback produced {len(raw_rows)} records for '{file_name}'.")
+                    else:
+                        logger.warning(f"[PDF Import] Tesseract OCR is not installed or configured on the server; OCR fallback skipped.")
+                except Exception as ocr_err:
+                    logger.warning(f"[PDF Import] OCR fallback error for '{file_name}': {ocr_err}")
+        else:
+            raw_rows = ExcelReader.read_file(Path(file_path))
+
         total_rows = len(raw_rows)
         mapper = FieldMapper()
 
@@ -2248,8 +2278,19 @@ class SupabaseVoterImportService:
             if c_row:
                 cat_id, cat_code, cat_color = c_row
 
+        # Fetch existing voter EPIC IDs for this village to prevent duplicate insertion
+        existing_epics = set()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT LOWER(epic_number) FROM public.voters WHERE village_id = %s AND epic_number IS NOT NULL AND is_deleted = false;",
+                (target_village_id,)
+            )
+            existing_epics = {str(r[0]).strip().lower() for r in cur.fetchall() if r[0]}
+
         voter_records = []
         valid_count = 0
+        duplicate_count = 0
+        seen_in_batch = set()
 
         for idx, row in enumerate(raw_rows):
             mapped = mapper.map_record(row)
@@ -2259,6 +2300,14 @@ class SupabaseVoterImportService:
 
             if not (epic_num or full_name_mr or full_name_en):
                 continue
+
+            # Deduplication: check against current batch and database
+            if epic_num:
+                epic_lower = epic_num.lower()
+                if epic_lower in seen_in_batch or epic_lower in existing_epics:
+                    duplicate_count += 1
+                    continue
+                seen_in_batch.add(epic_lower)
 
             valid_count += 1
             rec_id = str(uuid.uuid4())
@@ -2372,11 +2421,11 @@ class SupabaseVoterImportService:
 
             cur.execute("""
                 UPDATE public.import_jobs
-                SET total_records = %s, valid_records = %s, imported_records = %s,
+                SET total_records = %s, valid_records = %s, imported_records = %s, duplicate_records = %s,
                     progress = 100, status = 'completed', stage = 'Import completed successfully ✓',
                     updated_at = NOW()
                 WHERE id = %s;
-            """, (total_rows, valid_count, imported_count, j_uuid))
+            """, (total_rows, valid_count, imported_count, duplicate_count, j_uuid))
 
         conn.commit()
         conn.close()
@@ -2384,7 +2433,7 @@ class SupabaseVoterImportService:
         # Invalidate caches immediately so voters appear instantly in app
         SupabaseDashboardService.invalidate_cache()
         SupabaseVillageService.invalidate_cache()
-        logger.info(f"[SupabaseVoterImportService] Successfully imported {imported_count}/{total_rows} voters for file {file_name}")
+        logger.info(f"[SupabaseVoterImportService] Successfully imported {imported_count}/{total_rows} voters (duplicates skipped: {duplicate_count}) for file {file_name}")
 
         # 5. Non-blocking asynchronous Cloudinary backup in background
         def _bg_cloudinary_upload(f_path, f_name, f_id, j_id):
@@ -2424,5 +2473,9 @@ class SupabaseVoterImportService:
             "cloudinary_url": None,
             "total_records": total_rows,
             "imported_records": imported_count,
+            "duplicate_records": duplicate_count,
             "status": "COMPLETED"
         }
+
+    # Alias for general file import
+    import_voter_file = import_excel_file
