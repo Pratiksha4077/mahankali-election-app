@@ -6,7 +6,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
 import { adminAPI } from "../../api/client";
-import { theme as baseTheme } from "../../theme/theme";
+import { theme } from "../../theme/theme";
 import { useTheme } from "../../context/ThemeContext";
 
 export const UserDetailsScreen: React.FC<{ navigation: any; route: any }> = ({ navigation, route }) => {

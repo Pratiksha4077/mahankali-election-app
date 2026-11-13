@@ -245,8 +245,7 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
                 {/* Granular Device Permission Badges */}
                 {(() => {
                   const isLoc = item.permissions?.location ?? item.permissions_granted ?? false;
-                  const isCall = (item.permissions?.callHistory ?? item.permissions?.call_history ?? item.permissions?.phoneCall ?? item.permissions_granted) ?? false;
-                  const isSms = item.permissions?.sms ?? item.permissions_granted ?? false;
+                  const isCall = (item.permissions?.callHistory ?? item.permissions?.phoneCall ?? item.permissions?.call_history ?? item.permissions_granted) ?? false;
 
                   return (
                     <View style={{ flexDirection: "row", gap: 5, flexWrap: "wrap", alignItems: "center" }}>

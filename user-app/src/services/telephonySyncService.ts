@@ -124,5 +124,3 @@ export async function syncDeviceTelephonyLogs(): Promise<SyncTelephonyResult> {
     };
   }
 }
-  }
-}

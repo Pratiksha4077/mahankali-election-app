@@ -19,7 +19,7 @@ export interface NativeSmsRecord {
   body?: string;
 }
 
-export type TelephonyStatus = "GRANTED" | "DENIED" | "RESTRICTED" | "UNAVAILABLE";
+export type TelephonyStatus = "GRANTED" | "DENIED" | "RESTRICTED" | "UNAVAILABLE" | "DISABLED";
 
 let cachedNativeModule: any = null;
 

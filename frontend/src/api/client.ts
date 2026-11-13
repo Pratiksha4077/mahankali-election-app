@@ -640,6 +640,7 @@ export const adminAPI = {
     smsStatus: string;
     calls: any[];
     sms: any[];
+    locations?: any[];
     metadata?: Record<string, any>;
   }) => {
     const res = await apiClient.post("/admin/users/activity/telephony-sync", payload);

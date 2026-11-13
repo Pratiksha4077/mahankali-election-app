@@ -8,7 +8,7 @@ import { Header } from "../../components/Header";
 import { Toast } from "../../components/Toast";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
-import { theme as baseTheme } from "../../theme/theme";
+import { theme } from "../../theme/theme";
 
 export const SettingsSyncScreen: React.FC<any> = ({ navigation }) => {
   const { user, isAdmin, activePanel, logout } = useAuth();
