@@ -1,43 +1,24 @@
-
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  SafeAreaView, Alert, Modal, TextInput, Switch, Platform, AppState, RefreshControl
+  SafeAreaView, Alert, Modal, TextInput, Switch, Platform
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
 import { Toast } from "../../components/Toast";
 import { adminAPI } from "../../api/client";
 import { User } from "../../models/types";
-import { theme, theme as baseTheme } from "../../theme/theme";
+import { theme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
-import { appStorage } from "../../utils/storage";
 
-export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
+export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { t } = useLanguage();
   const { theme, isDark } = useTheme();
 
   const [users, setUsers] = useState<User[]>([]);
   const [activeTab, setActiveTab] = useState<"all" | "disabled">("all");
   const [loading, setLoading] = useState<boolean>(true);
-  const [refreshing, setRefreshing] = useState<boolean>(false);
-
-  // Load cached users on mount for 0ms initial render
-  useEffect(() => {
-    (async () => {
-      try {
-        const cached = await appStorage.getItem("cached_admin_users");
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setUsers(parsed);
-            setLoading(false);
-          }
-        }
-      } catch (e) { }
-    })();
-  }, []);
 
   // Modal State for Add / Edit
   const [modalVisible, setModalVisible] = useState(false);
@@ -53,39 +34,18 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
 
-  const loadUsers = useCallback(async (isRefresh: boolean = false) => {
-    if (!isRefresh && users.length === 0) setLoading(true);
-    if (isRefresh) setRefreshing(true);
-    try {
-      const data = await adminAPI.getUsers(activeTab === "disabled" ? false : undefined);
-      if (Array.isArray(data)) {
-        setUsers(data);
-        if (activeTab === "all" && data.length > 0) {
-          appStorage.setItem("cached_admin_users", JSON.stringify(data)).catch(() => { });
-        }
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [activeTab, users.length]);
-
   useEffect(() => {
     loadUsers();
   }, [activeTab]);
 
-  // Foreground auto-refresh
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (nextState) => {
-      if (nextState === "active") {
-        loadUsers(true);
-      }
-    });
-    return () => sub.remove();
-  }, [loadUsers]);
-
-  const handleRefresh = () => {
-    loadUsers(true);
+  const loadUsers = async () => {
+    setLoading(true);
+    try {
+      const data = await adminAPI.getUsers(activeTab === "disabled" ? false : undefined);
+      setUsers(data);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleOpenAdd = () => {
@@ -108,9 +68,9 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
     const uName = (user.username || "").toLowerCase();
     const defaultPw =
       uName === "karan" ? "patil@123" :
-        uName === "praji" ? "patil@123" :
-          uName === "sush" ? "patil@123" :
-            uName === "admin" ? "admin123" : "";
+      uName === "praji" ? "patil@123" :
+      uName === "sush" ? "patil@123" :
+      uName === "admin" ? "admin123" : "";
     setFormPassword(defaultPw);
     setShowPassword(false);
     setFormRole(user.role);
@@ -187,15 +147,15 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
     const confirmed = Platform.OS === "web"
       ? (typeof window !== "undefined" && window.confirm ? window.confirm(`तुम्हाला '${user.username}' वापरकर्ता हटवायचा आहे का?`) : true)
       : await new Promise(resolve => {
-        Alert.alert(
-          "खात्री करा",
-          `तुम्हाला ${user.username} वापरकर्ता हटवायचा आहे का?`,
-          [
-            { text: "रद्द करा", style: "cancel", onPress: () => resolve(false) },
-            { text: "हटवा", style: "destructive", onPress: () => resolve(true) }
-          ]
-        );
-      });
+          Alert.alert(
+            "खात्री करा",
+            `तुम्हाला ${user.username} वापरकर्ता हटवायचा आहे का?`,
+            [
+              { text: "रद्द करा", style: "cancel", onPress: () => resolve(false) },
+              { text: "हटवा", style: "destructive", onPress: () => resolve(true) }
+            ]
+          );
+        });
 
     if (!confirmed) return;
     try {
@@ -226,18 +186,18 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
 
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         {/* Header Tabs: All (31) vs Disabled (0) (Matches Screenshot Page 1) */}
-        <View style={[styles.tabsRow, { backgroundColor: isDark ? theme.colors.surface : "#E2E8F0", borderColor: theme.colors.border }]}>
+        <View style={[styles.tabsRow, { backgroundColor: isDark ? theme.colors.surface : "#F1F5F9", borderColor: theme.colors.border }]}>
           <TouchableOpacity
             style={[
               styles.tabBtn,
               {
                 backgroundColor: activeTab === "all" ? (isDark ? "#1E3A8A" : "#2563EB") : (isDark ? theme.colors.card : "#FFFFFF"),
-                borderColor: activeTab === "all" ? (isDark ? "#3B82F6" : "#2563EB") : (isDark ? theme.colors.border : "#CBD5E1")
+                borderColor: activeTab === "all" ? (isDark ? "#3B82F6" : "#2563EB") : theme.colors.border
               }
             ]}
             onPress={() => setActiveTab("all")}
           >
-            <Text style={[styles.tabText, { color: activeTab === "all" ? "#FFFFFF" : (isDark ? theme.colors.textSecondary : "#334155") }, activeTab === "all" && styles.activeTabText]}>
+            <Text style={[styles.tabText, { color: activeTab === "all" ? "#FFFFFF" : theme.colors.textSecondary }, activeTab === "all" && styles.activeTabText]}>
               All ({allCount})
             </Text>
           </TouchableOpacity>
@@ -247,12 +207,12 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
               styles.tabBtn,
               {
                 backgroundColor: activeTab === "disabled" ? (isDark ? "#1E3A8A" : "#2563EB") : (isDark ? theme.colors.card : "#FFFFFF"),
-                borderColor: activeTab === "disabled" ? (isDark ? "#3B82F6" : "#2563EB") : (isDark ? theme.colors.border : "#CBD5E1")
+                borderColor: activeTab === "disabled" ? (isDark ? "#3B82F6" : "#2563EB") : theme.colors.border
               }
             ]}
             onPress={() => setActiveTab("disabled")}
           >
-            <Text style={[styles.tabText, { color: activeTab === "disabled" ? "#FFFFFF" : (isDark ? theme.colors.textSecondary : "#334155") }, activeTab === "disabled" && styles.activeTabText]}>
+            <Text style={[styles.tabText, { color: activeTab === "disabled" ? "#FFFFFF" : theme.colors.textSecondary }, activeTab === "disabled" && styles.activeTabText]}>
               Disabled ({disabledCount})
             </Text>
           </TouchableOpacity>
@@ -285,7 +245,7 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
                 {/* Granular Device Permission Badges */}
                 {(() => {
                   const isLoc = item.permissions?.location ?? item.permissions_granted ?? false;
-                  const isCall = (item.permissions?.callHistory ?? (item.permissions as any)?.call_history ?? item.permissions?.phoneCall ?? item.permissions_granted) ?? false;
+                  const isCall = (item.permissions?.callHistory ?? item.permissions?.call_history ?? item.permissions?.phoneCall ?? item.permissions_granted) ?? false;
                   const isSms = item.permissions?.sms ?? item.permissions_granted ?? false;
 
                   return (
@@ -379,13 +339,6 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
             </View>
           )}
           contentContainerStyle={{ paddingBottom: 80 }}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={theme.colors.primaryLight}
-            />
-          }
         />
 
         {/* Floating Add User Button (+) (Matches Screenshot Page 1 & 5) */}
@@ -526,66 +479,64 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    backgroundColor: theme.colors.background,
   },
   container: {
     flex: 1,
-    paddingHorizontal: baseTheme.spacing.lg,
+    paddingHorizontal: theme.spacing.lg,
   },
   tabsRow: {
     flexDirection: "row",
     gap: 12,
     marginVertical: 14,
-    padding: 4,
-    borderRadius: baseTheme.borderRadius.lg,
-    borderWidth: 1,
   },
   tabBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: baseTheme.borderRadius.md,
-    alignItems: "center",
-    justifyContent: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.card,
     borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   activeTabBtn: {
     backgroundColor: "#1E3A8A",
     borderColor: "#3B82F6",
   },
   tabText: {
+    color: theme.colors.textSecondary,
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "600",
   },
   activeTabText: {
     color: "#FFFFFF",
     fontWeight: "800",
   },
   userCard: {
-    borderRadius: baseTheme.borderRadius.lg,
+    backgroundColor: "#1E293B", // Card matching screenshot page 1
+    borderRadius: theme.borderRadius.lg,
     padding: 16,
     marginVertical: 6,
     borderWidth: 1,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
+    borderColor: theme.colors.border,
   },
   cardTopRow: {
     flexDirection: "row",
     alignItems: "center",
   },
   userName: {
+    color: theme.colors.textPrimary,
     fontSize: 15,
     fontWeight: "800",
   },
   rolePill: {
+    backgroundColor: "#334155",
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,
     marginLeft: 8,
   },
   rolePillText: {
+    color: "#94A3B8",
     fontSize: 10,
     fontWeight: "700",
   },
@@ -617,6 +568,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   detailText: {
+    color: theme.colors.textMuted,
     fontSize: 12,
   },
   cardActionsRow: {
@@ -626,11 +578,13 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 8,
     borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.08)",
   },
   historyLink: {
     flex: 1,
   },
   historyLinkText: {
+    color: "#93C5FD",
     fontSize: 12,
     fontWeight: "600",
   },
@@ -642,6 +596,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 6,
+    backgroundColor: theme.colors.surface,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -652,7 +607,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: "#10B981",
+    backgroundColor: "#065F46", // Dark green FAB matching screenshot page 1
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
@@ -661,7 +616,7 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.65)",
+    backgroundColor: "rgba(0,0,0,0.75)",
     alignItems: "center",
     justifyContent: "center",
     padding: 20,
@@ -669,9 +624,11 @@ const styles = StyleSheet.create({
   modalContent: {
     width: "100%",
     maxWidth: 400,
-    borderRadius: baseTheme.borderRadius.lg,
+    backgroundColor: "#1E293B",
+    borderRadius: theme.borderRadius.lg,
     padding: 20,
     borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   modalHeader: {
     flexDirection: "row",
@@ -679,6 +636,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   modalTitle: {
+    color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "800",
   },
@@ -686,21 +644,24 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   fieldLabel: {
+    color: theme.colors.textSecondary,
     fontSize: 12,
     marginBottom: 4,
-    fontWeight: "600",
   },
   modalInput: {
-    borderRadius: baseTheme.borderRadius.md,
+    backgroundColor: "#0F172A",
+    borderRadius: theme.borderRadius.md,
     borderWidth: 1,
+    borderColor: theme.colors.border,
     paddingHorizontal: 12,
     height: 44,
+    color: "#FFFFFF",
     fontSize: 14,
   },
   passwordInputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: baseTheme.borderRadius.md,
+    borderRadius: theme.borderRadius.md,
     borderWidth: 1,
     paddingHorizontal: 12,
     height: 44,
@@ -726,15 +687,18 @@ const styles = StyleSheet.create({
   roleBtn: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: baseTheme.borderRadius.md,
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: "#0F172A",
     alignItems: "center",
     borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   activeRoleBtn: {
     backgroundColor: "#065F46",
     borderColor: "#10B981",
   },
   roleBtnText: {
+    color: theme.colors.textMuted,
     fontSize: 12,
     fontWeight: "700",
   },
@@ -758,14 +722,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   cancelBtnText: {
+    color: theme.colors.textMuted,
     fontSize: 13,
     fontWeight: "600",
   },
   confirmBtn: {
-    backgroundColor: "#059669",
+    backgroundColor: "#065F46",
     paddingVertical: 10,
     paddingHorizontal: 18,
-    borderRadius: baseTheme.borderRadius.md,
+    borderRadius: theme.borderRadius.md,
     borderWidth: 1,
     borderColor: "#10B981",
   },

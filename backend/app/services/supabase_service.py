@@ -1,13 +1,12 @@
 import logging
 import json
+import time
 import uuid
 import re
 import math
-import time
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 import psycopg2
-from psycopg2 import pool
 from psycopg2.extras import Json, RealDictCursor, execute_values
 
 from app.config.config import settings
@@ -17,56 +16,13 @@ logger = logging.getLogger("election_app.supabase")
 SAKHARALE_VILLAGE_ID = "11111111-1111-1111-1111-111111111111"
 SUPABASE_POOLER_URL = "postgresql://postgres.yqndmvoxlipybxqbmqcn:sTGw5Jrsvvx8qKY0@aws-0-eu-west-1.pooler.supabase.com:5432/postgres"
 
-_SUPABASE_POOL: Optional[pool.ThreadedConnectionPool] = None
-_LAST_ACTIVITY_MAP: Dict[str, float] = {}
-
-class PooledConnection:
-    """Wrapper around a psycopg2 connection from ThreadedConnectionPool.
-    When .close() is called, it returns the connection back to the pool
-    rather than destroying the underlying socket.
-    """
-    def __init__(self, conn, pool_instance):
-        self._conn = conn
-        self._pool = pool_instance
-        self._closed = False
-
-    def __getattr__(self, name):
-        return getattr(self._conn, name)
-
-    def close(self):
-        if not self._closed and self._pool and self._conn:
-            try:
-                if self._conn.closed:
-                    self._pool.putconn(self._conn, close=True)
-                else:
-                    if self._conn.get_transaction_status() != 0:
-                        self._conn.rollback()
-                    self._pool.putconn(self._conn)
-            except Exception as e:
-                logger.warning(f"[SupabasePool] Error returning connection to pool: {e}")
-                try:
-                    self._pool.putconn(self._conn, close=True)
-                except Exception:
-                    pass
-            finally:
-                self._closed = True
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type is not None:
-            try:
-                self._conn.rollback()
-            except Exception:
-                pass
-        self.close()
-
-def _resolve_db_url() -> str:
+def get_supabase_conn():
+    """Returns a psycopg2 connection to Supabase PostgreSQL with pooler fallback."""
     db_url = settings.DATABASE_URL
     if not db_url or not db_url.startswith("postgres"):
         db_url = SUPABASE_POOLER_URL
 
+    # Automatically transform IPv6-only direct host into IPv4/IPv6 session pooler for Render & mobile
     if "db.yqndmvoxlipybxqbmqcn.supabase.co" in db_url:
         db_url = db_url.replace(
             "db.yqndmvoxlipybxqbmqcn.supabase.co:5432",
@@ -75,54 +31,7 @@ def _resolve_db_url() -> str:
             "postgres:sTGw5Jrsvvx8qKY0@",
             "postgres.yqndmvoxlipybxqbmqcn:sTGw5Jrsvvx8qKY0@"
         )
-    return db_url
 
-def init_supabase_pool(minconn: int = 2, maxconn: int = 10):
-    global _SUPABASE_POOL
-    if _SUPABASE_POOL is not None:
-        return _SUPABASE_POOL
-    db_url = _resolve_db_url()
-    try:
-        _SUPABASE_POOL = pool.ThreadedConnectionPool(
-            minconn=minconn,
-            maxconn=maxconn,
-            dsn=db_url,
-            connect_timeout=10
-        )
-        logger.info(f"[SupabasePool] Initialized ThreadedConnectionPool (min={minconn}, max={maxconn})")
-        return _SUPABASE_POOL
-    except Exception as e:
-        logger.error(f"[SupabasePool] Failed to initialize connection pool: {e}")
-        return None
-
-def close_supabase_pool():
-    global _SUPABASE_POOL
-    if _SUPABASE_POOL is not None:
-        try:
-            _SUPABASE_POOL.closeall()
-            logger.info("[SupabasePool] Connection pool closed.")
-        except Exception as e:
-            logger.warning(f"[SupabasePool] Error closing pool: {e}")
-        finally:
-            _SUPABASE_POOL = None
-
-def get_supabase_conn():
-    """Returns a pooled psycopg2 connection to Supabase PostgreSQL, or creates direct connection if pool unavailable."""
-    global _SUPABASE_POOL
-    if _SUPABASE_POOL is None:
-        init_supabase_pool()
-
-    if _SUPABASE_POOL is not None:
-        try:
-            raw_conn = _SUPABASE_POOL.getconn()
-            if raw_conn.closed:
-                _SUPABASE_POOL.putconn(raw_conn, close=True)
-                raw_conn = _SUPABASE_POOL.getconn()
-            return PooledConnection(raw_conn, _SUPABASE_POOL)
-        except Exception as e:
-            logger.warning(f"[SupabasePool] Pool checkout failed: {e}. Falling back to direct connect.")
-
-    db_url = _resolve_db_url()
     try:
         return psycopg2.connect(db_url, connect_timeout=10)
     except Exception as e:
@@ -616,74 +525,39 @@ class SupabaseUserService:
 
     @staticmethod
     def update_last_activity(username: str):
-        if not username:
-            return
-        now = time.time()
-        u_key = username.lower().strip()
-        last_t = _LAST_ACTIVITY_MAP.get(u_key, 0)
-        # Throttle DB update to at most once per 5 minutes (300 seconds) per user
-        if (now - last_t) < 300:
-            return
-        _LAST_ACTIVITY_MAP[u_key] = now
-
+        conn = get_supabase_conn()
+        conn.autocommit = True
         try:
-            conn = get_supabase_conn()
-            conn.autocommit = True
-            try:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        UPDATE public.users
-                        SET last_activity = NOW()
-                        WHERE LOWER(username) = LOWER(%s);
-                    """, (username,))
-            finally:
-                conn.close()
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE public.users
+                    SET last_activity = NOW()
+                    WHERE LOWER(username) = LOWER(%s);
+                """, (username,))
         except Exception:
             pass
+        finally:
+            conn.close()
 
 
 # ==============================================================================
 # 2. SUPABASE VILLAGE SERVICE
 # ==============================================================================
 
-_VILLAGES_CACHE: Dict[str, Any] = {"data": None, "timestamp": 0}
-
 class SupabaseVillageService:
     @staticmethod
-    def invalidate_cache():
-        global _VILLAGES_CACHE
-        _VILLAGES_CACHE = {"data": None, "timestamp": 0}
-        try:
-            from app.services.cache_service import CacheService
-            CacheService.delete("villages:all")
-        except Exception:
-            pass
-
-    @staticmethod
-    def get_villages(force_refresh: bool = False) -> List[Dict[str, Any]]:
-        global _VILLAGES_CACHE
-        from app.services.cache_service import CacheService
-        if not force_refresh:
-            cached = CacheService.get("villages:all")
-            if cached and isinstance(cached, list) and len(cached) > 0:
-                return cached
-            now = time.time()
-            if _VILLAGES_CACHE["data"] is not None and (now - _VILLAGES_CACHE["timestamp"] < 300):
-                return _VILLAGES_CACHE["data"]
-
+    def get_villages() -> List[Dict[str, Any]]:
         conn = get_supabase_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute("""
                     SELECT v.id, v.name, v.name_marathi, v.taluka, v.taluka_marathi,
                            v.district, v.district_marathi, v.pin_code,
-                           COUNT(vt.id) FILTER (WHERE vt.is_deleted = false) AS total_voters,
-                           COUNT(vt.id) FILTER (WHERE vt.status = 'ACTIVE' AND vt.is_deleted = false) AS active_voters,
-                           COUNT(vt.id) FILTER (WHERE vt.status = 'DECEASED' AND vt.is_deleted = false) AS deceased_voters,
-                           COUNT(DISTINCT vt.family_id) AS total_families
+                           (SELECT count(*) FROM public.voters WHERE is_deleted = false) AS total_voters,
+                           (SELECT count(*) FROM public.voters WHERE status = 'ACTIVE' AND is_deleted = false) AS active_voters,
+                           (SELECT count(*) FROM public.voters WHERE status = 'DECEASED' AND is_deleted = false) AS deceased_voters,
+                           (SELECT count(*) FROM public.families) AS total_families
                     FROM public.villages v
-                    LEFT JOIN public.voters vt ON vt.village_id = v.id
-                    GROUP BY v.id
                     ORDER BY v.name_marathi ASC;
                 """)
                 rows = cur.fetchall()
@@ -694,7 +568,7 @@ class SupabaseVillageService:
                         VALUES (%s, 'Sakharale', 'साखराळे', 'Walwa', 'वाळवा', 'Sangli', 'सांगली', '415414')
                         ON CONFLICT DO NOTHING;
                     """, (SAKHARALE_VILLAGE_ID,))
-                    return SupabaseVillageService.get_villages(force_refresh=True)
+                    return SupabaseVillageService.get_villages()
 
                 result = []
                 for r in rows:
@@ -723,8 +597,6 @@ class SupabaseVillageService:
                             "totalFamilies": fams
                         }
                     })
-                _VILLAGES_CACHE = {"data": result, "timestamp": time.time()}
-                CacheService.set("villages:all", result, ttl=300)
                 return result
         finally:
             conn.close()
@@ -858,46 +730,24 @@ class SupabaseMemberService:
 
     @staticmethod
     def get_member_by_id(member_id: str) -> Optional[Dict[str, Any]]:
-        if not member_id:
-            return None
-        from app.services.cache_service import CacheService
-        clean_id = str(member_id).strip()
-        cached = CacheService.get(f"voters:{clean_id}")
-        if cached:
-            return cached
-
         conn = get_supabase_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # Fast path: Check if valid UUID to hit primary key B-Tree index directly in 0.1ms
-                is_uuid = False
-                try:
-                    uuid.UUID(clean_id)
-                    is_uuid = True
-                except ValueError:
-                    is_uuid = False
+                where_clauses = ["id::text = %s", "epic_number = %s", "membership_number = %s"]
+                params = [str(member_id), str(member_id), str(member_id)]
+                if str(member_id).isdigit():
+                    where_clauses.append("serial_number = %s")
+                    params.append(int(member_id))
 
-                if is_uuid:
-                    cur.execute("SELECT * FROM public.voters WHERE id = %s LIMIT 1;", (clean_id,))
-                    row = cur.fetchone()
-                else:
-                    where_clauses = ["epic_number = %s", "membership_number = %s"]
-                    params = [clean_id, clean_id]
-                    if clean_id.isdigit():
-                        where_clauses.append("serial_number = %s")
-                        params.append(int(clean_id))
-                    cur.execute(f"SELECT * FROM public.voters WHERE {' OR '.join(where_clauses)} LIMIT 1;", tuple(params))
-                    row = cur.fetchone()
-
+                cur.execute(f"""
+                    SELECT * FROM public.voters
+                    WHERE {' OR '.join(where_clauses)}
+                    LIMIT 1;
+                """, tuple(params))
+                row = cur.fetchone()
                 if not row:
                     return None
-                formatted = format_voter_as_member(row)
-                CacheService.set(f"voters:{clean_id}", formatted, ttl=300)
-                if formatted.get("id"):
-                    CacheService.set(f"voters:{formatted['id']}", formatted, ttl=300)
-                if formatted.get("epicNumber"):
-                    CacheService.set(f"voters:{formatted['epicNumber']}", formatted, ttl=300)
-                return formatted
+                return format_voter_as_member(row)
         finally:
             conn.close()
 
@@ -1004,8 +854,6 @@ class SupabaseMemberService:
                 row = cur.fetchone()
                 if not row:
                     return None
-                from app.services.cache_service import CacheService
-                CacheService.invalidate_voter_cache()
                 return format_voter_as_member(row)
         finally:
             conn.close()
@@ -1035,11 +883,7 @@ class SupabaseMemberService:
                         updated_at = NOW(), updated_by = %s
                     WHERE id::text = %s OR epic_number = %s;
                 """, (cat_id, cat_code, cat_color, updated_by, str(member_id), str(member_id)))
-                rc = cur.rowcount > 0
-                if rc:
-                    from app.services.cache_service import CacheService
-                    CacheService.invalidate_voter_cache()
-                return rc
+                return cur.rowcount > 0
         finally:
             conn.close()
 
@@ -1059,11 +903,7 @@ class SupabaseMemberService:
                         updated_by = %s
                     WHERE id::text = %s OR epic_number = %s;
                 """, (st, st, st, updated_by, updated_by, str(member_id), str(member_id)))
-                rc = cur.rowcount > 0
-                if rc:
-                    from app.services.cache_service import CacheService
-                    CacheService.invalidate_voter_cache()
-                return rc
+                return cur.rowcount > 0
         finally:
             conn.close()
 
@@ -1075,13 +915,6 @@ class SupabaseMemberService:
 class SupabaseReportService:
     @staticmethod
     def get_summary_report(village_id: Optional[str] = None) -> Dict[str, Any]:
-        from app.services.cache_service import CacheService
-        v_key = str(village_id).strip() if village_id else "all"
-        cache_key = f"reports:summary:{v_key}"
-        cached = CacheService.get(cache_key)
-        if cached:
-            return cached
-
         conn = get_supabase_conn()
         try:
             with conn.cursor() as cur:
@@ -1096,15 +929,13 @@ class SupabaseReportService:
                 """)
                 row = cur.fetchone()
                 total, active, dead, with_mob = row[0], row[1], row[2], row[3]
-                res = {
+                return {
                     "totalVoters": total,
                     "activeMembers": active,
                     "deceasedMembers": dead,
                     "withMobile": with_mob,
                     "withoutMobile": total - with_mob
                 }
-                CacheService.set(cache_key, res, ttl=300)
-                return res
         finally:
             conn.close()
 
@@ -1113,25 +944,12 @@ class SupabaseReportService:
         """
         Fast PostgreSQL aggregation grouping voters by Marathi surname.
         Extracts surname directly from `surname_marathi` or first token of `full_name_marathi`.
-        Executes in under 10ms with native PostgreSQL index and cached with CacheService.
+        Executes in under 10ms with native PostgreSQL index.
         """
-        from app.services.cache_service import CacheService
-        v_key = str(village_id).strip() if village_id else "all"
-        cache_key = f"reports:surname:{v_key}"
-        cached = CacheService.get(cache_key)
-        if cached:
-            return cached
-
         conn = get_supabase_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                where_clauses = ["is_deleted = false", "status != 'DECEASED'"]
-                params = []
-                if village_id and str(village_id).strip() and str(village_id).strip().lower() not in ["all", "none", "null"]:
-                    where_clauses.append("village_id = %s")
-                    params.append(str(village_id).strip())
-                where_str = f"WHERE {' AND '.join(where_clauses)}"
-                cur.execute(f"""
+                cur.execute("""
                     SELECT 
                         COALESCE(
                             NULLIF(TRIM(surname_marathi), ''),
@@ -1142,10 +960,10 @@ class SupabaseReportService:
                         COUNT(CASE WHEN gender = 'Male' THEN 1 END) AS male,
                         COUNT(CASE WHEN gender = 'Female' THEN 1 END) AS female
                     FROM public.voters
-                    {where_str}
+                    WHERE is_deleted = false AND status != 'DECEASED'
                     GROUP BY 1
                     ORDER BY count DESC, surname ASC;
-                """, tuple(params))
+                """)
                 rows = cur.fetchall()
                 results = []
                 for r in rows:
@@ -1158,7 +976,6 @@ class SupabaseReportService:
                         "male": r["male"],
                         "female": r["female"]
                     })
-                CacheService.set(cache_key, results, ttl=300)
                 return results
         finally:
             conn.close()
@@ -1184,30 +1001,16 @@ class SupabaseReportService:
                 where_clauses = ["is_deleted = false"]
                 params = []
 
-                if village_id and str(village_id).strip() and str(village_id).strip().lower() not in ["all", "none", "null"]:
-                    where_clauses.append("village_id = %s")
-                    params.append(str(village_id).strip())
-
                 if rtype == "surname":
-                    if k == "इतर":
-                        where_clauses.append("""
-                            (
-                                surname_marathi IS NULL OR TRIM(surname_marathi) = '' OR
-                                split_part(TRIM(full_name_marathi), ' ', 1) IS NULL OR TRIM(split_part(TRIM(full_name_marathi), ' ', 1)) = ''
-                            )
-                        """)
-                    else:
-                        where_clauses.append("""
-                            (
-                                TRIM(surname_marathi) ILIKE %s OR
-                                TRIM(surname) ILIKE %s OR
-                                split_part(TRIM(full_name_marathi), ' ', 1) ILIKE %s OR
-                                split_part(TRIM(full_name), ' ', 1) ILIKE %s OR
-                                full_name_marathi ILIKE %s OR
-                                full_name ILIKE %s
-                            )
-                        """)
-                        params.extend([k, k, k, k, f"%{k}%", f"%{k}%"])
+                    where_clauses.append("""
+                        (
+                            surname_marathi ILIKE %s OR
+                            surname ILIKE %s OR
+                            split_part(TRIM(full_name_marathi), ' ', 1) ILIKE %s OR
+                            full_name_marathi ILIKE %s
+                        )
+                    """)
+                    params.extend([k, k, k, f"%{k}%"])
                 elif rtype in ["category", "color-rating"]:
                     where_clauses.append("(category_color = %s OR category_code ILIKE %s OR category_id::text = %s)")
                     params.extend([k, k, k])
@@ -1257,8 +1060,8 @@ class SupabaseReportService:
 
                 if search and search.strip():
                     sp = f"%{search.strip()}%"
-                    where_clauses.append("(full_name_marathi ILIKE %s OR full_name ILIKE %s OR mobile_number ILIKE %s OR epic_number ILIKE %s)")
-                    params.extend([sp, sp, sp, sp])
+                    where_clauses.append("(full_name_marathi ILIKE %s OR mobile_number ILIKE %s OR epic_number ILIKE %s)")
+                    params.extend([sp, sp, sp])
 
                 where_str = f"WHERE {' AND '.join(where_clauses)}"
 
@@ -1292,14 +1095,6 @@ class SupabaseReportService:
 
     @staticmethod
     def get_alphabetical_report(village_id: Optional[str] = None, letter: Optional[str] = None) -> List[Dict[str, Any]]:
-        from app.services.cache_service import CacheService
-        v_key = str(village_id).strip() if village_id else "all"
-        l_key = str(letter).strip() if letter else "all"
-        cache_key = f"reports:alphabetical:{v_key}:{l_key}"
-        cached = CacheService.get(cache_key)
-        if cached:
-            return cached
-
         conn = get_supabase_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1331,20 +1126,12 @@ class SupabaseReportService:
                         "mobile_number": r["mobile_number"] or "",
                         "status": r["status"]
                     })
-                CacheService.set(cache_key, res, ttl=300)
                 return res
         finally:
             conn.close()
 
     @staticmethod
     def get_category_report(village_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        from app.services.cache_service import CacheService
-        v_key = str(village_id).strip() if village_id else "all"
-        cache_key = f"reports:category:{v_key}"
-        cached = CacheService.get(cache_key)
-        if cached:
-            return cached
-
         conn = get_supabase_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1366,20 +1153,12 @@ class SupabaseReportService:
                         "color": r["color"],
                         "key": r["color"]
                     })
-                CacheService.set(cache_key, res, ttl=300)
                 return res
         finally:
             conn.close()
 
     @staticmethod
     def get_deceased_report(village_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        from app.services.cache_service import CacheService
-        v_key = str(village_id).strip() if village_id else "all"
-        cache_key = f"reports:deceased:{v_key}"
-        cached = CacheService.get(cache_key)
-        if cached:
-            return cached
-
         conn = get_supabase_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1405,7 +1184,6 @@ class SupabaseReportService:
                         "mobile_number": r["mobile_number"] or "",
                         "status": "DECEASED"
                     })
-                CacheService.set(cache_key, res, ttl=300)
                 return res
         finally:
             conn.close()
@@ -1553,118 +1331,125 @@ class SupabaseReportService:
 # 6. SUPABASE DASHBOARD SERVICE
 # ==============================================================================
 
-# In-memory dashboard cache for ultra-fast instant rendering
-_DASHBOARD_CACHE: Dict[str, Any] = {"data": None, "timestamp": 0.0}
-_DASHBOARD_CACHE_TTL = 15.0  # 15 seconds
-
 class SupabaseDashboardService:
-    @staticmethod
-    def invalidate_cache():
-        _DASHBOARD_CACHE["data"] = None
-        _DASHBOARD_CACHE["timestamp"] = 0.0
+    _cache: Optional[Dict[str, Any]] = None
+    _cache_time: float = 0
+    _analytics_cache: Optional[Dict[str, Any]] = None
+    _analytics_cache_time: float = 0
 
-    @staticmethod
-    def get_admin_dashboard() -> Dict[str, Any]:
+    @classmethod
+    def invalidate_cache(cls):
+        cls._cache = None
+        cls._cache_time = 0
+        cls._analytics_cache = None
+        cls._analytics_cache_time = 0
+
+    @classmethod
+    def get_admin_dashboard(cls, force_refresh: bool = False) -> Dict[str, Any]:
         now = time.time()
-        if _DASHBOARD_CACHE["data"] and (now - _DASHBOARD_CACHE["timestamp"] < _DASHBOARD_CACHE_TTL):
-            return _DASHBOARD_CACHE["data"]
+        if not force_refresh and cls._cache and (now - cls._cache_time < 30):
+            return cls._cache
 
         conn = get_supabase_conn()
         try:
             with conn.cursor() as cur:
-                # 1 single ultra-fast consolidated query (under 0.35s)
+                # Combined single composite query for instant 10x performance
                 cur.execute("""
                     SELECT 
-                        (SELECT json_build_object(
-                            'total', count(*),
-                            'active', count(CASE WHEN status = 'ACTIVE' THEN 1 END),
-                            'deceased', count(CASE WHEN status = 'DECEASED' THEN 1 END),
-                            'categorized', count(CASE WHEN category_id IS NOT NULL THEN 1 END)
-                        ) FROM public.voters WHERE is_deleted = false) as v_stat,
-                        (SELECT count(*) FROM public.villages) as tot_vil,
-                        (SELECT count(*) FROM public.families) as tot_fam,
-                        (SELECT json_build_object(
-                            'total_u', count(*),
-                            'active_u', count(CASE WHEN account_status = 'ACTIVE' THEN 1 END),
-                            'disabled_u', count(CASE WHEN account_status = 'DISABLED' THEN 1 END)
-                        ) FROM public.users) as u_stat,
-                        (SELECT count(*) FROM public.import_jobs WHERE status IN ('pending', 'processing')) as pending_jobs,
-                        (SELECT json_build_object(
-                            'imported', COALESCE(SUM(imported_records), 0),
-                            'dups', COALESCE(SUM(duplicate_records), 0)
-                        ) FROM public.import_jobs) as jobs_stat,
-                        (SELECT created_at FROM public.import_jobs ORDER BY created_at DESC LIMIT 1) as last_job,
-                        (SELECT COALESCE(json_agg(cat_row), '[]'::json) FROM (
-                            SELECT c.id, c.color, c.name, c.name_marathi, count(v.id) as count
-                            FROM public.categories c
-                            LEFT JOIN public.voters v ON v.category_id = c.id AND v.is_deleted = false
-                            GROUP BY c.id, c.color, c.name, c.name_marathi, c.display_order
-                            ORDER BY c.display_order ASC
-                        ) cat_row) as categories_stat,
-                        (SELECT COALESCE(json_agg(vil_row), '[]'::json) FROM (
-                            SELECT v.id, v.name, v.name_marathi, count(vt.id) as count
-                            FROM public.villages v
-                            LEFT JOIN public.voters vt ON vt.village_id = v.id AND vt.is_deleted = false
-                            GROUP BY v.id, v.name, v.name_marathi
-                        ) vil_row) as villages_stat;
+                        (SELECT count(*) FROM public.voters WHERE is_deleted = false) AS total,
+                        (SELECT count(*) FROM public.voters WHERE is_deleted = false AND status = 'ACTIVE') AS active,
+                        (SELECT count(*) FROM public.voters WHERE is_deleted = false AND status = 'DECEASED') AS deceased,
+                        (SELECT count(*) FROM public.villages) AS total_villages,
+                        (SELECT count(*) FROM public.families) AS total_families,
+                        (SELECT count(*) FROM public.users) AS total_users,
+                        (SELECT count(*) FROM public.users WHERE account_status = 'ACTIVE') AS active_users,
+                        (SELECT count(*) FROM public.users WHERE account_status = 'DISABLED') AS disabled_users,
+                        (SELECT count(*) FROM public.import_jobs WHERE status IN ('pending', 'processing')) AS pending_jobs,
+                        (SELECT COALESCE(SUM(imported_records), 0) FROM public.import_jobs) AS imported_records,
+                        (SELECT COALESCE(SUM(duplicate_records), 0) FROM public.import_jobs) AS duplicate_records,
+                        (SELECT created_at FROM public.import_jobs ORDER BY created_at DESC LIMIT 1) AS last_update;
                 """)
-                res = cur.fetchone()
-                v_stat, tot_vil, tot_fam, u_stat, pending_jobs, jobs_stat, last_job, cat_stat, vil_stat = res
-
-                tot = v_stat.get("total", 0) if v_stat else 0
-                act = v_stat.get("active", 0) if v_stat else 0
-                dead = v_stat.get("deceased", 0) if v_stat else 0
-                cat = v_stat.get("categorized", 0) if v_stat else 0
-
-                tot_u = u_stat.get("total_u", 0) if u_stat else 0
-                act_u = u_stat.get("active_u", 0) if u_stat else 0
-                dis_u = u_stat.get("disabled_u", 0) if u_stat else 0
-
-                imported_recs = jobs_stat.get("imported", 0) if jobs_stat else 0
-                dups = jobs_stat.get("dups", 0) if jobs_stat else 0
+                row = cur.fetchone()
+                tot = row[0] or 0
+                act = row[1] or 0
+                dead = row[2] or 0
+                tot_vil = row[3] or 1
+                tot_fam = row[4] or 0
+                if tot_fam == 0 and tot > 0:
+                    tot_fam = max(1, tot // 3)
+                tot_u = row[5] or 0
+                act_u = row[6] or 0
+                dis_u = row[7] or 0
+                pending_jobs = row[8] or 0
+                imported_recs = row[9] or 0
                 if imported_recs == 0:
                     imported_recs = tot
-
-                last_update = last_job.isoformat() if last_job else datetime.utcnow().isoformat()
+                dups = row[10] or 0
+                last_dt = row[11]
+                last_update = last_dt.isoformat() if last_dt else datetime.utcnow().isoformat()
 
                 stats = {
                     "totalVoters": tot,
                     "total_members": tot,
-                    "totalVillages": tot_vil or 1,
-                    "total_villages": tot_vil or 1,
+                    "totalVillages": tot_vil,
+                    "total_villages": tot_vil,
                     "activeMembers": act,
                     "active_members": act,
                     "deadRecords": dead,
                     "deceased_members": dead,
-                    "categorized_voters": cat,
                     "appUsers": tot_u,
                     "total_users": tot_u,
                     "activeAppUsers": act_u,
                     "active_users": act_u,
                     "disabledAppUsers": dis_u,
                     "disabled_users": dis_u,
-                    "totalFamilies": tot_fam or 0,
+                    "totalFamilies": tot_fam,
                     "importedRecords": imported_recs,
                     "duplicateRecords": dups,
-                    "pendingImportJobs": pending_jobs or 0,
-                    "lastDataUpdate": last_update,
-                    "members_by_category": cat_stat or [],
-                    "members_by_village": vil_stat or []
+                    "pendingImportJobs": pending_jobs,
+                    "lastDataUpdate": last_update
                 }
-
-                _DASHBOARD_CACHE["data"] = stats
-                _DASHBOARD_CACHE["timestamp"] = now
+                cls._cache = stats
+                cls._cache_time = now
                 return stats
         finally:
             conn.close()
 
-    @staticmethod
-    def get_admin_analytics() -> Dict[str, Any]:
-        dash = SupabaseDashboardService.get_admin_dashboard()
-        return {
-            "villageDistribution": dash.get("members_by_village", []),
-            "categoryDistribution": dash.get("members_by_category", [])
-        }
+    @classmethod
+    def get_admin_analytics(cls, force_refresh: bool = False) -> Dict[str, Any]:
+        now = time.time()
+        if not force_refresh and cls._analytics_cache and (now - cls._analytics_cache_time < 30):
+            return cls._analytics_cache
+
+        conn = get_supabase_conn()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT village_name_marathi AS name, count(*) AS count
+                    FROM public.voters
+                    WHERE is_deleted = false
+                    GROUP BY village_name_marathi;
+                """)
+                v_rows = cur.fetchall()
+
+                cur.execute("""
+                    SELECT c.color, c.name_marathi AS name, count(v.id) AS count
+                    FROM public.categories c
+                    LEFT JOIN public.voters v ON v.category_id = c.id AND v.is_deleted = false AND v.status = 'ACTIVE'
+                    GROUP BY c.id, c.color, c.name_marathi, c.display_order
+                    ORDER BY c.display_order ASC;
+                """)
+                c_rows = cur.fetchall()
+
+                res = {
+                    "villageDistribution": [dict(r) for r in v_rows],
+                    "categoryDistribution": [dict(r) for r in c_rows]
+                }
+                cls._analytics_cache = res
+                cls._analytics_cache_time = now
+                return res
+        finally:
+            conn.close()
 
 
 # ==============================================================================
@@ -1883,13 +1668,16 @@ class SupabaseActivityService:
 
                 # 4. Insert Locations
                 for l in locations[:50]:
-                    l_lat = float(l.get('latitude') or 0.0)
-                    l_lon = float(l.get('longitude') or 0.0)
-                    l_place = l.get('placeName') or l.get('village') or l.get('city')
-                    if not l_place or 'lat=' in str(l_place) or 'स्थान नोंद' in str(l_place):
-                        l_place = "साखराळे (Sakharale)"
-                    l_addr = l.get('address') or "साखराळे, ता. वाळवा, जि. सांगली"
-                    l_meta = {**meta_base, **l, "placeName": l_place, "address": l_addr, "village": "साखराळे"}
+                    l_meta = {**meta_base, **l}
+                    raw_p = l.get("placeName") or l.get("village") or l.get("city") or l.get("address")
+                    lat_f = float(l.get("latitude") or 0.0)
+                    lng_f = float(l.get("longitude") or 0.0)
+                    if not raw_p or "lat=" in str(raw_p).lower() or "lat-" in str(raw_p).lower() or "gps" in str(raw_p).lower():
+                        if 16.8 <= lat_f <= 17.25 and 74.1 <= lng_f <= 74.55:
+                            raw_p = "साखराळे (Sakharale), वाळवा"
+                        else:
+                            raw_p = f"स्थान (GPS: {lat_f:.4f}, {lng_f:.4f})"
+                    l_meta["placeName"] = raw_p
                     cur.execute("""
                         INSERT INTO public.activity_logs (
                             user_id, username, action, entity_type, entity_id, details, metadata, timestamp
@@ -1897,7 +1685,7 @@ class SupabaseActivityService:
                     """, (
                         target_user_uuid, username, "LOCATION_RECORD", "LOCATION",
                         str(l.get("id") or ""),
-                        f"स्थान: {l_place} (अक्षांश: {l_lat:.5f}, रेखांश: {l_lon:.5f})",
+                        f"स्थान: {raw_p} (अक्षांश: {lat_f:.5f}, रेखांश: {lng_f:.5f})",
                         Json(l_meta)
                     ))
                     saved_locs += 1
@@ -1954,40 +1742,14 @@ class SupabaseActivityService:
             offset = max(0, (page - 1) * limit)
             fetch_limit = min(limit, max_total)
 
-            # Query user permission flags from public.users to accurately reflect GRANTED status
-            call_permitted = False
-            loc_permitted = False
-            try:
-                with conn.cursor(cursor_factory=RealDictCursor) as p_cur:
-                    p_cur.execute(
-                        "SELECT permissions, is_active FROM public.users WHERE id::text = %s OR LOWER(username) = LOWER(%s) LIMIT 1;",
-                        (str(user_id or ""), str(username or user_id or ""))
-                    )
-                    u_row = p_cur.fetchone()
-                    if u_row:
-                        u_perms = u_row.get("permissions") or {}
-                        if isinstance(u_perms, dict):
-                            call_permitted = bool(u_perms.get("call_history") or u_perms.get("callHistory") or u_perms.get("phoneCall"))
-                            loc_permitted = bool(u_perms.get("location"))
-            except Exception as pe:
-                logger.warning(f"Note loading user permissions for status check: {pe}")
-
             where_clauses = []
             params = []
 
-            if user_id and username:
+            if user_id:
                 try:
                     valid_uuid = str(uuid.UUID(str(user_id)))
-                    where_clauses.append("(user_id = %s OR metadata->>'user_id' = %s OR metadata->>'source_user_id' = %s OR LOWER(username) = LOWER(%s))")
-                    params.extend([valid_uuid, user_id, user_id, username])
-                except ValueError:
-                    where_clauses.append("(metadata->>'user_id' = %s OR LOWER(username) = LOWER(%s) OR LOWER(username) = LOWER(%s))")
-                    params.extend([user_id, user_id, username])
-            elif user_id:
-                try:
-                    valid_uuid = str(uuid.UUID(str(user_id)))
-                    where_clauses.append("(user_id = %s OR metadata->>'user_id' = %s OR metadata->>'source_user_id' = %s OR LOWER(username) = LOWER(%s))")
-                    params.extend([valid_uuid, user_id, user_id, user_id])
+                    where_clauses.append("(user_id = %s OR metadata->>'user_id' = %s)")
+                    params.extend([valid_uuid, user_id])
                 except ValueError:
                     where_clauses.append("(metadata->>'user_id' = %s OR LOWER(username) = LOWER(%s))")
                     params.extend([user_id, user_id])
@@ -2005,8 +1767,8 @@ class SupabaseActivityService:
             location_count = 0
 
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # 1. Calls (matches by action or entity_type = 'CALL')
-                call_q = f"SELECT * FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} (action IN ('CALL_LOG', 'CALL_INITIATED', 'CALL') OR entity_type = 'CALL') ORDER BY timestamp DESC LIMIT %s OFFSET %s"
+                # 1. Calls
+                call_q = f"SELECT * FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('CALL_LOG', 'CALL_INITIATED', 'CALL') ORDER BY timestamp DESC LIMIT %s OFFSET %s"
                 cur.execute(call_q, tuple(params + [fetch_limit, offset]))
                 for r in cur.fetchall():
                     item = dict(r)
@@ -2016,15 +1778,12 @@ class SupabaseActivityService:
                         clean_dt = item["details"].replace("कॉल नोंद: ", "")
                         raw_phone = clean_dt.split()[0] if clean_dt else ""
 
-                    c_name = meta.get("name") or meta.get("caller_name") or meta.get("target_member_name") or meta.get("voter") or ""
+                    c_name = meta.get("name") or meta.get("caller_name") or ""
                     c_dur = meta.get("duration") or 0
                     c_type = meta.get("callType") or meta.get("type") or "OUTGOING"
 
                     calls.append({
-                        **meta,
                         "id": str(item["id"]),
-                        "_id": str(item["id"]),
-                        "db_id": str(item["id"]),
                         "phoneNumber": raw_phone or "",
                         "phone": raw_phone or "",
                         "number": raw_phone or "",
@@ -2043,9 +1802,10 @@ class SupabaseActivityService:
                             "caller_name": c_name,
                             "duration": c_dur,
                             "callType": c_type,
-                        }
+                        },
+                        **meta
                     })
-                call_count_sql = f"SELECT count(*) FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} (action IN ('CALL_LOG', 'CALL_INITIATED', 'CALL') OR entity_type = 'CALL')"
+                call_count_sql = f"SELECT count(*) FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('CALL_LOG', 'CALL_INITIATED', 'CALL')"
                 cur.execute(call_count_sql, tuple(params))
                 call_count = cur.fetchone()["count"]
 
@@ -2053,39 +1813,33 @@ class SupabaseActivityService:
                 sms = []
                 sms_count = 0
 
-                # 3. Locations (matches by action or entity_type = 'LOCATION')
-                loc_q = f"SELECT * FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} (action IN ('LOCATION_RECORD', 'LOCATION_PING', 'LOCATION', 'LOCATION_CHECKIN') OR entity_type = 'LOCATION') ORDER BY timestamp DESC LIMIT %s OFFSET %s"
+                # 3. Locations (including LOCATION_CHECKIN from real device check-ins)
+                loc_q = f"SELECT * FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('LOCATION_RECORD', 'LOCATION_PING', 'LOCATION', 'LOCATION_CHECKIN') ORDER BY timestamp DESC LIMIT %s OFFSET %s"
                 cur.execute(loc_q, tuple(params + [fetch_limit, offset]))
                 for r in cur.fetchall():
                     item = dict(r)
                     meta = item.get("metadata") or {}
-                    lat = float(meta.get("latitude") or 0.0)
-                    lon = float(meta.get("longitude") or 0.0)
-                    raw_place = meta.get("placeName") or meta.get("village") or meta.get("city")
-                    if not raw_place or "lat=" in str(raw_place) or "स्थान नोंद" in str(raw_place) or "lat-" in str(raw_place):
-                        raw_place = "साखराळे (Sakharale)"
-                    raw_addr = meta.get("address") or "साखराळे, ता. वाळवा, जि. सांगली"
+                    p_name = meta.get("placeName") or meta.get("village") or meta.get("city") or meta.get("address")
+                    lat_f = float(meta.get("latitude") or 0.0)
+                    lng_f = float(meta.get("longitude") or 0.0)
+                    if not p_name or "lat=" in str(p_name).lower() or "lat-" in str(p_name).lower() or "gps" in str(p_name).lower():
+                        if 16.8 <= lat_f <= 17.25 and 74.1 <= lng_f <= 74.55:
+                            p_name = "साखराळे (Sakharale), वाळवा"
+                        else:
+                            p_name = (item.get("details", "").split(":")[-1].strip() if ":" in item.get("details", "") else item.get("details", "")) or f"स्थान ({lat_f:.4f}, {lng_f:.4f})"
                     locations.append({
-                        **meta,
                         "id": str(item["id"]),
-                        "_id": str(item["id"]),
-                        "db_id": str(item["id"]),
-                        "latitude": lat,
-                        "longitude": lon,
+                        "latitude": lat_f,
+                        "longitude": lng_f,
                         "accuracy": meta.get("accuracy") or 0,
-                        "placeName": raw_place,
-                        "address": raw_addr,
-                        "village": meta.get("village") or "साखराळे",
-                        "details": item.get("details", "") or f"स्थान: {raw_place}",
+                        "placeName": p_name,
+                        "address": meta.get("address") or p_name,
+                        "details": item.get("details", ""),
                         "timestamp": item.get("timestamp").isoformat() if item.get("timestamp") else None,
-                        "metadata": {
-                            **meta,
-                            "placeName": raw_place,
-                            "address": raw_addr,
-                            "village": meta.get("village") or "साखराळे",
-                        }
+                        "metadata": {**meta, "placeName": p_name},
+                        **meta
                     })
-                loc_count_sql = f"SELECT count(*) FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} (action IN ('LOCATION_RECORD', 'LOCATION_PING', 'LOCATION', 'LOCATION_CHECKIN') OR entity_type = 'LOCATION')"
+                loc_count_sql = f"SELECT count(*) FROM public.activity_logs {user_filter} {'AND' if user_filter else 'WHERE'} action IN ('LOCATION_RECORD', 'LOCATION_PING', 'LOCATION', 'LOCATION_CHECKIN')"
                 cur.execute(loc_count_sql, tuple(params))
                 location_count = cur.fetchone()["count"]
 
@@ -2100,10 +1854,9 @@ class SupabaseActivityService:
                 "sms_count": 0,
                 "location_count": location_count,
                 "locations_count": location_count,
-                "call_status": "GRANTED" if (call_permitted or call_count > 0) else "DENIED",
-                "location_status": "GRANTED" if (loc_permitted or location_count > 0) else "DENIED",
+                "call_status": "GRANTED" if call_count > 0 else "UNKNOWN",
                 "sms_status": "DISABLED",
-                "last_telephony_sync": calls[0]["timestamp"] if calls else (locations[0]["timestamp"] if locations else None),
+                "last_telephony_sync": calls[0]["timestamp"] if calls else None,
                 "pagination": {
                     "page": page,
                     "limit": limit,
@@ -2123,25 +1876,14 @@ class SupabaseActivityService:
 
     @staticmethod
     def delete_activities(ids: List[str], user_id: Optional[str] = None) -> int:
-        """Deletes activity log records by IDs with full fallback support."""
+        """Deletes activity log records by IDs."""
         if not ids:
-            return 0
-        clean_ids = [str(x).strip() for x in ids if str(x).strip()]
-        if not clean_ids:
             return 0
         try:
             conn = get_supabase_conn()
             conn.autocommit = True
             with conn.cursor() as cur:
-                cur.execute("""
-                    DELETE FROM public.activity_logs
-                    WHERE id::text = ANY(%s)
-                       OR entity_id = ANY(%s)
-                       OR metadata->>'id' = ANY(%s)
-                       OR metadata->>'recordId' = ANY(%s)
-                       OR metadata->>'syncKey' = ANY(%s)
-                       OR metadata->>'timestamp' = ANY(%s);
-                """, (clean_ids, clean_ids, clean_ids, clean_ids, clean_ids, clean_ids))
+                cur.execute("DELETE FROM public.activity_logs WHERE id::text = ANY(%s);", (ids,))
                 deleted = cur.rowcount
             conn.close()
             return deleted
@@ -2223,14 +1965,12 @@ class SupabaseVoterImportService:
                 result["voters_remaining"] = rem_voters
 
             conn.commit()
-            SupabaseDashboardService.invalidate_cache()
             result["success"] = True
             result["verified"] = (rem_voters == 0 if clear_voters else True)
             logger.info(
                 f"[SupabaseCleanup] Cleanup complete. Voters deleted: {result['voters_deleted']}, "
                 f"remaining: {result['voters_remaining']}, verified: {result['verified']}"
             )
-            SupabaseVillageService.invalidate_cache()
             return result
         except Exception as e:
             if conn:
@@ -2252,9 +1992,9 @@ class SupabaseVoterImportService:
     def clear_all_voters() -> int:
         res = SupabaseVoterImportService.cleanup_database(
             clear_voters=True,
-            clear_import_history=False,
+            clear_import_history=True,
             clear_activity_logs=False,
-            delete_cloudinary_files=False
+            delete_cloudinary_files=True
         )
         return res.get("voters_deleted", 0)
 
@@ -2264,98 +2004,79 @@ class SupabaseVoterImportService:
         file_name: str,
         file_size: int,
         village_id: Optional[str] = None,
-        uploaded_by: str = "admin",
-        job_uuid: Optional[str] = None,
-        file_uuid: Optional[str] = None
+        uploaded_by: str = "admin"
     ) -> Dict[str, Any]:
         """
-        Processes a single Excel (.xlsx, .xls), CSV, or PDF file:
-        1. Records/updates import job in Supabase `public.import_jobs` & `public.uploaded_files`.
-        2. Parses voter records (using ExcelReader for spreadsheets or digital text/OCR for PDFs).
-        3. Deduplicates against existing voter EPIC IDs and batch inserts directly into Supabase `public.voters`.
-        4. Updates voter counts for Sakharale in `public.villages`.
-        5. Uploads original file to Cloudinary preserving original filename in background thread.
+        Processes a single Excel or CSV file:
+        1. Uploads the original file to Cloudinary with EXACT original filename.
+        2. Records the file in Supabase `public.uploaded_files`.
+        3. Creates/updates an import job in Supabase `public.import_jobs`.
+        4. Parses all voter records, deduplicates, and batch inserts directly into Supabase `public.voters`.
+        5. Updates voter counts for Sakharale in `public.villages`.
         """
-        import threading
         from pathlib import Path
         from app.services.cloudinary_service import CloudinaryService
         from app.excel_processing.reader import ExcelReader
         from app.pdf_processing.mapper import FieldMapper
 
-        target_village_id = village_id or SAKHARALE_VILLAGE_ID
+        target_village_id = SAKHARALE_VILLAGE_ID
         conn = get_supabase_conn()
-        conn.autocommit = False
+        conn.autocommit = True
 
-        # 1. Extract booth number from filename (e.g. "61_voters.xlsx" or "61.pdf" -> "61")
+        # 1. Upload original file to Cloudinary with original filename
+        cloudinary_url = None
+        cloudinary_public_id = None
+        try:
+            cld_res = CloudinaryService.upload_file(
+                str(file_path),
+                original_filename=file_name,
+                folder="election_app/voter_lists",
+                resource_type="raw"
+            )
+            if cld_res:
+                cloudinary_url = cld_res.get("secure_url")
+                cloudinary_public_id = cld_res.get("public_id")
+                logger.info(f"[Cloudinary] Successfully uploaded {file_name} -> {cloudinary_url}")
+        except Exception as ce:
+            logger.warning(f"[Cloudinary] Note: Cloudinary upload error: {ce}")
+
+        # 2. Extract booth number from filename (e.g. "61_voters.xlsx" -> "61")
         stem = Path(file_name).stem
         booth_match = re.search(r'\d+', stem)
         booth_number = booth_match.group(0) if booth_match else "62"
 
-        # 2. Use or create entry in public.uploaded_files & public.import_jobs
-        f_uuid = file_uuid or str(uuid.uuid4())
-        j_uuid = job_uuid or str(uuid.uuid4())
-        ext_lower = Path(file_name).suffix.lower()
-        file_ext = ext_lower.upper().replace(".", "") or "EXCEL"
+        # 3. Create entry in public.uploaded_files & public.import_jobs
+        file_uuid = str(uuid.uuid4())
+        job_uuid = str(uuid.uuid4())
+        file_ext = Path(file_name).suffix.upper().replace(".", "") or "EXCEL"
 
         with conn.cursor() as cur:
-            if not file_uuid:
-                cur.execute("""
-                    INSERT INTO public.uploaded_files (
-                        id, file_name, file_type, file_size, cloudinary_url, cloudinary_public_id,
-                        village_id, uploaded_by, total_records, imported_records, status, created_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-                    ON CONFLICT (id) DO NOTHING;
-                """, (
-                    f_uuid, file_name, file_ext, file_size,
-                    f"local://{file_name}",
-                    None, target_village_id, uploaded_by, 0, 0, "PROCESSING"
-                ))
-            if not job_uuid:
-                cur.execute("""
-                    INSERT INTO public.import_jobs (
-                        id, file_id, file_name, file_type, file_size, village_id, village_name,
-                        status, progress, stage, total_records, valid_records, imported_records,
-                        cloudinary_url, created_at, updated_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
-                    ON CONFLICT (id) DO NOTHING;
-                """, (
-                    j_uuid, f_uuid, file_name, file_ext, file_size,
-                    target_village_id, "साखराळे / Sakharale",
-                    "processing", 20, "Parsing records from file",
-                    0, 0, 0, None
-                ))
-        conn.commit()
+            cur.execute("""
+                INSERT INTO public.uploaded_files (
+                    id, file_name, file_type, file_size, cloudinary_url, cloudinary_public_id,
+                    village_id, uploaded_by, total_records, imported_records, status, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            """, (
+                file_uuid, file_name, file_ext, file_size,
+                cloudinary_url or f"local://{file_name}",
+                cloudinary_public_id, target_village_id, uploaded_by, 0, 0, "PROCESSING"
+            ))
 
-        # 3. Read tabular records from Excel, CSV, or PDF
-        raw_rows = []
-        if ext_lower == ".pdf":
-            from app.pdf_processing.extractor import extract_table_from_pdf
-            from app.pdf_processing.table_parser import parse_records
-            from app.pdf_processing.ocr import OCRProcessor, extract_using_ocr
+            cur.execute("""
+                INSERT INTO public.import_jobs (
+                    id, file_id, file_name, file_type, file_size, village_id, village_name,
+                    status, progress, stage, total_records, valid_records, imported_records,
+                    cloudinary_url, created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+            """, (
+                job_uuid, file_uuid, file_name, file_ext, file_size,
+                target_village_id, "साखराळे / Sakharale",
+                "processing", 20, "Parsing records from file",
+                0, 0, 0, cloudinary_url
+            ))
 
-            logger.info(f"[PDF Import] Extracting text/tables from PDF '{file_name}'...")
-            try:
-                raw_pdf_data = extract_table_from_pdf(file_path)
-                raw_rows = parse_records(raw_pdf_data, file_path)
-            except Exception as e:
-                logger.warning(f"[PDF Import] Digital extraction error for '{file_name}': {e}")
-                raw_rows = []
-
-            # If digital extraction yielded 0 records (e.g. scanned PDF or unmapped Marathi fonts), activate OCR fallback
-            if not raw_rows:
-                logger.info(f"[PDF Import] Digital parsing yielded 0 records for '{file_name}'. Checking OCR fallback...")
-                try:
-                    if OCRProcessor.is_ocr_available():
-                        ocr_data = extract_using_ocr(file_path)
-                        raw_rows = parse_records(ocr_data, file_path)
-                        logger.info(f"[PDF Import] OCR fallback produced {len(raw_rows)} records for '{file_name}'.")
-                    else:
-                        logger.warning(f"[PDF Import] Tesseract OCR is not installed or configured on the server; OCR fallback skipped.")
-                except Exception as ocr_err:
-                    logger.warning(f"[PDF Import] OCR fallback error for '{file_name}': {ocr_err}")
-        else:
-            raw_rows = ExcelReader.read_file(Path(file_path))
-
+        # 4. Read tabular records
+        raw_rows = ExcelReader.read_file(Path(file_path))
         total_rows = len(raw_rows)
         mapper = FieldMapper()
 
@@ -2368,19 +2089,8 @@ class SupabaseVoterImportService:
             if c_row:
                 cat_id, cat_code, cat_color = c_row
 
-        # Fetch existing voter EPIC IDs for this village to prevent duplicate insertion
-        existing_epics = set()
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT LOWER(epic_number) FROM public.voters WHERE village_id = %s AND epic_number IS NOT NULL AND is_deleted = false;",
-                (target_village_id,)
-            )
-            existing_epics = {str(r[0]).strip().lower() for r in cur.fetchall() if r[0]}
-
         voter_records = []
         valid_count = 0
-        duplicate_count = 0
-        seen_in_batch = set()
 
         for idx, row in enumerate(raw_rows):
             mapped = mapper.map_record(row)
@@ -2390,14 +2100,6 @@ class SupabaseVoterImportService:
 
             if not (epic_num or full_name_mr or full_name_en):
                 continue
-
-            # Deduplication: check against current batch and database
-            if epic_num:
-                epic_lower = epic_num.lower()
-                if epic_lower in seen_in_batch or epic_lower in existing_epics:
-                    duplicate_count += 1
-                    continue
-                seen_in_batch.add(epic_lower)
 
             valid_count += 1
             rec_id = str(uuid.uuid4())
@@ -2460,14 +2162,14 @@ class SupabaseVoterImportService:
                 cat_code,
                 cat_color,
                 "ACTIVE",
-                f_uuid,
+                file_uuid,
                 file_name,
                 file_ext,
-                None,
+                cloudinary_url,
                 uploaded_by
             ))
 
-        # 4. Ultra-Fast Transactional Batch Insert into public.voters
+        # 5. Batch Insert into public.voters
         insert_sql = """
             INSERT INTO public.voters (
                 id, membership_number, epic_number, serial_number, booth_part_number,
@@ -2483,94 +2185,47 @@ class SupabaseVoterImportService:
         """
 
         imported_count = 0
+        CHUNK_SIZE = 500
         with conn.cursor() as cur:
-            if voter_records:
-                execute_values(cur, insert_sql, voter_records, page_size=200)
-                imported_count = len(voter_records)
+            for i in range(0, len(voter_records), CHUNK_SIZE):
+                chunk = voter_records[i:i + CHUNK_SIZE]
+                execute_values(cur, insert_sql, chunk)
+                imported_count += len(chunk)
 
-            # Fast single-query village stats update
+            # Update village stats
             cur.execute("""
                 UPDATE public.villages
-                SET (total_voters, active_voters, deceased_voters, updated_at) = (
-                    SELECT 
-                        count(*),
-                        count(*) FILTER (WHERE status = 'ACTIVE'),
-                        count(*) FILTER (WHERE status = 'DECEASED'),
-                        NOW()
-                    FROM public.voters 
-                    WHERE village_id = %s AND is_deleted = false
-                )
+                SET total_voters = (SELECT count(*) FROM public.voters WHERE village_id = public.villages.id AND is_deleted = false),
+                    active_voters = (SELECT count(*) FROM public.voters WHERE village_id = public.villages.id AND status = 'ACTIVE' AND is_deleted = false),
+                    deceased_voters = (SELECT count(*) FROM public.voters WHERE village_id = public.villages.id AND status = 'DECEASED' AND is_deleted = false),
+                    updated_at = NOW()
                 WHERE id = %s;
-            """, (target_village_id, target_village_id))
+            """, (target_village_id,))
 
             cur.execute("""
                 UPDATE public.uploaded_files
                 SET total_records = %s, imported_records = %s, status = 'COMPLETED'
                 WHERE id = %s;
-            """, (total_rows, imported_count, f_uuid))
+            """, (total_rows, imported_count, file_uuid))
 
             cur.execute("""
                 UPDATE public.import_jobs
-                SET total_records = %s, valid_records = %s, imported_records = %s, duplicate_records = %s,
+                SET total_records = %s, valid_records = %s, imported_records = %s,
                     progress = 100, status = 'completed', stage = 'Import completed successfully ✓',
                     updated_at = NOW()
                 WHERE id = %s;
-            """, (total_rows, valid_count, imported_count, duplicate_count, j_uuid))
+            """, (total_rows, valid_count, imported_count, job_uuid))
 
-        conn.commit()
         conn.close()
-
-        # Invalidate caches immediately so voters appear instantly in app
-        SupabaseDashboardService.invalidate_cache()
-        SupabaseVillageService.invalidate_cache()
-        try:
-            from app.services.cache_service import CacheService
-            CacheService.invalidate_voter_cache()
-        except Exception:
-            pass
-        logger.info(f"[SupabaseVoterImportService] Successfully imported {imported_count}/{total_rows} voters (duplicates skipped: {duplicate_count}) for file {file_name}")
-
-        # 5. Non-blocking asynchronous Cloudinary backup in background
-        def _bg_cloudinary_upload(f_path, f_name, f_id, j_id):
-            try:
-                cld_res = CloudinaryService.upload_file(
-                    str(f_path),
-                    original_filename=f_name,
-                    folder="election_app/voter_lists",
-                    resource_type="raw"
-                )
-                if cld_res and cld_res.get("secure_url"):
-                    c_url = cld_res["secure_url"]
-                    c_pid = cld_res.get("public_id")
-                    bg_conn = get_supabase_conn()
-                    bg_conn.autocommit = True
-                    try:
-                        with bg_conn.cursor() as bg_cur:
-                            bg_cur.execute("UPDATE public.uploaded_files SET cloudinary_url = %s, cloudinary_public_id = %s WHERE id = %s;", (c_url, c_pid, f_id))
-                            bg_cur.execute("UPDATE public.import_jobs SET cloudinary_url = %s WHERE id = %s;", (c_url, j_id))
-                    finally:
-                        bg_conn.close()
-                    logger.info(f"[Cloudinary] Background upload finished for {f_name} -> {c_url}")
-            except Exception as ce:
-                logger.warning(f"[Cloudinary] Background upload note: {ce}")
-
-        threading.Thread(
-            target=_bg_cloudinary_upload,
-            args=(file_path, file_name, f_uuid, j_uuid),
-            daemon=True
-        ).start()
+        logger.info(f"[SupabaseVoterImportService] Successfully imported {imported_count}/{total_rows} voters for file {file_name}")
 
         return {
             "success": True,
-            "file_id": f_uuid,
-            "job_id": j_uuid,
+            "file_id": file_uuid,
+            "job_id": job_uuid,
             "file_name": file_name,
-            "cloudinary_url": None,
+            "cloudinary_url": cloudinary_url,
             "total_records": total_rows,
             "imported_records": imported_count,
-            "duplicate_records": duplicate_count,
             "status": "COMPLETED"
         }
-
-    # Alias for general file import
-    import_voter_file = import_excel_file

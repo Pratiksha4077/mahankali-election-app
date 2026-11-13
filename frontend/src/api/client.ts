@@ -388,71 +388,6 @@ export const reportAPI = {
 let cachedDashboardStats: { data: DashboardStats; timestamp: number } | null = null;
 const DASHBOARD_CACHE_TTL = 5000; // 5 seconds
 
-export const uploadMultipartXHR = (
-  endpoint: string,
-  formData: FormData,
-  token?: string | null,
-  timeoutMs: number = 120000
-): Promise<any> => {
-  return new Promise((resolve, reject) => {
-    if (Platform.OS === "web") {
-      const headers: Record<string, string> = { Accept: "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-      fetch(endpoint, {
-        method: "POST",
-        headers,
-        body: formData,
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const text = await res.text();
-            let errJson: any;
-            try { errJson = JSON.parse(text); } catch {}
-            throw new Error(errJson?.detail || errJson?.message || `Upload failed (${res.status})`);
-          }
-          return res.json();
-        })
-        .then(resolve)
-        .catch(reject);
-      return;
-    }
-
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", endpoint);
-    xhr.timeout = timeoutMs;
-    xhr.setRequestHeader("Accept", "application/json");
-    if (token) {
-      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-    }
-
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const json = JSON.parse(xhr.responseText);
-          resolve(json);
-        } catch {
-          resolve({ success: true, text: xhr.responseText });
-        }
-      } else {
-        let errJson: any;
-        try { errJson = JSON.parse(xhr.responseText); } catch {}
-        const msg = errJson?.detail || errJson?.message || `Upload failed (${xhr.status})`;
-        reject(new Error(msg));
-      }
-    };
-
-    xhr.onerror = () => {
-      reject(new Error("सर्व्हरशी संपर्क होऊ शकला नाही. कृपया बॅकएंड आणि इंटरनेट तपासा."));
-    };
-
-    xhr.ontimeout = () => {
-      reject(new Error("सर्व्हर प्रतिसाद वेळ संपला (Timeout: 120s)."));
-    };
-
-    xhr.send(formData);
-  });
-};
-
 export const adminAPI = {
   getDashboardStats: async (forceRefresh: boolean = false): Promise<DashboardStats> => {
     const now = Date.now();
@@ -581,38 +516,17 @@ export const adminAPI = {
   },
 
   uploadPdf: async (formData: FormData) => {
-    let token = authToken;
-    if (!token) {
-      try {
-        token = await appStorage.getItem("election_auth_token");
-      } catch {}
-    }
-    const baseUrl = getServerBaseUrl();
-    const endpoint = `${baseUrl}/admin/import/upload`;
-    return uploadMultipartXHR(endpoint, formData, token, 120000);
-  },
-  uploadFile: async (formData: FormData) => {
-    let token = authToken;
-    if (!token) {
-      try {
-        token = await appStorage.getItem("election_auth_token");
-      } catch {}
-    }
-    const baseUrl = getServerBaseUrl();
-    const endpoint = `${baseUrl}/admin/import/upload`;
-    return uploadMultipartXHR(endpoint, formData, token, 120000);
+    const res = await apiClient.post("/admin/import/pdf", formData, {
+      headers: { "Content-Type": "multipart/form-data" }
+    });
+    return res.data;
   },
 
   uploadExcel: async (formData: FormData) => {
-    let token = authToken;
-    if (!token) {
-      try {
-        token = await appStorage.getItem("election_auth_token");
-      } catch {}
-    }
-    const baseUrl = getServerBaseUrl();
-    const endpoint = `${baseUrl}/admin/import/excel`;
-    return uploadMultipartXHR(endpoint, formData, token, 120000);
+    const res = await apiClient.post("/admin/import/excel", formData, {
+      timeout: 180000
+    });
+    return res.data;
   },
 
   clearAllVoters: async () => {
@@ -677,9 +591,7 @@ export const adminAPI = {
 
   getUserActivity: async (user_id?: string, username?: string) => {
     try {
-      const params: any = { limit: 500 };
-      if (username) params.username = username;
-      const res = await apiClient.get(`/admin/users/${user_id}/activity`, { params });
+      const res = await apiClient.get(`/admin/users/${user_id}/activity`, { params: { limit: 500 } });
       const payload = res.data?.data || res.data;
       if (payload) {
         console.log(

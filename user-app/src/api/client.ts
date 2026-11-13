@@ -292,33 +292,11 @@ export const villageAPI = {
     if (!forceRefresh && cachedVillages && now - cachedVillages.timestamp < MASTER_DATA_CACHE_TTL) {
       return cachedVillages.data;
     }
-    if (!cachedVillages) {
-      try {
-        const stored = await appStorage.getItem("cached_villages_list");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            cachedVillages = { data: parsed, timestamp: now };
-            if (!forceRefresh) {
-              apiClient.get("/villages").then(res => {
-                const list = Array.isArray(res.data) ? res.data : [];
-                if (list.length > 0) {
-                  cachedVillages = { data: list, timestamp: Date.now() };
-                  appStorage.setItem("cached_villages_list", JSON.stringify(list)).catch(() => {});
-                }
-              }).catch(() => {});
-              return parsed;
-            }
-          }
-        }
-      } catch (e) {}
-    }
     try {
       const res = await apiClient.get("/villages");
       const list = Array.isArray(res.data) ? res.data : [];
       if (list.length > 0) {
         cachedVillages = { data: list, timestamp: now };
-        appStorage.setItem("cached_villages_list", JSON.stringify(list)).catch(() => {});
       }
       return list;
     } catch (e) {
@@ -327,7 +305,6 @@ export const villageAPI = {
   },
   invalidateCache: () => {
     cachedVillages = null;
-    appStorage.removeItem("cached_villages_list").catch(() => {});
   }
 };
 
@@ -411,33 +388,15 @@ export const reportAPI = {
     }
   },
 
-  getDrilldownMembers: async (
-    reportType: string,
-    key: string,
-    villageId?: string,
-    page: number = 1,
-    limit: number = 50,
-    search?: string
-  ) => {
+  getDrilldownMembers: async (reportType: string, key: string, villageId?: string, page: number = 1, limit: number = 50) => {
     try {
       const res = await apiClient.get("/reports/drilldown", {
-        params: { report_type: reportType, key, village_id: villageId, page, limit, search: search || undefined }
+        params: { report_type: reportType, key, village_id: villageId, page, limit }
       });
-      const items = Array.isArray(res.data?.items) ? res.data.items : Array.isArray(res.data) ? res.data : [];
-      (items as any).total = res.data?.total ?? items.length;
-      (items as any).page = res.data?.page ?? page;
-      (items as any).pages = res.data?.pages ?? (items.length > 0 ? Math.ceil((res.data?.total ?? items.length) / limit) : 1);
-      (items as any).hasMore = res.data?.hasMore ?? false;
-      (items as any).items = items;
-      return items;
+      const data = res.data?.items || res.data?.data || res.data;
+      return Array.isArray(data) ? data : [];
     } catch (e) {
-      const empty: any[] = [];
-      (empty as any).total = 0;
-      (empty as any).page = 1;
-      (empty as any).pages = 1;
-      (empty as any).hasMore = false;
-      (empty as any).items = [];
-      return empty;
+      return [];
     }
   }
 };
@@ -445,71 +404,6 @@ export const reportAPI = {
 // ----------------- ADMIN API -----------------
 let cachedDashboardStats: { data: DashboardStats; timestamp: number } | null = null;
 const DASHBOARD_CACHE_TTL = 5000; // 5 seconds
-
-export const uploadMultipartXHR = (
-  endpoint: string,
-  formData: FormData,
-  token?: string | null,
-  timeoutMs: number = 120000
-): Promise<any> => {
-  return new Promise((resolve, reject) => {
-    if (Platform.OS === "web") {
-      const headers: Record<string, string> = { Accept: "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-      fetch(endpoint, {
-        method: "POST",
-        headers,
-        body: formData,
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const text = await res.text();
-            let errJson: any;
-            try { errJson = JSON.parse(text); } catch {}
-            throw new Error(errJson?.detail || errJson?.message || `Upload failed (${res.status})`);
-          }
-          return res.json();
-        })
-        .then(resolve)
-        .catch(reject);
-      return;
-    }
-
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", endpoint);
-    xhr.timeout = timeoutMs;
-    xhr.setRequestHeader("Accept", "application/json");
-    if (token) {
-      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-    }
-
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const json = JSON.parse(xhr.responseText);
-          resolve(json);
-        } catch {
-          resolve({ success: true, text: xhr.responseText });
-        }
-      } else {
-        let errJson: any;
-        try { errJson = JSON.parse(xhr.responseText); } catch {}
-        const msg = errJson?.detail || errJson?.message || `Upload failed (${xhr.status})`;
-        reject(new Error(msg));
-      }
-    };
-
-    xhr.onerror = () => {
-      reject(new Error("सर्व्हरशी संपर्क होऊ शकला नाही. कृपया बॅकएंड आणि इंटरनेट तपासा."));
-    };
-
-    xhr.ontimeout = () => {
-      reject(new Error("सर्व्हर प्रतिसाद वेळ संपला (Timeout: 120s)."));
-    };
-
-    xhr.send(formData);
-  });
-};
 
 export const adminAPI = {
   getDashboardStats: async (forceRefresh: boolean = false): Promise<DashboardStats> => {
@@ -646,38 +540,17 @@ export const adminAPI = {
   },
 
   uploadPdf: async (formData: FormData) => {
-    let token = authToken;
-    if (!token) {
-      try {
-        token = await appStorage.getItem("election_auth_token");
-      } catch {}
-    }
-    const baseUrl = getServerBaseUrl();
-    const endpoint = `${baseUrl}/admin/import/upload`;
-    return uploadMultipartXHR(endpoint, formData, token, 120000);
-  },
-  uploadFile: async (formData: FormData) => {
-    let token = authToken;
-    if (!token) {
-      try {
-        token = await appStorage.getItem("election_auth_token");
-      } catch {}
-    }
-    const baseUrl = getServerBaseUrl();
-    const endpoint = `${baseUrl}/admin/import/upload`;
-    return uploadMultipartXHR(endpoint, formData, token, 120000);
+    const res = await apiClient.post("/admin/import/pdf", formData, {
+      headers: { "Content-Type": "multipart/form-data" }
+    });
+    return res.data;
   },
 
   uploadExcel: async (formData: FormData) => {
-    let token = authToken;
-    if (!token) {
-      try {
-        token = await appStorage.getItem("election_auth_token");
-      } catch {}
-    }
-    const baseUrl = getServerBaseUrl();
-    const endpoint = `${baseUrl}/admin/import/excel`;
-    return uploadMultipartXHR(endpoint, formData, token, 120000);
+    const res = await apiClient.post("/admin/import/excel", formData, {
+      headers: { "Content-Type": "multipart/form-data" }
+    });
+    return res.data;
   },
 
   clearAllVoters: async () => {
@@ -791,7 +664,6 @@ export const adminAPI = {
     smsStatus: string;
     calls: any[];
     sms: any[];
-    locations?: any[];
     metadata?: Record<string, any>;
   }) => {
     const res = await apiClient.post("/admin/users/activity/telephony-sync", payload);

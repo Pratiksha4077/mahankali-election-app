@@ -8,7 +8,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { Header } from "../../components/Header";
 import { villageAPI, adminAPI } from "../../api/client";
 import { Village, ImportJob } from "../../models/types";
-import { theme, theme as baseTheme } from "../../theme/theme";
+import { theme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 
@@ -16,32 +16,21 @@ interface QueuedFile {
   id: string;
   name: string;
   size: number;
-  type: "EXCEL" | "CSV" | "PDF";
+  type: "EXCEL" | "CSV";
   fileObj?: any;
   uri?: string;
 }
 
-export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
+export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { t } = useLanguage();
   const { theme, isDark } = useTheme();
 
-  const DEFAULT_SAKHARALE: Village = {
-    id: "11111111-1111-1111-1111-111111111111",
-    name_en: "Sakharale",
-    name_mr: "साखराळे",
-    taluka: "वाळवा",
-    district: "सांगली",
-    total_voters: 5693,
-    active_voters: 5693,
-    deceased_voters: 0
-  };
-
-  const [villages, setVillages] = useState<Village[]>([DEFAULT_SAKHARALE]);
-  const [selectedVillage, setSelectedVillage] = useState<Village | null>(DEFAULT_SAKHARALE);
+  const [villages, setVillages] = useState<Village[]>([]);
+  const [selectedVillage, setSelectedVillage] = useState<Village | null>(null);
   const [fileQueue, setFileQueue] = useState<QueuedFile[]>([]);
   const [uploading, setUploading] = useState<boolean>(false);
   const [uploadProgressText, setUploadProgressText] = useState<string>("");
-  const [loadingVillages, setLoadingVillages] = useState<boolean>(false);
+  const [loadingVillages, setLoadingVillages] = useState<boolean>(true);
   const [clearBeforeUpload, setClearBeforeUpload] = useState<boolean>(false);
   const [clearing, setClearing] = useState<boolean>(false);
 
@@ -99,23 +88,30 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
     loadPastImports();
   }, []);
 
-  const loadVillages = async (silent: boolean = true) => {
-    if (!silent && villages.length === 0) setLoadingVillages(true);
+  const DEFAULT_SAKHARALE: Village = {
+    id: "11111111-1111-1111-1111-111111111111",
+    name: "Sakharale",
+    name_en: "Sakharale",
+    name_mr: "साखराळे",
+    taluka: "वाळवा",
+    district: "सांगली",
+    total_voters: 0
+  };
+
+  const loadVillages = async () => {
     try {
       const list = await villageAPI.getVillages();
       if (list && list.length > 0) {
         setVillages(list);
         const sakharele = list.find(v => v.name_mr?.includes("साखराळे") || v.name_en?.toLowerCase().includes("sakhar"));
-        setSelectedVillage(prev => prev || sakharele || list[0]);
+        setSelectedVillage(sakharele || list[0]);
       } else {
-        setVillages([DEFAULT_SAKHARALE]);
-        setSelectedVillage(prev => prev || DEFAULT_SAKHARALE);
-      }
-    } catch (err) {
-      if (villages.length === 0) {
         setVillages([DEFAULT_SAKHARALE]);
         setSelectedVillage(DEFAULT_SAKHARALE);
       }
+    } catch (err) {
+      setVillages([DEFAULT_SAKHARALE]);
+      setSelectedVillage(DEFAULT_SAKHARALE);
     } finally {
       setLoadingVillages(false);
     }
@@ -133,16 +129,6 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
       setLoadingJobs(false);
     }
   };
-
-  // Auto-refresh past imports while any job is in progress
-  useEffect(() => {
-    const hasActive = importJobs.some(j => j.status === "processing" || j.status === "pending");
-    if (!hasActive) return;
-    const timer = setInterval(() => {
-      loadPastImports();
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [importJobs]);
 
   const handleDeleteJob = (job: any) => {
     setJobToDelete(job);
@@ -166,20 +152,28 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
     }
   };
 
-  // Strict file validation: .xlsx, .xls, .csv, and .pdf are all supported
+  // Strict file validation: Only .xlsx, .xls, .csv are allowed. PDF is rejected.
   const validateAndAddFile = (fileName: string, fileSize: number, fileObj?: any, uri?: string): boolean => {
     const ext = fileName.slice(fileName.lastIndexOf(".")).toLowerCase();
 
-    const validExtensions = [".xlsx", ".xls", ".csv", ".pdf"];
-    if (!validExtensions.includes(ext)) {
+    if (ext === ".pdf") {
       Alert.alert(
-        t("invalid_file_type") || "अयोग्य फाईल प्रकार",
-        `'${fileName}' हा अयोग्य फाईल प्रकार आहे. फक्त .xlsx, .xls, .csv आणि .pdf फाईल्स निवडा.`
+        "पीडीएफ समर्थित नाही (PDF Not Allowed)",
+        `'${fileName}' ही पीडीएफ फाईल आहे. कृपया मतदार यादी एक्सेल (.xlsx, .xls) किंवा सीएसव्ही (.csv) फाईल स्वरूपात निवडा.`
       );
       return false;
     }
 
-    const fileType: "EXCEL" | "CSV" | "PDF" = ext === ".pdf" ? "PDF" : (ext === ".csv" ? "CSV" : "EXCEL");
+    const validExtensions = [".xlsx", ".xls", ".csv"];
+    if (!validExtensions.includes(ext)) {
+      Alert.alert(
+        t("invalid_file_type") || "अयोग्य फाईल प्रकार",
+        `'${fileName}' हा अयोग्य फाईल प्रकार आहे. फक्त .xlsx, .xls आणि .csv फाईल्स निवडा.`
+      );
+      return false;
+    }
+
+    const fileType: "EXCEL" | "CSV" = ext === ".csv" ? "CSV" : "EXCEL";
     const newFile: QueuedFile = {
       id: `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
       name: fileName,
@@ -207,7 +201,7 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
         const input = document.createElement("input");
         input.type = "file";
         input.multiple = true;
-        input.accept = ".xlsx,.xls,.csv,.pdf,application/pdf";
+        input.accept = ".xlsx,.xls,.csv";
         input.onchange = (e: any) => {
           const files: FileList = e.target.files;
           if (files && files.length > 0) {
@@ -232,8 +226,7 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
             "application/vnd.ms-excel",
             "text/csv",
             "text/comma-separated-values",
-            "application/csv",
-            "application/pdf"
+            "application/csv"
           ],
           multiple: true,
           copyToCacheDirectory: true
@@ -297,20 +290,8 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
         setUploadProgressText(`अपलोड व प्रक्रिया होत आहे (${i + 1}/${fileQueue.length}): ${item.name}`);
 
         const formData = new FormData();
-        const vId = selectedVillage?.id || DEFAULT_SAKHARALE.id;
-        formData.append("village_id", vId);
+        formData.append("village_id", selectedVillage.id);
         formData.append("auto_commit", "true");
-        formData.append("clear_previous", "false");
-
-        let mimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-        const lowerName = item.name.toLowerCase();
-        if (lowerName.endsWith(".pdf")) {
-          mimeType = "application/pdf";
-        } else if (lowerName.endsWith(".csv")) {
-          mimeType = "text/csv";
-        } else if (lowerName.endsWith(".xls")) {
-          mimeType = "application/vnd.ms-excel";
-        }
 
         if (Platform.OS === "web" && item.fileObj) {
           formData.append("file", item.fileObj);
@@ -318,29 +299,27 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
           formData.append("file", {
             uri: item.uri || "",
             name: item.name,
-            type: mimeType
+            type: item.name.toLowerCase().endsWith(".csv")
+              ? "text/csv"
+              : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           } as any);
         }
 
         try {
-          await adminAPI.uploadFile(formData);
+          await adminAPI.uploadExcel(formData);
           successCount++;
         } catch (err: any) {
-          const detail = err?.message || err?.response?.data?.detail || "अपलोड त्रुटी";
-          console.error("Upload file error for", item.name, detail);
-          errors.push(`${item.name} (${detail})`);
+          errors.push(item.name);
         }
       }
 
       setFileQueue([]);
-      adminAPI.invalidateDashboardCache();
       await loadPastImports();
 
-      const vName = selectedVillage?.name_mr || selectedVillage?.name_en || "साखराळे";
       if (errors.length === 0) {
         Alert.alert(
           t("upload_success_title"),
-          `'${vName}' गावासाठी ${successCount} फाईल्स यशस्वीरित्या समाविष्ट केल्या आहेत!`
+          `'${selectedVillage.name_mr || selectedVillage.name_en}' गावासाठी ${successCount} फाईल्स यशस्वीरित्या पाठवल्या आहेत!`
         );
       } else {
         Alert.alert(
@@ -409,7 +388,7 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
 
         {/* STEP 1: Target Village Selection */}
         <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>{t("target_village_selection")}</Text>
-        {loadingVillages && villages.length === 0 ? (
+        {loadingVillages ? (
           <ActivityIndicator color={theme.colors.primaryLight} style={{ marginVertical: 12 }} />
         ) : (
           <View style={[styles.villagePickerCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
@@ -467,10 +446,10 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
             <Ionicons name="folder-open-outline" size={36} color={isDark ? theme.colors.primaryLight : "#4F46E5"} />
           </View>
           <Text style={[styles.dropzoneTitle, { color: theme.colors.textPrimary }]}>
-            एक्सेल, सीएसव्ही किंवा पीडीएफ फाईल्स निवडा
+            एक्सेल किंवा सीएसव्ही फाईल्स निवडा
           </Text>
           <Text style={[styles.dropzoneSub, { color: theme.colors.textMuted }]}>
-            मतदार यादी .xlsx, .xls, .csv किंवा .pdf फाईल्स स्वीकारल्या जातात (एकाधिक फाईल्स निवडा)
+            फक्त मतदार यादी .xlsx, .xls किंवा .csv फाईल्स स्वीकारल्या जातात (पीडीएफ फाईल्स समर्थित नाहीत)
           </Text>
           <View style={styles.browseBtn}>
             <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
@@ -492,7 +471,7 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
 
             {fileQueue.map((file) => (
               <View key={file.id} style={[styles.fileItemCard, { backgroundColor: isDark ? theme.colors.surface : "#FFFFFF", borderColor: theme.colors.border, borderWidth: 1 }]}>
-                <View style={[styles.fileTypeBadge, { backgroundColor: file.type === "PDF" ? "#EF4444" : (file.type === "CSV" ? "#3B82F6" : "#10B981") }]}>
+                <View style={[styles.fileTypeBadge, { backgroundColor: file.type === "CSV" ? "#3B82F6" : "#10B981" }]}>
                   <Text style={styles.fileTypeBadgeText}>{file.type}</Text>
                 </View>
 

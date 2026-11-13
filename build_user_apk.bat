@@ -9,10 +9,5 @@ echo.
 if not defined SYSTEMROOT set "SYSTEMROOT=C:\Windows"
 if not defined SystemRoot set "SystemRoot=C:\Windows"
 cd /d "%~dp0user-app"
-where eas >nul 2>nul
-if %ERRORLEVEL% EQU 0 (
-    eas build -p android --profile preview
-) else (
-    npx eas-cli build -p android --profile preview
-)
+npx eas-cli build -p android --profile preview
 pause

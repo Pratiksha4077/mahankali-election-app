@@ -32,10 +32,9 @@ export interface Village {
   taluka?: string;
   district?: string;
   pin_code?: string;
-  pincode?: string;
   total_voters: number;
-  active_voters?: number;
-  deceased_voters?: number;
+  active_voters: number;
+  deceased_voters: number;
 }
 
 export interface Category {

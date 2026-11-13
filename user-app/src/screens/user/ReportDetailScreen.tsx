@@ -60,13 +60,6 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
     return () => clearTimeout(handler);
   }, [surnameSearchQuery]);
 
-  // Server-side search trigger when typing inside selected surname
-  useEffect(() => {
-    if (selectedSurname) {
-      handleSelectSurname(selectedSurname, 1, debouncedSurnameSearch);
-    }
-  }, [debouncedSurnameSearch]);
-
   // Drilldown state for expandable groups (Family, Religion, Caste, etc.)
   const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
   const [groupMembersMap, setGroupMembersMap] = useState<Record<string, Member[]>>({});
@@ -168,17 +161,16 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
     }
   };
 
-  const handleSelectSurname = async (surname: string, page: number = 1, searchQuery?: string) => {
+  const handleSelectSurname = async (surname: string, page: number = 1) => {
     setSelectedSurname(surname);
-    if (page === 1 && searchQuery === undefined) {
+    if (page === 1) {
       setSurnameSearchQuery("");
       setDebouncedSurnameSearch("");
     }
     setSurnamePage(page);
     setLoadingSurnameVoters(true);
     try {
-      const q = typeof searchQuery === "string" ? searchQuery : debouncedSurnameSearch;
-      const res: any = await reportAPI.getDrilldownMembers("surname", surname, selectedVillageId || undefined, page, PAGE_SIZE, q);
+      const res: any = await reportAPI.getDrilldownMembers("surname", surname, selectedVillageId || undefined, page, PAGE_SIZE);
       const rawMembers = Array.isArray(res) ? res : res?.items || res?.data || [];
       const members = (rawMembers || []).filter((m: any) => !isTestVoter(m));
       setSurnameVoters(members);
@@ -254,7 +246,7 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
           }
         });
       }
-      Linking.openURL(`tel:${num}`).catch(() => { });
+      Linking.openURL(`tel:${num}`).catch(() => {});
     } else {
       Alert.alert("माहिती", "मोबाईल नंबर उपलब्ध नाही.");
     }
@@ -276,7 +268,7 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
           }
         });
       }
-      Linking.openURL(`sms:${num}`).catch(() => { });
+      Linking.openURL(`sms:${num}`).catch(() => {});
     } else {
       Alert.alert("माहिती", "मोबाईल नंबर उपलब्ध नाही.");
     }
@@ -292,31 +284,58 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
         onBack={() => navigation.goBack()}
       />
 
-      {/* Summary Banner (Only shown when not drilled down into a specific surname) */}
-      {selectedSurname === null && (
-        <View style={[styles.summaryCard, { backgroundColor: isDark ? "#1E3A8A" : theme.colors.card, borderColor: isDark ? "#3B82F6" : theme.colors.border }]}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.summaryTitle, { color: isDark ? "#FFFFFF" : theme.colors.textPrimary }]}>
-              {reportType === "surname" ? "Surname-Wise Voter Report (आडनाव अहवाल)" : t(titleKey as any)}
+      {/* Village Dropdown Filter Bar */}
+      <View style={[styles.villageSelectorCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+        <Text style={[styles.villageSelectorLabel, { color: theme.colors.textMuted }]}>
+          गाव निवडा (Filter by Village):
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.villageChipsScroll}>
+          <TouchableOpacity
+            style={[styles.smallChip, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, selectedVillageId === null && styles.activeSmallChip]}
+            onPress={() => setSelectedVillageId(null)}
+          >
+            <Ionicons name="home-outline" size={14} color={selectedVillageId === null ? "#FFFFFF" : theme.colors.textSecondary} style={{ marginRight: 4 }} />
+            <Text style={[styles.smallChipText, { color: theme.colors.textSecondary }, selectedVillageId === null && styles.activeSmallChipText]}>
+              All Villages
             </Text>
-            <Text style={[styles.summarySubtitle, { color: isDark ? "#93C5FD" : theme.colors.textSecondary }]}>
-              {reportType === "surname" ? `एकूण ${summaryGroups.length} आडनावे सापडली` : `एकूण ${totalCount} मतदार`}
-            </Text>
-          </View>
-          <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
-            {reportType === "surname" && (
-              <View style={[styles.countPill, { backgroundColor: isDark ? "#1E293B" : "#DBEAFE", borderColor: isDark ? "#38BDF8" : "#93C5FD" }]}>
-                <Text style={[styles.countPillText, { color: isDark ? "#93C5FD" : "#1D4ED8", fontSize: 12 }]}>
-                  {summaryGroups.length} आडनावे
-                </Text>
-              </View>
-            )}
-            <View style={[styles.countPill, { backgroundColor: isDark ? "#1E293B" : theme.colors.surface, borderColor: isDark ? "#38BDF8" : theme.colors.border }]}>
-              <Text style={[styles.countPillText, { color: isDark ? "#FFFFFF" : theme.colors.primary }]}>{totalCount} मतदार</Text>
+          </TouchableOpacity>
+          {villages.map((v) => (
+            <TouchableOpacity
+              key={v.id}
+              style={[styles.smallChip, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, selectedVillageId === v.id && styles.activeSmallChip]}
+              onPress={() => setSelectedVillageId(v.id)}
+            >
+              <Text style={[styles.smallChipText, { color: theme.colors.textSecondary }, selectedVillageId === v.id && styles.activeSmallChipText]}>
+                {v.name_mr || v.name_en}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Summary Banner */}
+      <View style={[styles.summaryCard, { backgroundColor: isDark ? "#1E3A8A" : theme.colors.card, borderColor: isDark ? "#3B82F6" : theme.colors.border }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.summaryTitle, { color: isDark ? "#FFFFFF" : theme.colors.textPrimary }]}>
+            {reportType === "surname" ? "Surname-Wise Voter Report (आडनाव अहवाल)" : t(titleKey as any)}
+          </Text>
+          <Text style={[styles.summarySubtitle, { color: isDark ? "#93C5FD" : theme.colors.textSecondary }]}>
+            {reportType === "surname" ? `साखराळे गाव • एकूण ${summaryGroups.length} आडनावे सापडली` : "Total Voters Found"}
+          </Text>
+        </View>
+        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+          {reportType === "surname" && (
+            <View style={[styles.countPill, { backgroundColor: isDark ? "#1E293B" : "#DBEAFE", borderColor: isDark ? "#38BDF8" : "#93C5FD" }]}>
+              <Text style={[styles.countPillText, { color: isDark ? "#93C5FD" : "#1D4ED8", fontSize: 13 }]}>
+                {summaryGroups.length} आडनावे
+              </Text>
             </View>
+          )}
+          <View style={[styles.countPill, { backgroundColor: isDark ? "#1E293B" : theme.colors.surface, borderColor: isDark ? "#38BDF8" : theme.colors.border }]}>
+            <Text style={[styles.countPillText, { color: isDark ? "#FFFFFF" : theme.colors.primary }]}>{totalCount} मतदार</Text>
           </View>
         </View>
-      )}
+      </View>
 
       {/* Alphabet Filter Bar for Alphabetical List */}
       {reportType === "alphabetical" && (
@@ -456,7 +475,7 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[styles.voterRow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-                  onPress={() => navigation.navigate("VoterProfile", { memberId: item.id, member: item })}
+                  onPress={() => navigation.navigate("VoterProfile", { memberId: item.id })}
                 >
                   <View style={[styles.voterAvatar, { backgroundColor: isDark ? "#1E293B" : theme.colors.surface }]}>
                     <Ionicons name="person" size={20} color={isDark ? "#93C5FD" : theme.colors.primaryLight} />
@@ -479,6 +498,11 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
                       {item.gender ? ` • ${item.gender}` : ""}
                       {item.house_number ? ` • घर: ${item.house_number}` : ""}
                     </Text>
+                    {item.village_name_mr && (
+                      <Text style={[styles.voterVillageText, { color: theme.colors.textMuted }]}>
+                        {item.village_name_mr}
+                      </Text>
+                    )}
                   </View>
 
                   {item.status === "DECEASED" && (
@@ -556,7 +580,7 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
           renderItem={({ item }) => (
             <TouchableOpacity
               style={[styles.voterRow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-              onPress={() => navigation.navigate("VoterProfile", { memberId: item.id, member: item })}
+              onPress={() => navigation.navigate("VoterProfile", { memberId: item.id })}
             >
               <View style={[styles.voterAvatar, { backgroundColor: isDark ? "#1E293B" : theme.colors.surface }]}>
                 <Ionicons name="person" size={20} color={isDark ? "#93C5FD" : theme.colors.primaryLight} />
@@ -564,7 +588,7 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
               <View style={{ flex: 1 }}>
                 <Text style={[styles.voterName, { color: theme.colors.textPrimary }]}>{item.full_name_mr || item.full_name_en}</Text>
                 <Text style={[styles.voterIdText, { color: theme.colors.textSecondary }]}>
-                  {item.epic_number ? `EPIC: ${item.epic_number}` : `अनुक्रमांक: ${item.serial_number}`}
+                  ID: {item.epic_number || `voter_${item.serial_number}`} | {item.village_name_mr || "साखराळे"}
                 </Text>
               </View>
               {item.status === "DECEASED" && (
@@ -658,22 +682,27 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
                     onPress={() => handleSelectSurname(surnameName)}
                     activeOpacity={0.7}
                   >
-                    <View style={{ flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
                       <View style={[styles.surnameIconCircle, { backgroundColor: isDark ? "#1E293B" : "#E0F2FE" }]}>
-                        <Ionicons name="person" size={14} color={theme.colors.primaryLight} />
+                        <Ionicons name="person" size={18} color={theme.colors.primaryLight} />
                       </View>
-                      <Text style={[styles.surnameCardTitle, { color: theme.colors.textPrimary, marginLeft: 10 }]} numberOfLines={1}>
-                        {surnameName}
-                      </Text>
-                    </View>
-
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <View style={[styles.groupBadge, { backgroundColor: theme.colors.cardElevated, borderColor: theme.colors.borderLight, paddingHorizontal: 10, paddingVertical: 3 }]}>
-                        <Text style={[styles.groupBadgeText, { color: theme.colors.primaryLight, fontSize: 13, fontWeight: "700" }]}>
-                          {item.count || item.total_voters}
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={[styles.surnameCardTitle, { color: theme.colors.textPrimary }]}>
+                          {surnameName}
+                        </Text>
+                        <Text style={[styles.surnameCardSub, { color: theme.colors.textMuted }]}>
+                          या आडनावातील मतदार पाहण्यासाठी टॅप करा
                         </Text>
                       </View>
-                      <Ionicons name="chevron-forward" size={16} color={theme.colors.textMuted} />
+                    </View>
+
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <View style={[styles.groupBadge, { backgroundColor: theme.colors.cardElevated, borderColor: theme.colors.borderLight }]}>
+                        <Text style={[styles.groupBadgeText, { color: theme.colors.primaryLight }]}>
+                          {item.count || item.total_voters} मतदार
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
                     </View>
                   </TouchableOpacity>
                 );
@@ -715,8 +744,8 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
                       </Text>
                     )}
                   </View>
-                  <View style={[styles.groupBadge, { backgroundColor: isDark ? "#1E293B" : "#F1F5F9", borderColor: theme.colors.borderLight }]}>
-                    <Text style={[styles.groupBadgeText, { color: theme.colors.primaryLight }]}>{item.count ?? item.total_voters ?? 0}</Text>
+                  <View style={[styles.groupBadge, { backgroundColor: theme.colors.cardElevated, borderColor: theme.colors.borderLight }]}>
+                    <Text style={[styles.groupBadgeText, { color: theme.colors.primaryLight }]}>{item.count || item.total_voters}</Text>
                   </View>
                 </TouchableOpacity>
 
@@ -852,36 +881,35 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#1E3A8A",
-    marginHorizontal: 12,
-    marginVertical: 4,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: theme.borderRadius.md,
+    backgroundColor: "#1E3A8A", // Blue summary matching screenshot page 11
+    marginHorizontal: theme.spacing.lg,
+    marginVertical: theme.spacing.sm,
+    padding: 16,
+    borderRadius: theme.borderRadius.lg,
     borderWidth: 1,
     borderColor: "#3B82F6",
   },
   summaryTitle: {
     color: "#FFFFFF",
-    fontSize: 14,
+    fontSize: theme.typography.sizes.md,
     fontWeight: "800",
   },
   summarySubtitle: {
     color: "#93C5FD",
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 2,
   },
   countPill: {
     backgroundColor: "#1E293B",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: theme.borderRadius.sm,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: theme.borderRadius.md,
     borderWidth: 1,
     borderColor: "#38BDF8",
   },
   countPillText: {
     color: "#FFFFFF",
-    fontSize: 13,
+    fontSize: 18,
     fontWeight: "800",
   },
   alphabetBarWrapper: {
@@ -969,9 +997,9 @@ const styles = StyleSheet.create({
   },
   groupContainer: {
     backgroundColor: theme.colors.card,
-    marginHorizontal: 12,
-    marginVertical: 1.5,
-    borderRadius: theme.borderRadius.sm,
+    marginHorizontal: theme.spacing.lg,
+    marginVertical: 4,
+    borderRadius: theme.borderRadius.md,
     borderWidth: 1,
     borderColor: theme.colors.border,
     overflow: "hidden",
@@ -983,35 +1011,31 @@ const styles = StyleSheet.create({
   groupCardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    padding: 14,
   },
   groupName: {
     color: theme.colors.textPrimary,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "700",
   },
   groupSub: {
     color: theme.colors.textMuted,
-    fontSize: 10,
-    marginTop: 1,
-    marginLeft: 24,
+    fontSize: 11,
+    marginTop: 2,
+    marginLeft: 26,
   },
   groupBadge: {
     backgroundColor: theme.colors.cardElevated,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: theme.borderRadius.full,
     borderWidth: 1,
     borderColor: theme.colors.borderLight,
-    alignItems: "center",
-    justifyContent: "center",
-    minWidth: 26,
   },
   groupBadgeText: {
     color: theme.colors.primaryLight,
-    fontSize: 11,
-    fontWeight: "700",
+    fontSize: 13,
+    fontWeight: "800",
   },
   drilldownListWrapper: {
     borderTopWidth: 1,
@@ -1165,21 +1189,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginHorizontal: 16,
-    marginVertical: 3,
-    paddingVertical: 9,
-    paddingHorizontal: 12,
-    borderRadius: 10,
+    marginVertical: 4,
+    padding: 14,
+    borderRadius: 12,
     borderWidth: 1,
   },
   surnameIconCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
   },
   surnameCardTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "700",
   },
   surnameCardSub: {

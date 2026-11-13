@@ -65,30 +65,24 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
 
     let pos: Location.LocationObject | null = null;
     try {
-      pos = await Location.getLastKnownPositionAsync({}).catch(() => null);
-    } catch (e) {}
-
-    if (!pos || !pos.coords) {
+      pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+    } catch (currErr) {
       try {
-        pos = await Promise.race([
-          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-          new Promise<null>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 8000))
-        ]);
-      } catch (currErr) {
-        try {
-          pos = await Promise.race([
-            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Lowest }),
-            new Promise<null>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000))
-          ]);
-        } catch (lowestErr) {
-          pos = null;
-        }
+        pos = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+      } catch (balErr) {
+        pos = await Location.getLastKnownPositionAsync({});
       }
     }
 
-    const latitude = pos?.coords?.latitude ?? 16.9854;
-    const longitude = pos?.coords?.longitude ?? 74.3214;
-    const accuracy = pos?.coords?.accuracy ?? 25;
+    if (!pos || !pos.coords) {
+      return null;
+    }
+
+    const { latitude, longitude, accuracy } = pos.coords;
 
     let address = "";
     let placeName = "";

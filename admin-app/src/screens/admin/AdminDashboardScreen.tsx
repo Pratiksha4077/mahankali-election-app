@@ -8,15 +8,16 @@ import { Header } from "../../components/Header";
 import { adminAPI, memberAPI } from "../../api/client";
 import { DashboardStats } from "../../models/types";
 import { useTheme } from "../../context/ThemeContext";
-import { theme, theme as baseTheme } from "../../theme/theme";
+import { theme } from "../../theme/theme";
 
 type ActiveTab = "analysis" | "voters";
 
-export const AdminDashboardScreen: React.FC<any> = ({ navigation }) => {
+export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { theme, isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<ActiveTab>("analysis");
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const cachedInitial = adminAPI.getCachedDashboardStats();
+  const [stats, setStats] = useState<DashboardStats | null>(cachedInitial);
+  const [loading, setLoading] = useState<boolean>(!cachedInitial);
   const [refreshing, setRefreshing] = useState<boolean>(false);
 
   // Voters data state
@@ -28,14 +29,7 @@ export const AdminDashboardScreen: React.FC<any> = ({ navigation }) => {
   const [votersLoadingMore, setVotersLoadingMore] = useState<boolean>(false);
 
   useEffect(() => {
-    const cached = adminAPI.getCachedDashboardStats();
-    if (cached) {
-      setStats(cached);
-      setLoading(false);
-      loadDashboard(true);
-    } else {
-      loadDashboard(false);
-    }
+    loadDashboard();
   }, []);
 
   useEffect(() => {
@@ -44,8 +38,7 @@ export const AdminDashboardScreen: React.FC<any> = ({ navigation }) => {
     }
   }, [activeTab]);
 
-  const loadDashboard = async (silent: boolean = false) => {
-    if (!silent) setLoading(true);
+  const loadDashboard = async () => {
     try {
       const data = await adminAPI.getDashboardStats();
       setStats(data);
@@ -168,7 +161,7 @@ export const AdminDashboardScreen: React.FC<any> = ({ navigation }) => {
           ) : (
             <>
               {/* Summary Metric Cards */}
-              <Text style={[styles.sectionHeading, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>मतदार सारांश (Voter Summary)</Text>
+              <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>मतदार सारांश (Voter Summary)</Text>
               <View style={styles.statsGrid}>
                 <TouchableOpacity
                   style={[styles.statCard, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: "#3B82F6" }]}
@@ -178,7 +171,7 @@ export const AdminDashboardScreen: React.FC<any> = ({ navigation }) => {
                   <View style={[styles.statIconWrap, { backgroundColor: "rgba(59,130,246,0.15)" }]}>
                     <Ionicons name="people-circle-outline" size={22} color="#3B82F6" />
                   </View>
-                  <Text style={[styles.statNumber, { color: isDark ? "#FFFFFF" : "#1D4ED8" }]}>{totalVoters.toLocaleString()}</Text>
+                  <Text style={[styles.statNumber, { color: theme.colors.textPrimary }]}>{totalVoters.toLocaleString()}</Text>
                   <Text style={[styles.statLabel, { color: isDark ? theme.colors.textSecondary : "#475569" }]}>एकूण मतदार</Text>
                   <Text style={[styles.statSubLabel, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>Tap to view list →</Text>
                 </TouchableOpacity>
@@ -468,13 +461,16 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
+    backgroundColor: theme.colors.background,
   },
   tabsRow: {
     flexDirection: "row",
-    paddingHorizontal: baseTheme.spacing.lg,
+    paddingHorizontal: theme.spacing.lg,
     paddingVertical: 10,
     gap: 10,
     borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    backgroundColor: theme.colors.header,
   },
   tabBtn: {
     flex: 1,
@@ -482,14 +478,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 10,
-    borderRadius: baseTheme.borderRadius.md,
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.card,
     borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   activeTabBtn: {
     backgroundColor: "#1E3A8A",
     borderColor: "#3B82F6",
   },
   tabText: {
+    color: theme.colors.textMuted,
     fontSize: 12,
     fontWeight: "700",
   },
@@ -497,7 +496,7 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
   scrollContent: {
-    padding: baseTheme.spacing.lg,
+    padding: theme.spacing.lg,
     paddingBottom: 40,
   },
   loaderCenter: {
@@ -508,6 +507,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   loaderText: {
+    color: theme.colors.textSecondary,
     fontSize: 13,
     marginTop: 4,
   },
@@ -522,7 +522,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 14,
-    borderRadius: baseTheme.borderRadius.lg,
+    borderRadius: theme.borderRadius.lg,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.15)",
     gap: 8,
@@ -533,6 +533,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   sectionHeading: {
+    color: theme.colors.textPrimary,
     fontSize: 14,
     fontWeight: "800",
     marginBottom: 12,
@@ -547,15 +548,11 @@ const styles = StyleSheet.create({
   },
   statCard: {
     width: "48%",
-    borderRadius: baseTheme.borderRadius.lg,
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.borderRadius.lg,
     padding: 14,
     borderWidth: 1.5,
     gap: 4,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
   },
   statIconWrap: {
     width: 36,
@@ -566,27 +563,27 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   statNumber: {
+    color: theme.colors.textPrimary,
     fontSize: 22,
     fontWeight: "800",
   },
   statLabel: {
+    color: theme.colors.textSecondary,
     fontSize: 11,
     fontWeight: "600",
   },
   statSubLabel: {
+    color: theme.colors.textMuted,
     fontSize: 10,
     fontStyle: "italic",
   },
   sectionCard: {
-    borderRadius: baseTheme.borderRadius.lg,
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.borderRadius.lg,
     padding: 16,
     borderWidth: 1,
+    borderColor: theme.colors.border,
     marginBottom: 16,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
   },
   sectionHeaderRow: {
     flexDirection: "row",
@@ -595,7 +592,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   viewAllText: {
-    color: baseTheme.colors.primaryLight,
+    color: theme.colors.primaryLight,
     fontSize: 12,
     fontWeight: "700",
   },
@@ -605,11 +602,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   noDataText: {
+    color: theme.colors.textMuted,
     fontSize: 13,
     fontStyle: "italic",
   },
   uploadNowBtn: {
-    backgroundColor: baseTheme.colors.primary,
+    backgroundColor: theme.colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
@@ -636,15 +634,18 @@ const styles = StyleSheet.create({
   },
   analysisLabel: {
     flex: 1,
+    color: theme.colors.textSecondary,
     fontSize: 12,
     fontWeight: "600",
   },
   analysisCount: {
+    color: theme.colors.textPrimary,
     fontSize: 12,
     fontWeight: "700",
   },
   barTrack: {
     height: 10,
+    backgroundColor: theme.colors.surface,
     borderRadius: 5,
     overflow: "hidden",
   },
@@ -661,7 +662,8 @@ const styles = StyleSheet.create({
     width: "48%",
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: baseTheme.borderRadius.md,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.md,
     padding: 10,
     borderWidth: 1,
     gap: 8,
@@ -672,10 +674,12 @@ const styles = StyleSheet.create({
     borderRadius: 7,
   },
   catLabel: {
+    color: theme.colors.textPrimary,
     fontSize: 11,
     fontWeight: "700",
   },
   catCount: {
+    color: theme.colors.textMuted,
     fontSize: 10,
   },
   catPct: {
@@ -691,10 +695,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   barLabel: {
+    color: theme.colors.textSecondary,
     fontSize: 12,
     fontWeight: "600",
   },
   barCount: {
+    color: theme.colors.textPrimary,
     fontSize: 12,
     fontWeight: "700",
   },
@@ -703,19 +709,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 8,
     borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
     gap: 10,
   },
   actDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: baseTheme.colors.secondary,
+    backgroundColor: theme.colors.secondary,
   },
   actDetail: {
+    color: theme.colors.textPrimary,
     fontSize: 12,
     fontWeight: "600",
   },
   actMeta: {
+    color: theme.colors.textMuted,
     fontSize: 10,
     marginTop: 2,
   },
@@ -724,11 +733,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: baseTheme.spacing.lg,
+    paddingHorizontal: theme.spacing.lg,
     paddingVertical: 10,
+    backgroundColor: "#111827",
     borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
   },
   votersHeaderText: {
+    color: theme.colors.textPrimary,
     fontSize: 13,
     fontWeight: "700",
   },
@@ -736,39 +748,48 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 8,
+    backgroundColor: theme.colors.card,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   voterRow: {
     flexDirection: "row",
     alignItems: "center",
+    backgroundColor: theme.colors.card,
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
   },
   voterIndexBadge: {
     width: 34,
     height: 34,
     borderRadius: 8,
+    backgroundColor: theme.colors.surface,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   voterIndexText: {
+    color: theme.colors.textMuted,
     fontSize: 11,
     fontWeight: "700",
   },
   voterName: {
+    color: theme.colors.textPrimary,
     fontSize: 14,
     fontWeight: "700",
   },
   voterMeta: {
+    color: theme.colors.textMuted,
     fontSize: 11,
     marginTop: 2,
   },
   voterPhone: {
-    color: "#059669",
+    color: "#34D399",
     fontSize: 11,
     marginTop: 2,
     fontWeight: "600",

@@ -308,7 +308,7 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
                     )}
                   </View>
                   <View style={[styles.groupBadge, { backgroundColor: isDark ? "#1E293B" : "#F1F5F9", borderColor: theme.colors.borderLight }]}>
-                    <Text style={[styles.groupBadgeText, { color: theme.colors.primaryLight }]}>{item.count ?? item.total_voters ?? 0}</Text>
+                    <Text style={[styles.groupBadgeText, { color: theme.colors.primaryLight }]}>[ {item.count || item.total_voters} ]</Text>
                   </View>
                 </TouchableOpacity>
 
@@ -560,9 +560,9 @@ const styles = StyleSheet.create({
   },
   groupContainer: {
     backgroundColor: theme.colors.card,
-    marginHorizontal: 12,
-    marginVertical: 1.5,
-    borderRadius: theme.borderRadius.sm,
+    marginHorizontal: theme.spacing.lg,
+    marginVertical: 2.5,
+    borderRadius: theme.borderRadius.md,
     borderWidth: 1,
     borderColor: theme.colors.border,
     overflow: "hidden",
@@ -574,8 +574,8 @@ const styles = StyleSheet.create({
   groupCardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
   },
   groupName: {
     color: theme.colors.textPrimary,
@@ -586,19 +586,19 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     fontSize: 10,
     marginTop: 1,
-    marginLeft: 24,
+    marginLeft: 26,
   },
   groupBadge: {
     backgroundColor: theme.colors.cardElevated,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: theme.colors.borderLight,
   },
   groupBadgeText: {
     color: theme.colors.primaryLight,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "700",
   },
   drilldownListWrapper: {

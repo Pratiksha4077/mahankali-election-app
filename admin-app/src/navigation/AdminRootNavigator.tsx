@@ -1,5 +1,5 @@
 import React from "react";
-import { Platform, View, ActivityIndicator } from "react-native";
+import { Platform } from "react-native";
 import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -93,16 +93,8 @@ const AdminTabs: React.FC = () => {
 };
 
 export const AdminRootNavigator: React.FC = () => {
-  const { isAuthenticated, isAdmin, isRestoringSession } = useAuth();
+  const { isAuthenticated, isAdmin } = useAuth();
   const { theme, isDark } = useTheme();
-
-  if (isRestoringSession) {
-    return (
-      <View style={{ flex: 1, backgroundColor: theme.colors.background, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" color="#F59E0B" />
-      </View>
-    );
-  }
 
   const navTheme = isDark
     ? {

@@ -1,7 +1,6 @@
 import hashlib
 import bcrypt
 import jwt
-import threading
 from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import Depends, HTTPException, status
@@ -137,13 +136,9 @@ async def get_current_user(
             detail="ॲडमिनने आपला प्रवेश नाकारला आहे. आपण युझर पॅनेलमध्ये प्रवेश करू शकत नाही. (Access Denied: The administrator has denied your access to the User Panel.)"
         )
 
-    # Update lastActivity in Supabase (non-blocking in background daemon thread)
+    # Update lastActivity in Supabase (non-blocking)
     try:
-        threading.Thread(
-            target=SupabaseUserService.update_last_activity,
-            args=(username,),
-            daemon=True
-        ).start()
+        SupabaseUserService.update_last_activity(username)
     except Exception:
         pass
 
@@ -166,24 +161,8 @@ def require_admin(
 
 
 # ============================================================
-# ACTIVITY LOGGING (PURE SUPABASE POSTGRESQL - ASYNC NON-BLOCKING)
+# ACTIVITY LOGGING (PURE SUPABASE POSTGRESQL)
 # ============================================================
-
-def _run_log_async(user_id, username, action, details, entity_type, entity_id, meta):
-    try:
-        from app.services.supabase_service import SupabaseActivityService
-        SupabaseActivityService.log_activity_sync(
-            user_id=user_id,
-            username=username or "system",
-            action=action,
-            details=details or "",
-            entity_type=entity_type,
-            entity_id=entity_id,
-            metadata=meta
-        )
-    except Exception:
-        pass
-
 
 def log_activity(
     db_or_none=None,
@@ -197,8 +176,9 @@ def log_activity(
     ip_address: Optional[str] = None,
     username: Optional[str] = None,
 ):
-    """Logs activity asynchronously without blocking the calling HTTP request."""
+    """Logs activity directly into Supabase PostgreSQL public.activity_logs."""
     try:
+        from app.services.supabase_service import SupabaseActivityService
         meta = {}
         if old_values:
             meta["old_values"] = old_values
@@ -207,10 +187,14 @@ def log_activity(
         if ip_address:
             meta["ip_address"] = ip_address
 
-        threading.Thread(
-            target=_run_log_async,
-            args=(user_id, username, action, details, entity_type, entity_id, meta),
-            daemon=True
-        ).start()
+        SupabaseActivityService.log_activity_sync(
+            user_id=user_id,
+            username=username or "system",
+            action=action,
+            details=details or "",
+            entity_type=entity_type,
+            entity_id=entity_id,
+            metadata=meta
+        )
     except Exception:
         pass

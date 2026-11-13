@@ -7,7 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
 import { Toast } from "../../components/Toast";
 import { importAPI, villageAPI } from "../../api/client";
-import { theme, theme as baseTheme } from "../../theme/theme";
+import { theme as baseTheme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 

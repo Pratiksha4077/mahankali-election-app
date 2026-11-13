@@ -2,14 +2,14 @@ import React, { useState, useEffect, useCallback } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   SafeAreaView, ActivityIndicator, RefreshControl, Alert,
-  TextInput, FlatList, Platform
+  TextInput, FlatList
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
 import { adminAPI } from "../../api/client";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
-import { theme, theme as baseTheme } from "../../theme/theme";
+import { theme } from "../../theme/theme";
 
 export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
   const routeUser = route.params?.user;
@@ -112,6 +112,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
         if (freshUser) {
           const uData = freshUser.data || freshUser;
           freshUserData = uData;
+          setCurrentUser(uData);
           const allowed = (uData.accountStatus !== "DISABLED") && (uData.is_active !== false) && (uData.admin_access_allowed !== false);
           setIsAccessAllowed(allowed);
           setHasDevicePerms(Boolean(uData.permissions_granted));
@@ -248,13 +249,11 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
     }
   };
 
-  const currentUserId = currentUser ? String(currentUser.id || currentUser._id || "") : "";
-
   useEffect(() => {
-    if (currentUserId) {
+    if (currentUser) {
       loadUserActivities();
     }
-  }, [currentUserId]);
+  }, [currentUser, loadUserActivities]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -332,117 +331,86 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
     });
   };
 
-  const showConfirmDialog = (
-    title: string,
-    message: string,
-    onConfirm: () => Promise<void> | void
-  ) => {
-    if (Platform.OS === "web") {
-      const ok = typeof window !== "undefined" ? window.confirm(`${title}\n\n${message}`) : true;
-      if (ok) {
-        onConfirm();
-      }
-    } else {
-      Alert.alert(title, message, [
-        { text: "रद्द करा", style: "cancel" },
-        { text: "हटवा", style: "destructive", onPress: onConfirm }
-      ]);
-    }
-  };
-
   const handleDeleteSingle = (activityId: string, itemTitle: string) => {
-    showConfirmDialog(
-      "नोंद हटवा",
-      `'${itemTitle}' ही नोंद ॲडमिन पॅनेलवरून हटवायची आहे का?`,
-      async () => {
-        const uid = String(currentUser?.id || currentUser?._id || "88888888-8888-8888-8888-888888888888");
-        // Optimistic UI removal
-        setActivityData(prev => ({
-          ...prev,
-          calls: prev.calls.filter(c => c.id !== activityId),
-          locations: prev.locations.filter(l => l.id !== activityId),
-          call_count: Math.max(0, prev.call_count - (prev.calls.some(c => c.id === activityId) ? 1 : 0)),
-          location_count: Math.max(0, prev.location_count - (prev.locations.some(l => l.id === activityId) ? 1 : 0)),
-        }));
-        setSelectedIds(prev => {
-          const next = new Set(prev);
-          next.delete(activityId);
-          return next;
-        });
-
-        setIsDeleting(true);
-        try {
-          await adminAPI.deleteSingleActivity(uid, activityId);
-        } catch (e) {
-          console.warn("Delete single error:", e);
-        } finally {
-          setIsDeleting(false);
-          loadUserActivities();
+    Alert.alert(
+      "नोंद हटवा (Soft Delete)",
+      `'${itemTitle}' ही नोंद ॲडमिन पॅनेलवरून हटवायची आहे का? (डेटाबेसमध्ये ही नोंद सुरक्षित राहील)`,
+      [
+        { text: "रद्द करा", style: "cancel" },
+        {
+          text: "हटवा",
+          style: "destructive",
+          onPress: async () => {
+            const uid = String(currentUser?.id || currentUser?._id || "");
+            setIsDeleting(true);
+            try {
+              await adminAPI.deleteSingleActivity(uid, activityId);
+              loadUserActivities();
+            } catch (e) {
+              Alert.alert("त्रुटी", "नोंद हटवताना अडचण आली.");
+            } finally {
+              setIsDeleting(false);
+            }
+          }
         }
-      }
+      ]
     );
   };
 
   const handleDeleteSelected = () => {
     if (selectedIds.size === 0) return;
-    const count = selectedIds.size;
-    showConfirmDialog(
-      "निवडलेल्या नोंदी हटवा",
-      `तुम्ही निवडलेल्या ${count} नोंदी ॲडमिन पॅनेलवरून हटवायच्या आहेत का?`,
-      async () => {
-        const uid = String(currentUser?.id || currentUser?._id || "88888888-8888-8888-8888-888888888888");
-        const toDelete = Array.from(selectedIds);
-
-        // Optimistic UI removal
-        setActivityData(prev => ({
-          ...prev,
-          calls: prev.calls.filter(c => !selectedIds.has(c.id)),
-          locations: prev.locations.filter(l => !selectedIds.has(l.id)),
-          call_count: Math.max(0, prev.call_count - prev.calls.filter(c => selectedIds.has(c.id)).length),
-          location_count: Math.max(0, prev.location_count - prev.locations.filter(l => selectedIds.has(l.id)).length),
-        }));
-        setSelectedIds(new Set());
-        setSelectionMode(false);
-
-        setIsDeleting(true);
-        try {
-          await adminAPI.deleteBatchActivities(uid, toDelete);
-        } catch (e) {
-          console.warn("Delete batch error:", e);
-        } finally {
-          setIsDeleting(false);
-          loadUserActivities();
+    Alert.alert(
+      "निवडलेल्या नोंदी हटवा (Soft Delete)",
+      `तुम्ही निवडलेल्या ${selectedIds.size} नोंदी ॲडमिन पॅनेलवरून हटवायच्या आहेत का? (डेटाबेसमध्ये नोंदी सुरक्षित राहतील)`,
+      [
+        { text: "रद्द करा", style: "cancel" },
+        {
+          text: "हटवा",
+          style: "destructive",
+          onPress: async () => {
+            const uid = String(currentUser?.id || currentUser?._id || "");
+            setIsDeleting(true);
+            try {
+              await adminAPI.deleteBatchActivities(uid, Array.from(selectedIds));
+              setSelectedIds(new Set());
+              setSelectionMode(false);
+              loadUserActivities();
+            } catch (e) {
+              Alert.alert("त्रुटी", "नोंदी हटवताना अडचण आली.");
+            } finally {
+              setIsDeleting(false);
+            }
+          }
         }
-      }
+      ]
     );
   };
 
   const handleClearSection = (section: "calls" | "sms" | "locations") => {
     const secName = section === "calls" ? "कॉल इतिहास" : section === "sms" ? "एसएमएस इतिहास" : "लोकेशन इतिहास";
-    showConfirmDialog(
-      `${secName} साफ करा`,
-      `या विभागातील सर्व नोंदी ॲडमिन पॅनेलवरून हटवायच्या आहेत का?`,
-      async () => {
-        const uid = String(currentUser?.id || currentUser?._id || "88888888-8888-8888-8888-888888888888");
-        // Optimistic UI removal
-        if (section === "calls") {
-          setActivityData(prev => ({ ...prev, calls: [], call_count: 0 }));
-        } else if (section === "locations") {
-          setActivityData(prev => ({ ...prev, locations: [], location_count: 0 }));
+    Alert.alert(
+      `${secName} साफ करा (Soft Delete)`,
+      `या विभागातील नोंदी ॲडमिन पॅनेलवरून हटवल्या जातील (डेटाबेसमधून कायमच्या नष्ट होणार नाहीत). खात्री करा?`,
+      [
+        { text: "रद्द करा", style: "cancel" },
+        {
+          text: "सर्व हटवा",
+          style: "destructive",
+          onPress: async () => {
+            const uid = String(currentUser?.id || currentUser?._id || "");
+            setIsDeleting(true);
+            try {
+              await adminAPI.clearUserActivities(uid, section.toUpperCase());
+              setSelectedIds(new Set());
+              loadUserActivities();
+            } catch (e) {
+              Alert.alert("त्रुटी", "इतिहास हटवताना अडचण आली.");
+            } finally {
+              setIsDeleting(false);
+            }
+          }
         }
-        setSelectedIds(new Set());
-        setSelectionMode(false);
-
-        setIsDeleting(true);
-        try {
-          await adminAPI.clearUserActivities(uid, section.toUpperCase());
-        } catch (e) {
-          console.warn("Clear section error:", e);
-        } finally {
-          setIsDeleting(false);
-          loadUserActivities();
-        }
-      }
+      ]
     );
   };
 
@@ -1120,40 +1088,44 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                         if (!s) return true;
                         const clean = String(s).trim().toLowerCase();
                         if (clean === "" || clean === "null" || clean === "undefined") return true;
+                        if (clean.includes("lat=") || clean.includes("lat-") || clean.includes("lng=") || clean.includes("lng-")) return true;
+                        if (clean.startsWith("gps") || clean.startsWith("lat")) return true;
+                        if (/^-?\d+(\.\d+)?[,\s]+-?\d+(\.\d+)?$/.test(clean)) return true;
                         if (clean === "road" || clean === "street" || clean === "lane" || clean === "rasta" || clean === "मार्ग" || clean === "रस्ता") return true;
                         if (clean.includes("division") || clean.includes("विभाग")) return true;
-                        if (clean.includes("unnamed") || clean.includes("बिननावाचा")) return true;
+                        if (clean.includes("unnamed") || clean.includes("बिननावाचा") || clean.includes("unnamed road")) return true;
                         if (clean === "maharashtra" || clean === "india" || clean === "महाराष्ट्र" || clean === "भारत") return true;
                         return false;
                       };
 
-                      const rawPlace = loc.placeName || loc.metadata?.placeName || loc.metadata?.village || loc.metadata?.city || loc.village;
-                      let fullAddress = loc.address || loc.metadata?.address || "";
+                      const rawPlace = loc.placeName || loc.metadata?.placeName || loc.metadata?.village || loc.metadata?.city;
+                      const fullAddress = loc.address || loc.metadata?.address;
                       let displayPlace = "";
 
-                      const isInvalidPlaceString = (s?: string | null): boolean => {
-                        if (!s) return true;
-                        const clean = s.trim().toLowerCase();
-                        if (isGenericName(clean)) return true;
-                        if (clean.includes("lat=") || clean.includes("lat-") || clean.includes("lng=") || clean.includes("lng-") || clean.includes("स्थान नोंद") || clean.includes("अक्षांश")) return true;
-                        if (/^gps\s*\(/i.test(clean)) return true;
-                        return false;
-                      };
-
-                      if (rawPlace && !isInvalidPlaceString(rawPlace)) {
+                      if (rawPlace && !isGenericName(rawPlace)) {
                         displayPlace = String(rawPlace);
-                      } else if (fullAddress && !isInvalidPlaceString(fullAddress)) {
-                        const parts = String(fullAddress).split(",").map(p => p.trim()).filter(p => !isInvalidPlaceString(p) && !p.includes("पिन:") && !p.toLowerCase().includes("maharashtra") && !p.toLowerCase().includes("महाराष्ट्र"));
+                      } else if (fullAddress && !isGenericName(fullAddress)) {
+                        const parts = String(fullAddress).split(",").map(p => p.trim()).filter(p => !isGenericName(p) && !p.includes("पिन:") && !p.toLowerCase().includes("maharashtra") && !p.toLowerCase().includes("महाराष्ट्र"));
                         if (parts.length > 0) {
                           displayPlace = parts[0];
                         }
                       }
 
-                      if (!displayPlace || isInvalidPlaceString(displayPlace)) {
-                        displayPlace = "साखराळे (Sakharale)";
-                      }
-                      if (!fullAddress || isInvalidPlaceString(fullAddress)) {
-                        fullAddress = "साखराळे, ता. वाळवा, जि. सांगली";
+                      if (!displayPlace || isGenericName(displayPlace)) {
+                        const detailText = typeof loc.details === "string" ? loc.details : "";
+                        const afterColon = detailText.includes(":") ? detailText.split(":")[1]?.trim() : detailText;
+                        if (afterColon && !isGenericName(afterColon)) {
+                          displayPlace = afterColon;
+                        } else if (hasCoords) {
+                          // Coordinates resolution for Sakharale / Walwa / Sangli region
+                          if (numLat >= 16.8 && numLat <= 17.25 && numLon >= 74.1 && numLon <= 74.55) {
+                            displayPlace = "साखराळे (Sakharale), वाळवा";
+                          } else {
+                            displayPlace = `स्थान (GPS: ${numLat.toFixed(4)}, ${numLon.toFixed(4)})`;
+                          }
+                        } else {
+                          displayPlace = "साखराळे (Sakharale)";
+                        }
                       }
 
                       const placeName = displayPlace;

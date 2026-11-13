@@ -67,14 +67,9 @@ async def login(payload: LoginPayload):
 
     user_id = str(user.get("id", ""))
 
-    # Update last_login in Supabase (background thread)
+    # Update last_login in Supabase
     try:
-        import threading
-        threading.Thread(
-            target=SupabaseUserService.update_last_login,
-            args=(user_id,),
-            daemon=True
-        ).start()
+        SupabaseUserService.update_last_login(user_id)
     except Exception:
         pass
 

@@ -8,7 +8,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { Header } from "../../components/Header";
 import { villageAPI, adminAPI } from "../../api/client";
 import { Village, ImportJob } from "../../models/types";
-import { theme as baseTheme } from "../../theme/theme";
+import { theme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 
@@ -21,27 +21,16 @@ interface QueuedFile {
   uri?: string;
 }
 
-export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
+export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { t } = useLanguage();
   const { theme, isDark } = useTheme();
 
-  const DEFAULT_SAKHARALE: Village = {
-    id: "11111111-1111-1111-1111-111111111111",
-    name_en: "Sakharale",
-    name_mr: "साखराळे",
-    taluka: "वाळवा",
-    district: "सांगली",
-    total_voters: 5693,
-    active_voters: 5693,
-    deceased_voters: 0
-  };
-
-  const [villages, setVillages] = useState<Village[]>([DEFAULT_SAKHARALE]);
-  const [selectedVillage, setSelectedVillage] = useState<Village | null>(DEFAULT_SAKHARALE);
+  const [villages, setVillages] = useState<Village[]>([]);
+  const [selectedVillage, setSelectedVillage] = useState<Village | null>(null);
   const [fileQueue, setFileQueue] = useState<QueuedFile[]>([]);
   const [uploading, setUploading] = useState<boolean>(false);
   const [uploadProgressText, setUploadProgressText] = useState<string>("");
-  const [loadingVillages, setLoadingVillages] = useState<boolean>(false);
+  const [loadingVillages, setLoadingVillages] = useState<boolean>(true);
   const [clearBeforeUpload, setClearBeforeUpload] = useState<boolean>(false);
   const [clearing, setClearing] = useState<boolean>(false);
 
@@ -114,16 +103,6 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
       setLoadingJobs(false);
     }
   };
-
-  // Auto-refresh past imports while any job is in progress
-  useEffect(() => {
-    const hasActive = importJobs.some(j => j.status === "processing" || j.status === "pending");
-    if (!hasActive) return;
-    const timer = setInterval(() => {
-      loadPastImports();
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [importJobs]);
 
   const handleDeleteJob = (job: any) => {
     setJobToDelete(job);
@@ -285,10 +264,8 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
         setUploadProgressText(`अपलोड व प्रक्रिया होत आहे (${i + 1}/${fileQueue.length}): ${item.name}`);
 
         const formData = new FormData();
-        const vId = selectedVillage?.id || DEFAULT_SAKHARALE.id;
-        formData.append("village_id", vId);
+        formData.append("village_id", selectedVillage.id);
         formData.append("auto_commit", "true");
-        formData.append("clear_previous", "false");
 
         if (Platform.OS === "web" && item.fileObj) {
           formData.append("file", item.fileObj);
@@ -306,7 +283,6 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
           await adminAPI.uploadExcel(formData);
           successCount++;
         } catch (err: any) {
-          console.error("Upload file error for", item.name, err?.response?.data || err?.message);
           errors.push(item.name);
         }
       }
@@ -314,11 +290,10 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
       setFileQueue([]);
       await loadPastImports();
 
-      const vName = selectedVillage?.name_mr || selectedVillage?.name_en || "साखराळे";
       if (errors.length === 0) {
         Alert.alert(
           t("upload_success_title"),
-          `'${vName}' गावासाठी ${successCount} फाईल्स यशस्वीरित्या समाविष्ट केल्या आहेत!`
+          `'${selectedVillage.name_mr || selectedVillage.name_en}' गावासाठी ${successCount} फाईल्स यशस्वीरित्या पाठवल्या आहेत!`
         );
       } else {
         Alert.alert(
@@ -387,7 +362,7 @@ export const DataUploadScreen: React.FC<any> = ({ navigation }) => {
 
         {/* STEP 1: Target Village Selection */}
         <Text style={[styles.sectionHeading, { color: theme.colors.textPrimary }]}>{t("target_village_selection")}</Text>
-        {loadingVillages && villages.length === 0 ? (
+        {loadingVillages ? (
           <ActivityIndicator color={theme.colors.primaryLight} style={{ marginVertical: 12 }} />
         ) : (
           <View style={[styles.villagePickerCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>

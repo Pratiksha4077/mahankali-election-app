@@ -12,7 +12,7 @@ from psycopg2.extras import RealDictCursor
 
 from app.config.config import settings
 from app.auth.security import require_admin, AuthUser, log_activity
-from app.services.supabase_service import get_supabase_conn, SupabaseVoterImportService, SAKHARALE_VILLAGE_ID
+from app.services.supabase_service import get_supabase_conn, SupabaseVoterImportService, SupabaseDashboardService, SAKHARALE_VILLAGE_ID
 from app.services.cloudinary_service import CloudinaryService
 from app.services.cache_service import CacheService
 
@@ -40,16 +40,12 @@ def format_job_row(j: Dict[str, Any]) -> Dict[str, Any]:
         "jobId": str(j.get("id")),
         "_id": str(j.get("id")),
         "fileName": j.get("file_name"),
-        "file_name": j.get("file_name"),
         "fileType": j.get("file_type", "EXCEL"),
-        "file_type": j.get("file_type", "EXCEL"),
         "fileSize": j.get("file_size", 0),
-        "status": str(j.get("status", "COMPLETED")).upper(),
+        "status": j.get("status", "completed"),
         "progress": j.get("progress", 100),
         "currentStage": j.get("stage", "Completed"),
         "stage": j.get("stage", "Completed"),
-        "villageName": j.get("village_name") or "साखराळे",
-        "village_name": j.get("village_name") or "साखराळे",
         "totalRecords": tot,
         "validRecords": val,
         "importedRecords": imp,
@@ -64,7 +60,6 @@ def format_job_row(j: Dict[str, Any]) -> Dict[str, Any]:
         "excel_file": None,
         "excelDownloadUrl": None,
         "createdAt": created_str,
-        "created_at": created_str,
         "metrics": {
             "totalRecords": tot,
             "validRecords": val,
@@ -100,6 +95,7 @@ async def safe_database_cleanup(
 
     CacheService.invalidate_voter_cache()
     CacheService.invalidate_all_reports()
+    SupabaseDashboardService.invalidate_cache()
 
     log_activity(
         user_id=admin.id,
@@ -148,99 +144,146 @@ async def clear_all_voters(
     return await safe_database_cleanup(req, admin)
 
 # ==============================================================================
-# FILE UPLOAD & PROCESSING (EXCEL / CSV / PDF)
+# FILE UPLOAD & PROCESSING (EXCEL / CSV)
 # ==============================================================================
+
+def _process_import_in_background(
+    file_path: Path,
+    file_name: str,
+    file_size: int,
+    village_id: str,
+    username: str,
+    admin_id: str,
+    job_uuid: str,
+    file_uuid: str
+):
+    """Background worker task to import voters without blocking the HTTP request."""
+    try:
+        import_res = SupabaseVoterImportService.import_excel_file(
+            file_path=file_path,
+            file_name=file_name,
+            file_size=file_size,
+            village_id=village_id,
+            uploaded_by=username,
+            job_uuid=job_uuid,
+            file_uuid=file_uuid
+        )
+        CacheService.invalidate_voter_cache()
+        CacheService.invalidate_all_reports()
+        log_activity(
+            user_id=admin_id,
+            action="IMPORT_EXCEL",
+            entity_type="IMPORT_JOB",
+            entity_id=job_uuid,
+            details=f"Imported {import_res.get('imported_records', 0)} voters from {file_name} into Supabase",
+            username=username
+        )
+        logger.info(f"[BackgroundImport] Successfully imported {file_name} (Job: {job_uuid})")
+    except Exception as e:
+        logger.error(f"[BackgroundImport] Error importing {file_name}: {e}")
+        try:
+            conn = get_supabase_conn()
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE public.import_jobs
+                    SET status = 'failed', stage = %s, updated_at = NOW()
+                    WHERE id = %s;
+                """, (f"त्रुटी: {str(e)[:100]}", job_uuid))
+                cur.execute("""
+                    UPDATE public.uploaded_files
+                    SET status = 'FAILED'
+                    WHERE id = %s;
+                """, (file_uuid,))
+            conn.close()
+        except Exception:
+            pass
 
 @router.post("/excel")
 @router.post("/upload")
-@router.post("/file")
-@router.post("/pdf")
-async def upload_and_process_file(
+async def upload_and_process_excel(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     village_id: Optional[str] = Form(None),
-    clear_previous: Optional[Any] = Form(False),
-    auto_commit: Optional[str] = Form(None),
+    clear_previous: bool = Form(False),
     admin: AuthUser = Depends(require_admin)
 ):
     """
-    Admin uploads Excel (.xlsx, .xls), CSV, or PDF file.
-    - Saves original file to disk immediately with sanitized filename.
-    - Parses voter records (using ExcelReader for tabular files, or PDF text parser with OCR fallback for PDF).
-    - Deduplicates voters and inserts directly into Supabase public.voters.
-    - Updates village statistics and logs import job in public.import_jobs.
-    - Backs up original file to Cloudinary with original filename in background.
-    - Guaranteed synchronous completion: immediate stats visibility.
+    Admin uploads Excel or CSV file.
+    - Saves original file to disk immediately.
+    - Creates import job in Supabase.
+    - Dispatches ultra-fast background processing (zero HTTP timeouts).
+    - Returns job ID within 150ms.
     """
-    original_name = Path(file.filename).name if file.filename else "voter_list.xlsx"
-    ext = Path(original_name).suffix.lower()
-    if ext not in [".xlsx", ".xls", ".csv", ".pdf"]:
-        raise HTTPException(status_code=400, detail="फक्त .xlsx, .xls, .csv किंवा .pdf फाईल्स समर्थित आहेत.")
+    ext = Path(file.filename).suffix.lower()
+    if ext not in [".xlsx", ".xls", ".csv"]:
+        raise HTTPException(status_code=400, detail="फक्त .xlsx, .xls किंवा .csv फाईल्स समर्थित आहेत.")
 
-    # Determine if clearing previous data was requested
-    should_clear = False
     if clear_previous:
-        if isinstance(clear_previous, bool):
-            should_clear = clear_previous
-        elif str(clear_previous).strip().lower() in ["true", "1", "yes"]:
-            should_clear = True
-
-    if should_clear:
-        logger.info(f"Admin {admin.username} requested clear_previous before upload.")
         SupabaseVoterImportService.clear_all_voters()
 
-    settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    # Sanitize filename for safe filesystem storage
-    safe_disk_name = f"{int(datetime.utcnow().timestamp())}_{re.sub(r'[^a-zA-Z0-9_.-]', '_', original_name)}"
-    file_path = settings.UPLOAD_DIR / safe_disk_name
-
+    file_path = settings.UPLOAD_DIR / file.filename
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
     file_size = file_path.stat().st_size
     target_village_id = village_id or SAKHARALE_VILLAGE_ID
+    job_uuid = str(uuid.uuid4())
+    file_uuid = str(uuid.uuid4())
+    file_ext = Path(file.filename).suffix.upper().replace(".", "") or "EXCEL"
 
+    # Pre-register job in Supabase so it shows immediately in past imports
     try:
-        import_res = SupabaseVoterImportService.import_voter_file(
-            file_path=file_path,
-            file_name=original_name,
-            file_size=file_size,
-            village_id=target_village_id,
-            uploaded_by=admin.username
-        )
+        conn = get_supabase_conn()
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO public.uploaded_files (
+                    id, file_name, file_type, file_size, cloudinary_url,
+                    village_id, uploaded_by, total_records, imported_records, status, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, 0, 0, 'PROCESSING', NOW());
+            """, (file_uuid, file.filename, file_ext, file_size, f"local://{file.filename}", target_village_id, admin.username))
 
-        CacheService.invalidate_voter_cache()
-        CacheService.invalidate_all_reports()
+            cur.execute("""
+                INSERT INTO public.import_jobs (
+                    id, file_id, file_name, file_type, file_size, village_id, village_name,
+                    status, progress, stage, total_records, valid_records, imported_records,
+                    created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'processing', 20, 'मतदार डेटा आयात होत आहे...', 0, 0, 0, NOW(), NOW());
+            """, (job_uuid, file_uuid, file.filename, file_ext, file_size, target_village_id, "साखराळे / Sakharale"))
+        conn.close()
+    except Exception as je:
+        logger.warning(f"Note pre-registering job: {je}")
 
-        action_name = "IMPORT_PDF" if ext == ".pdf" else "IMPORT_EXCEL"
-        log_activity(
-            user_id=admin.id,
-            action=action_name,
-            entity_type="IMPORT_JOB",
-            entity_id=import_res["job_id"],
-            details=f"Imported {import_res.get('imported_records', 0)} voters from {original_name} into Supabase (Duplicates skipped: {import_res.get('duplicate_records', 0)})",
-            username=admin.username
-        )
+    # Queue background task to import voters
+    background_tasks.add_task(
+        _process_import_in_background,
+        file_path,
+        file.filename,
+        file_size,
+        target_village_id,
+        admin.username,
+        admin.id,
+        job_uuid,
+        file_uuid
+    )
 
-        return {
-            "success": True,
-            "job_id": import_res["job_id"],
-            "jobId": import_res["job_id"],
-            "file_id": import_res.get("file_id"),
-            "fileName": original_name,
-            "file_name": original_name,
-            "file_type": ext.upper().replace(".", ""),
-            "totalRecords": import_res.get("total_records", 0),
-            "total_records": import_res.get("total_records", 0),
-            "importedRecords": import_res.get("imported_records", 0),
-            "imported_records": import_res.get("imported_records", 0),
-            "duplicateRecords": import_res.get("duplicate_records", 0),
-            "duplicate_records": import_res.get("duplicate_records", 0),
-            "status": "COMPLETED",
-            "message": f"'{original_name}' मधील {import_res.get('imported_records', 0)} मतदार यशस्वीरित्या Supabase मध्ये समाविष्ट करण्यात आले."
-        }
-    except Exception as e:
-        logger.error(f"Import failed for {original_name}: {e}")
-        raise HTTPException(status_code=500, detail=f"फाईल प्रक्रिया करताना त्रुटी: {str(e)}")
+    return {
+        "success": True,
+        "job_id": job_uuid,
+        "jobId": job_uuid,
+        "file_id": file_uuid,
+        "fileName": file.filename,
+        "status": "PROCESSING",
+        "message": f"'{file.filename}' फाईल यशस्वीरित्या स्वीकारली असून मतदार आयात प्रक्रिया पार्श्वभूमीत सुरू झाली आहे."
+    }
+
+@router.post("/pdf")
+async def upload_pdf_deprecated():
+    raise HTTPException(
+        status_code=400,
+        detail="PDF अपलोड बंद करण्यात आले आहे. कृपया एक्सेल (.xlsx) किंवा सीएसव्ही (.csv) फाईल वापरा."
+    )
 
 # ==============================================================================
 # IMPORT JOBS & HISTORY

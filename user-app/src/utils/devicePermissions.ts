@@ -65,34 +65,24 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
 
     let pos: Location.LocationObject | null = null;
     try {
-      // 1. Instant check for last known position first (fastest, prevents timeout)
-      pos = await Location.getLastKnownPositionAsync({}).catch(() => null);
-    } catch (e) {}
-
-    if (!pos || !pos.coords) {
+      pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+    } catch (currErr) {
       try {
-        // 2. Try balanced accuracy with an 8-second timeout for reliable indoor/outdoor acquisition
-        pos = await Promise.race([
-          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-          new Promise<null>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 8000))
-        ]);
-      } catch (currErr) {
-        try {
-          // 3. Fallback to lowest accuracy (Wi-Fi/Cell tower)
-          pos = await Promise.race([
-            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Lowest }),
-            new Promise<null>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000))
-          ]);
-        } catch (lowestErr) {
-          pos = null;
-        }
+        pos = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+      } catch (balErr) {
+        pos = await Location.getLastKnownPositionAsync({});
       }
     }
 
-    // Default to Sakharale village coordinates if indoor acquisition timed out but permission is granted
-    const latitude = pos?.coords?.latitude ?? 16.9854;
-    const longitude = pos?.coords?.longitude ?? 74.3214;
-    const accuracy = pos?.coords?.accuracy ?? 25;
+    if (!pos || !pos.coords) {
+      return null;
+    }
+
+    const { latitude, longitude, accuracy } = pos.coords;
 
     let address = "";
     let placeName = "";
@@ -236,8 +226,14 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
     if (isInvalidRoadOrName(placeName)) {
       placeName = [subregion, city, district].filter(s => !isInvalidRoadOrName(s)).join(", ") || "";
     }
+    if (!placeName && latitude >= 16.8 && latitude <= 17.25 && longitude >= 74.1 && longitude <= 74.55) {
+      placeName = "साखराळे (Sakharale), वाळवा";
+      city = "साखराळे";
+      subregion = "वाळवा";
+      district = "सांगली";
+    }
     if (isInvalidRoadOrName(address)) {
-      address = "";
+      address = placeName ? `${placeName} (अक्षांश: ${latitude.toFixed(5)}, रेखांश: ${longitude.toFixed(5)})` : "";
     }
 
     const now = new Date(pos.timestamp || Date.now());
@@ -246,24 +242,16 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
 
     const coordsDisplay = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
 
-    const finalPlace = (placeName && !isInvalidRoadOrName(placeName))
-      ? placeName
-      : (city || subregion || district || "साखराळे (Sakharale)");
-
-    const finalAddress = (address && !isInvalidRoadOrName(address))
-      ? address
-      : `साखराळे, ता. वाळवा, जि. सांगली (अक्षांश: ${latitude.toFixed(5)}, रेखांश: ${longitude.toFixed(5)})`;
-
     return {
       latitude,
       longitude,
       accuracy: accuracy ?? 10,
-      address: finalAddress,
-      placeName: finalPlace,
+      address: address || `साखराळे (अक्षांश: ${latitude.toFixed(5)}, रेखांश: ${longitude.toFixed(5)})`,
+      placeName: placeName || "साखराळे (Sakharale)",
       city: city || district || "साखराळे",
       district: district || city || "सांगली",
       subregion: subregion || "वाळवा",
-      postalCode: postalCode || "415414",
+      postalCode,
       dateStr,
       timeStr,
       timestamp: pos.timestamp || Date.now(),

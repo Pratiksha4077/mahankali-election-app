@@ -1,8 +1,0 @@
-{
-  "name": "device-telephony",
-  "version": "1.0.0",
-  "description": "Native device telephony module for Mahankali app",
-  "main": "index.ts",
-  "types": "index.ts"
-}
-

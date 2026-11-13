@@ -12,10 +12,6 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      },
-      "env": {
-        "EXPO_PUBLIC_USE_RN_FETCH": "true",
-        "EXPO_PUBLIC_API_URL": "https://mahankali-election-app.onrender.com/api"
       }
     },
     "production": {

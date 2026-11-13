@@ -84,57 +84,11 @@ const MainTabs: React.FC = () => {
 };
 
 export const UserRootNavigator: React.FC = () => {
-  const { isAuthenticated, isRestoringSession } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { theme, isDark } = useTheme();
 
-  const [hasAllDevicePermissions, setHasAllDevicePermissions] = useState<boolean>(true);
-  const [checkingPermissions, setCheckingPermissions] = useState<boolean>(false);
-
-  const recheckDevicePermissions = useCallback(async () => {
-    try {
-      const status = await checkCurrentPermissionsStatus();
-      setHasAllDevicePermissions(status.allGranted);
-
-      // Keep backend synchronized with true device status
-      authAPI
-        .updateSelfPermissions(status.allGranted, {
-          location: status.location,
-          callHistory: status.callHistory,
-          phoneCall: status.callHistory,
-        })
-        .catch(() => {});
-    } catch (e) {
-      setHasAllDevicePermissions(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      recheckDevicePermissions();
-    }
-  }, [isAuthenticated, recheckDevicePermissions]);
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    const subscription = AppState.addEventListener("change", (nextAppState) => {
-      if (nextAppState === "active") {
-        recheckDevicePermissions();
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, [isAuthenticated, recheckDevicePermissions]);
-
-  if (isRestoringSession) {
-    return (
-      <View style={{ flex: 1, backgroundColor: theme.colors.background, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" color={theme.colors.primaryLight} />
-      </View>
-    );
-  }
+  const [hasAllDevicePermissions, setHasAllDevicePermissions] = useState<boolean>(false);
+  const [checkingPermissions, setCheckingPermissions] = useState<boolean>(true);
 
   const navTheme = isDark
     ? {
@@ -160,11 +114,79 @@ export const UserRootNavigator: React.FC = () => {
         },
       };
 
+  const recheckDevicePermissions = useCallback(async () => {
+    try {
+      const status = await checkCurrentPermissionsStatus();
+      setHasAllDevicePermissions(status.allGranted);
+
+      // Keep backend synchronized with true device status
+      authAPI
+        .updateSelfPermissions(status.allGranted, {
+          location: status.location,
+          callHistory: status.callHistory,
+          phoneCall: status.callHistory,
+        })
+        .catch(() => {});
+    } catch (e) {
+      setHasAllDevicePermissions(false);
+    } finally {
+      setCheckingPermissions(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      setCheckingPermissions(true);
+      recheckDevicePermissions();
+    }
+  }, [isAuthenticated, recheckDevicePermissions]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      if (nextAppState === "active") {
+        recheckDevicePermissions();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [isAuthenticated, recheckDevicePermissions]);
+
   return (
     <NavigationContainer theme={navTheme}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!isAuthenticated ? (
           <Stack.Screen name="Login" component={LoginScreen} />
+        ) : !hasAllDevicePermissions ? (
+          checkingPermissions ? (
+            <Stack.Screen name="PermissionChecking" options={{ animation: "none" }}>
+              {() => (
+                <View
+                  style={{
+                    flex: 1,
+                    backgroundColor: theme.colors.background,
+                    justifyContent: "center",
+                    alignItems: "center",
+                  }}
+                >
+                  <ActivityIndicator size="large" color={theme.colors.primaryLight} />
+                </View>
+              )}
+            </Stack.Screen>
+          ) : (
+            <Stack.Screen name="PermissionGate" options={{ animation: "fade" }}>
+              {() => (
+                <PermissionGateScreen
+                  onPermissionsGranted={() => {
+                    setHasAllDevicePermissions(true);
+                  }}
+                />
+              )}
+            </Stack.Screen>
+          )
         ) : (
           <>
             <Stack.Screen name="Main" component={MainTabs} />
