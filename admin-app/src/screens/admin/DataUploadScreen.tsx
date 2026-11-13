@@ -294,14 +294,25 @@ export const DataUploadScreen: React.FC<{ navigation: any }> = ({ navigation }) 
         formData.append("auto_commit", "true");
 
         if (Platform.OS === "web" && item.fileObj) {
-          formData.append("file", item.fileObj);
+          formData.append("file", item.fileObj, item.name);
         } else {
-          formData.append("file", {
-            uri: item.uri || "",
-            name: item.name,
-            type: item.name.toLowerCase().endsWith(".csv")
+          const ext = item.name.toLowerCase().split(".").pop();
+          const mimeType =
+            ext === "csv"
               ? "text/csv"
-              : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              : ext === "xls"
+              ? "application/vnd.ms-excel"
+              : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+          const cleanUri =
+            Platform.OS === "android" && item.uri && !item.uri.startsWith("file://") && !item.uri.startsWith("content://")
+              ? `file://${item.uri}`
+              : item.uri || "";
+
+          formData.append("file", {
+            uri: cleanUri,
+            name: item.name,
+            type: mimeType,
           } as any);
         }
 

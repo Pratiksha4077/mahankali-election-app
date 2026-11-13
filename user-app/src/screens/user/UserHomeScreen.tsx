@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  ActivityIndicator, RefreshControl, SafeAreaView, Modal, Platform, Alert, Linking
+  ActivityIndicator, RefreshControl, SafeAreaView, Modal, Platform, Alert, Linking,
+  AppState, AppStateStatus
 } from "react-native";
 import { Header } from "../../components/Header";
 import { SearchBar } from "../../components/SearchBar";
@@ -45,7 +46,6 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
   // Permission Prompt State (One-by-one acceptance)
   const [showPermissionModal, setShowPermissionModal] = useState<boolean>(false);
   const [processingPerms, setProcessingPerms] = useState<boolean>(false);
-  const [checkingInLocation, setCheckingInLocation] = useState<boolean>(false);
   const [permsState, setPermsState] = useState<{
     location: boolean;
     phoneCall: boolean;
@@ -54,7 +54,8 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
     phoneCall: false,
   });
 
-  const hasCapturedLocationOnceRef = React.useRef<boolean>(false);
+  const hasCapturedLocationOnceRef = useRef<boolean>(false);
+  const lastLocationFetchTimeRef = useRef<number>(0);
 
   // Search Debouncing for 10x faster typing and zero server congestion
   useEffect(() => {
@@ -90,14 +91,15 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
     }
   }, [isAdmin, logout]);
 
-  // 100% Genuine Real-Time GPS Location capture and logging (ONCE per app open)
+  // 100% Genuine Real-Time GPS Location capture and logging (ONCE per app open or foreground resume)
   const captureAndLogRealtimeLocation = useCallback(async (trigger: string = "APP_OPEN_ONCE") => {
     if (isAdmin) return;
     try {
       const loc = await getRealtimeDeviceLocation();
       if (!loc) return;
 
-      const placeName = loc.placeName || loc.address || `GPS: ${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`;
+      lastLocationFetchTimeRef.current = Date.now();
+      const placeName = loc.placeName || loc.address || `स्थान (GPS: ${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)})`;
       const now = new Date();
       const dateStr = loc.dateStr || now.toLocaleDateString("en-GB");
       const timeStr = loc.timeStr || now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
@@ -117,15 +119,34 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
           district: loc.district,
           subregion: loc.subregion,
           postalCode: loc.postalCode,
-          village: loc.placeName || loc.city || loc.district || "",
+          village: loc.placeName || loc.city || loc.district || "साखराळे",
           date: dateStr,
           time: timeStr,
           formattedDateTime: `${dateStr}, ${timeStr}`,
           trigger
         }
       });
-    } catch (e) {}
+    } catch (e) {
+      console.warn("[UserHomeScreen] Location fetch/log error:", e);
+    }
   }, [isAdmin, user?.id, user?.username]);
+
+  // Capture GPS location once whenever user opens the app or returns to foreground (throttled to 60s)
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (nextAppState === "active" && !isAdmin && user) {
+        const now = Date.now();
+        if (now - lastLocationFetchTimeRef.current > 60000) {
+          captureAndLogRealtimeLocation("FOREGROUND_RETURN");
+        }
+      }
+    };
+
+    const sub = AppState.addEventListener("change", handleAppStateChange);
+    return () => {
+      sub.remove();
+    };
+  }, [isAdmin, user, captureAndLogRealtimeLocation]);
 
   // Check permissions on mount for non-admin users & verify admin access
   useEffect(() => {
@@ -243,53 +264,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
     }
   }, [loading, loadingMore, hasMore, loadMembers, page]);
 
-  // Real-time GPS Location Check-in Button Handler
-  const handleCheckinLocation = async () => {
-    setCheckingInLocation(true);
-    try {
-      const loc = await getRealtimeDeviceLocation();
-      if (!loc) {
-        Alert.alert(
-          "स्थान त्रुटी (GPS Unavailable)",
-          "मोबाईलचे GPS / लोकेशन चालू आहे का आणि ॲपला लोकेशन परवानगी दिली आहे का ते तपासा.",
-          [{ text: "समजले (OK)" }]
-        );
-        return;
-      }
 
-      const addressStr = loc.placeName ? `${loc.placeName} (${loc.address})` : (loc.address || `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`);
-      const areaName = loc.placeName || loc.city || loc.district || "";
-
-      await logUserActivity({
-        action: "LOCATION_CHECKIN",
-        userId: user?.id,
-        username: user?.username,
-        details: `रिअल-टाईम स्थान: ${addressStr} (अक्षांश: ${loc.latitude.toFixed(5)}, रेखांश: ${loc.longitude.toFixed(5)})`,
-        metadata: {
-          village: areaName,
-          city: loc.city,
-          district: loc.district,
-          subregion: loc.subregion,
-          postalCode: loc.postalCode,
-          address: addressStr,
-          latitude: loc.latitude,
-          longitude: loc.longitude,
-          accuracy: loc.accuracy,
-          checkinType: "MANUAL_CHECKIN"
-        }
-      });
-
-      Alert.alert(
-        "📍 स्थान यशस्वीरित्या नोंदवले!",
-        `पत्ता: ${addressStr}\nशहर/जिल्हा: ${areaName}\nअक्षांश: ${loc.latitude.toFixed(5)}\nरेखांश: ${loc.longitude.toFixed(5)}\nअचूकता: ±${Math.round(loc.accuracy || 10)} मी.\nवेळ: ${new Date().toLocaleTimeString("mr-IN")}`,
-        [{ text: "उत्कृष्ट (OK)" }]
-      );
-    } catch (e) {
-      Alert.alert("माहिती", "स्थान नोंदवले गेले आहे.");
-    } finally {
-      setCheckingInLocation(false);
-    }
-  };
 
   const handleToggleLocationPermission = async () => {
     const res = await requestLocationPermission();
@@ -529,7 +504,7 @@ export const UserHomeScreen: React.FC<{ navigation: any; route?: any }> = ({ nav
             </View>
             <Text style={[styles.permModalTitle, { color: theme.colors.textPrimary }]}>ॲप परवानग्या व्यवस्थापन</Text>
             <Text style={[styles.permModalSubtitle, { color: theme.colors.textMuted }]}>
-              युझर पॅनेल उघडण्यासाठी खालील तिन्ही परवानग्या (स्थान, कॉल इतिहास आणि एसएमएस) अनिवार्य आहेत. सर्व परवानग्या सक्रिय असल्याशिवाय ॲप वापरता येणार नाही:
+              युझर पॅनेल सुरळीत वापरण्यासाठी खालील दोन्ही परवानग्या (स्थान व कॉल इतिहास) आवश्यक आहेत:
             </Text>
 
             <View style={styles.permFeatureList}>
@@ -652,22 +627,7 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.sizes.xs,
     color: theme.colors.textMuted,
   },
-  locationCheckinBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#064E3B",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: theme.borderRadius.full,
-    borderWidth: 1,
-    borderColor: "#059669",
-    marginRight: 10,
-  },
-  locationCheckinBtnText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "700",
-  },
+
   countBadge: {
     backgroundColor: theme.colors.card,
     paddingHorizontal: 12,

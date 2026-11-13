@@ -284,34 +284,36 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
         onBack={() => navigation.goBack()}
       />
 
-      {/* Village Dropdown Filter Bar */}
-      <View style={[styles.villageSelectorCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-        <Text style={[styles.villageSelectorLabel, { color: theme.colors.textMuted }]}>
-          गाव निवडा (Filter by Village):
-        </Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.villageChipsScroll}>
-          <TouchableOpacity
-            style={[styles.smallChip, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, selectedVillageId === null && styles.activeSmallChip]}
-            onPress={() => setSelectedVillageId(null)}
-          >
-            <Ionicons name="home-outline" size={14} color={selectedVillageId === null ? "#FFFFFF" : theme.colors.textSecondary} style={{ marginRight: 4 }} />
-            <Text style={[styles.smallChipText, { color: theme.colors.textSecondary }, selectedVillageId === null && styles.activeSmallChipText]}>
-              All Villages
-            </Text>
-          </TouchableOpacity>
-          {villages.map((v) => (
+      {/* Village Dropdown Filter Bar (only if multi-village system) */}
+      {villages.length > 1 && (
+        <View style={[styles.villageSelectorCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+          <Text style={[styles.villageSelectorLabel, { color: theme.colors.textMuted }]}>
+            गाव निवडा (Filter by Village):
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.villageChipsScroll}>
             <TouchableOpacity
-              key={v.id}
-              style={[styles.smallChip, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, selectedVillageId === v.id && styles.activeSmallChip]}
-              onPress={() => setSelectedVillageId(v.id)}
+              style={[styles.smallChip, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, selectedVillageId === null && styles.activeSmallChip]}
+              onPress={() => setSelectedVillageId(null)}
             >
-              <Text style={[styles.smallChipText, { color: theme.colors.textSecondary }, selectedVillageId === v.id && styles.activeSmallChipText]}>
-                {v.name_mr || v.name_en}
+              <Ionicons name="home-outline" size={14} color={selectedVillageId === null ? "#FFFFFF" : theme.colors.textSecondary} style={{ marginRight: 4 }} />
+              <Text style={[styles.smallChipText, { color: theme.colors.textSecondary }, selectedVillageId === null && styles.activeSmallChipText]}>
+                All Villages
               </Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+            {villages.map((v) => (
+              <TouchableOpacity
+                key={v.id}
+                style={[styles.smallChip, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, selectedVillageId === v.id && styles.activeSmallChip]}
+                onPress={() => setSelectedVillageId(v.id)}
+              >
+                <Text style={[styles.smallChipText, { color: theme.colors.textSecondary }, selectedVillageId === v.id && styles.activeSmallChipText]}>
+                  {v.name_mr || v.name_en}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
       {/* Summary Banner */}
       <View style={[styles.summaryCard, { backgroundColor: isDark ? "#1E3A8A" : theme.colors.card, borderColor: isDark ? "#3B82F6" : theme.colors.border }]}>
@@ -498,11 +500,6 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
                       {item.gender ? ` • ${item.gender}` : ""}
                       {item.house_number ? ` • घर: ${item.house_number}` : ""}
                     </Text>
-                    {item.village_name_mr && (
-                      <Text style={[styles.voterVillageText, { color: theme.colors.textMuted }]}>
-                        {item.village_name_mr}
-                      </Text>
-                    )}
                   </View>
 
                   {item.status === "DECEASED" && (
@@ -1027,15 +1024,17 @@ const styles = StyleSheet.create({
   groupBadge: {
     backgroundColor: theme.colors.cardElevated,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: theme.borderRadius.full,
+    paddingVertical: 5,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: theme.colors.borderLight,
+    alignItems: "center",
+    justifyContent: "center",
   },
   groupBadgeText: {
     color: theme.colors.primaryLight,
-    fontSize: 13,
-    fontWeight: "800",
+    fontSize: 14,
+    fontWeight: "700",
   },
   drilldownListWrapper: {
     borderTopWidth: 1,

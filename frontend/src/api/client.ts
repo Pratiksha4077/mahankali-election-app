@@ -522,9 +522,14 @@ export const adminAPI = {
     return res.data;
   },
 
-  uploadExcel: async (formData: FormData) => {
+  uploadExcel: async (formData: FormData, onUploadProgress?: (progressEvent: any) => void) => {
     const res = await apiClient.post("/admin/import/excel", formData, {
-      timeout: 180000
+      headers: {
+        Accept: "application/json",
+      },
+      transformRequest: (data: any) => data,
+      timeout: 180000,
+      onUploadProgress,
     });
     return res.data;
   },

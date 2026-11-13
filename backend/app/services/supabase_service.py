@@ -1646,19 +1646,30 @@ class SupabaseActivityService:
                     if r:
                         target_user_uuid = r[0]
 
-                # 2. Insert Calls
+                # 2. Insert Calls (avoiding duplicate syncs)
                 for c in calls[:150]:
                     c_phone = c.get("phoneNumber") or c.get("phone") or c.get("number") or ""
                     c_name = c.get("name") or c.get("caller_name") or ""
                     c_type = c.get("callType") or c.get("type") or "CALL"
                     c_meta = {**meta_base, **c, "phoneNumber": c_phone, "name": c_name, "callType": c_type, "call_status": call_status}
+                    c_entity_id = str(c.get("id") or c.get("syncKey") or c.get("recordId") or "")
+
+                    if c_entity_id and target_user_uuid:
+                        cur.execute("""
+                            SELECT id FROM public.activity_logs
+                            WHERE user_id = %s AND action = 'CALL_LOG' AND entity_id = %s
+                            LIMIT 1
+                        """, (target_user_uuid, c_entity_id))
+                        if cur.fetchone():
+                            continue
+
                     cur.execute("""
                         INSERT INTO public.activity_logs (
                             user_id, username, action, entity_type, entity_id, details, metadata, timestamp
                         ) VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
                     """, (
                         target_user_uuid, username, "CALL_LOG", "CALL",
-                        str(c.get("id") or c.get("syncKey") or c.get("recordId") or ""),
+                        c_entity_id,
                         f"कॉल नोंद: {c_phone} {f'({c_name})' if c_name else ''} [{c_type}]",
                         Json(c_meta)
                     ))
@@ -2004,7 +2015,9 @@ class SupabaseVoterImportService:
         file_name: str,
         file_size: int,
         village_id: Optional[str] = None,
-        uploaded_by: str = "admin"
+        uploaded_by: str = "admin",
+        job_uuid: Optional[str] = None,
+        file_uuid: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Processes a single Excel or CSV file:
@@ -2045,35 +2058,57 @@ class SupabaseVoterImportService:
         booth_match = re.search(r'\d+', stem)
         booth_number = booth_match.group(0) if booth_match else "62"
 
-        # 3. Create entry in public.uploaded_files & public.import_jobs
-        file_uuid = str(uuid.uuid4())
-        job_uuid = str(uuid.uuid4())
+        # 3. Create or update entry in public.uploaded_files & public.import_jobs
+        file_uuid = file_uuid or str(uuid.uuid4())
+        job_uuid = job_uuid or str(uuid.uuid4())
         file_ext = Path(file_name).suffix.upper().replace(".", "") or "EXCEL"
 
         with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO public.uploaded_files (
-                    id, file_name, file_type, file_size, cloudinary_url, cloudinary_public_id,
-                    village_id, uploaded_by, total_records, imported_records, status, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-            """, (
-                file_uuid, file_name, file_ext, file_size,
-                cloudinary_url or f"local://{file_name}",
-                cloudinary_public_id, target_village_id, uploaded_by, 0, 0, "PROCESSING"
-            ))
+            cur.execute("SELECT id FROM public.uploaded_files WHERE id = %s", (file_uuid,))
+            if cur.fetchone():
+                cur.execute("""
+                    UPDATE public.uploaded_files
+                    SET cloudinary_url = COALESCE(%s, cloudinary_url),
+                        cloudinary_public_id = COALESCE(%s, cloudinary_public_id),
+                        status = 'PROCESSING'
+                    WHERE id = %s
+                """, (cloudinary_url, cloudinary_public_id, file_uuid))
+            else:
+                cur.execute("""
+                    INSERT INTO public.uploaded_files (
+                        id, file_name, file_type, file_size, cloudinary_url, cloudinary_public_id,
+                        village_id, uploaded_by, total_records, imported_records, status, created_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                """, (
+                    file_uuid, file_name, file_ext, file_size,
+                    cloudinary_url or f"local://{file_name}",
+                    cloudinary_public_id, target_village_id, uploaded_by, 0, 0, "PROCESSING"
+                ))
 
-            cur.execute("""
-                INSERT INTO public.import_jobs (
-                    id, file_id, file_name, file_type, file_size, village_id, village_name,
-                    status, progress, stage, total_records, valid_records, imported_records,
-                    cloudinary_url, created_at, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
-            """, (
-                job_uuid, file_uuid, file_name, file_ext, file_size,
-                target_village_id, "साखराळे / Sakharale",
-                "processing", 20, "Parsing records from file",
-                0, 0, 0, cloudinary_url
-            ))
+            cur.execute("SELECT id FROM public.import_jobs WHERE id = %s", (job_uuid,))
+            if cur.fetchone():
+                cur.execute("""
+                    UPDATE public.import_jobs
+                    SET cloudinary_url = COALESCE(%s, cloudinary_url),
+                        status = 'processing',
+                        progress = 30,
+                        stage = 'मतदार डेटा आयात होत आहे...',
+                        updated_at = NOW()
+                    WHERE id = %s
+                """, (cloudinary_url, job_uuid))
+            else:
+                cur.execute("""
+                    INSERT INTO public.import_jobs (
+                        id, file_id, file_name, file_type, file_size, village_id, village_name,
+                        status, progress, stage, total_records, valid_records, imported_records,
+                        cloudinary_url, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                """, (
+                    job_uuid, file_uuid, file_name, file_ext, file_size,
+                    target_village_id, "साखराळे / Sakharale",
+                    "processing", 20, "मतदार डेटा आयात होत आहे...",
+                    0, 0, 0, cloudinary_url
+                ))
 
         # 4. Read tabular records
         raw_rows = ExcelReader.read_file(Path(file_path))

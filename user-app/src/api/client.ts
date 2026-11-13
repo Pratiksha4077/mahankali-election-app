@@ -546,9 +546,13 @@ export const adminAPI = {
     return res.data;
   },
 
-  uploadExcel: async (formData: FormData) => {
+  uploadExcel: async (formData: FormData, onUploadProgress?: (progressEvent: any) => void) => {
     const res = await apiClient.post("/admin/import/excel", formData, {
-      headers: { "Content-Type": "multipart/form-data" }
+      headers: {
+        Accept: "application/json",
+      },
+      transformRequest: (data: any) => data,
+      onUploadProgress,
     });
     return res.data;
   },
