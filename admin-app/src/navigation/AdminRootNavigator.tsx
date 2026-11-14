@@ -20,6 +20,9 @@ import { UserActivityScreen } from "../screens/admin/UserActivityScreen";
 import { AuditLogsScreen } from "../screens/admin/AuditLogsScreen";
 import { SettingsSyncScreen } from "../screens/admin/AdminSettingsScreen";
 import { PdfToExcelScreen } from "../screens/admin/PdfToExcelScreen";
+import { VoterProfileScreen } from "../screens/admin/VoterProfileScreen";
+import { ReportsScreen } from "../screens/admin/ReportsScreen";
+import { ReportDetailScreen } from "../screens/admin/ReportDetailScreen";
 
 // Auth Screen
 import { LoginScreen } from "../screens/auth/LoginScreen";
@@ -133,6 +136,9 @@ export const AdminRootNavigator: React.FC = () => {
             <Stack.Screen name="ImportJobs" component={ImportJobsScreen} />
             <Stack.Screen name="AuditLogs" component={AuditLogsScreen} />
             <Stack.Screen name="PdfToExcel" component={PdfToExcelScreen} />
+            <Stack.Screen name="VoterProfile" component={VoterProfileScreen} />
+            <Stack.Screen name="Reports" component={ReportsScreen} />
+            <Stack.Screen name="ReportDetail" component={ReportDetailScreen} />
           </>
         )}
       </Stack.Navigator>

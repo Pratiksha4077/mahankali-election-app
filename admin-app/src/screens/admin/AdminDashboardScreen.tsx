@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  SafeAreaView, ActivityIndicator, RefreshControl, FlatList, Platform
+  SafeAreaView, ActivityIndicator, RefreshControl, FlatList, Platform, TextInput
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
@@ -27,16 +27,28 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
   const [votersPage, setVotersPage] = useState<number>(1);
   const [votersHasMore, setVotersHasMore] = useState<boolean>(true);
   const [votersLoadingMore, setVotersLoadingMore] = useState<boolean>(false);
+  const [voterSearch, setVoterSearch] = useState<string>("");
+  const [debouncedSearch, setDebouncedSearch] = useState<string>("");
 
   useEffect(() => {
     loadDashboard();
   }, []);
 
+  // Debounce search query by 350ms
   useEffect(() => {
-    if (activeTab === "voters" && voters.length === 0) {
-      loadVoters(1, false);
+    const handler = setTimeout(() => {
+      setDebouncedSearch(voterSearch);
+    }, 350);
+    return () => clearTimeout(handler);
+  }, [voterSearch]);
+
+  useEffect(() => {
+    if (activeTab === "voters") {
+      setVotersPage(1);
+      setVotersHasMore(true);
+      loadVoters(1, false, debouncedSearch);
     }
-  }, [activeTab]);
+  }, [activeTab, debouncedSearch]);
 
   const loadDashboard = async () => {
     try {
@@ -50,12 +62,13 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
     }
   };
 
-  const loadVoters = async (pageToLoad: number = 1, append: boolean = false) => {
+  const loadVoters = async (pageToLoad: number = 1, append: boolean = false, searchQuery: string = debouncedSearch) => {
     if (pageToLoad === 1) setVotersLoading(true);
     else setVotersLoadingMore(true);
 
     try {
-      const res = await memberAPI.getMembers({ page: pageToLoad, limit: 50 });
+      const q = searchQuery.trim() || undefined;
+      const res = await memberAPI.getMembers({ q, page: pageToLoad, limit: 50 });
       const items = res.items || [];
       const total = res.total ?? items.length;
       setVotersTotal(total);
@@ -80,13 +93,13 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
     if (activeTab === "voters") {
       setVotersPage(1);
       setVotersHasMore(true);
-      loadVoters(1, false);
+      loadVoters(1, false, debouncedSearch);
     }
   };
 
   const handleLoadMoreVoters = () => {
     if (!votersLoading && !votersLoadingMore && votersHasMore) {
-      loadVoters(votersPage + 1, true);
+      loadVoters(votersPage + 1, true, debouncedSearch);
     }
   };
 
@@ -335,10 +348,29 @@ export const AdminDashboardScreen: React.FC<{ navigation: any }> = ({ navigation
             <Text style={[styles.votersHeaderText, { color: theme.colors.textPrimary }]}>एकूण मतदार: {votersTotal.toLocaleString()}</Text>
             <TouchableOpacity
               style={[styles.votersRefreshBtn, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: isDark ? theme.colors.border : "#CBD5E1" }]}
-              onPress={() => { setVotersPage(1); setVotersHasMore(true); loadVoters(1, false); }}
+              onPress={() => { setVotersPage(1); setVotersHasMore(true); loadVoters(1, false, debouncedSearch); }}
             >
               <Ionicons name="refresh" size={16} color="#4F46E5" />
             </TouchableOpacity>
+          </View>
+
+          {/* Search bar for Voters */}
+          <View style={[styles.searchBarContainer, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: isDark ? theme.colors.border : "#E2E8F0" }]}>
+            <Ionicons name="search" size={18} color={theme.colors.textMuted} style={{ marginRight: 8 }} />
+            <TextInput
+              style={[styles.searchInput, { color: theme.colors.textPrimary }]}
+              placeholder="मतदार शोधा (नाव, EPIC क्र., मोबाईल)..."
+              placeholderTextColor={theme.colors.textMuted}
+              value={voterSearch}
+              onChangeText={setVoterSearch}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {voterSearch.length > 0 && (
+              <TouchableOpacity onPress={() => setVoterSearch("")} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
+              </TouchableOpacity>
+            )}
           </View>
 
           {votersLoading ? (
@@ -793,6 +825,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
     fontWeight: "600",
+  },
+  searchBarContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 14,
+    marginVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === "ios" ? 10 : 6,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    paddingVertical: 2,
   },
   deceasedPill: {
     backgroundColor: "rgba(239, 68, 68, 0.15)",

@@ -16,6 +16,7 @@ export interface User {
     location?: boolean;
     phoneCall?: boolean;
     callHistory?: boolean;
+    call_history?: boolean;
     sms?: boolean;
     locationStatus?: string;
     callStatus?: string;
@@ -27,14 +28,16 @@ export interface User {
 
 export interface Village {
   id: string;
+  name?: string;
+  nameMarathi?: string;
   name_en: string;
   name_mr: string;
   taluka?: string;
   district?: string;
   pin_code?: string;
   total_voters: number;
-  active_voters: number;
-  deceased_voters: number;
+  active_voters?: number;
+  deceased_voters?: number;
 }
 
 export interface Category {

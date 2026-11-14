@@ -17,17 +17,13 @@ export const PRODUCTION_API_URL = "https://mahankali-election-app.onrender.com/a
 const isLocalWeb = Platform.OS === "web" && typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
 // Environment variable or default production API URL
-export const DEFAULT_API_BASE_URL = Platform.OS === "android"
-  ? PRODUCTION_API_URL
+export const DEFAULT_API_BASE_URL = (process.env.EXPO_PUBLIC_API_URL && process.env.EXPO_PUBLIC_API_URL.trim())
+  ? (process.env.EXPO_PUBLIC_API_URL.endsWith("/api")
+      ? process.env.EXPO_PUBLIC_API_URL.trim()
+      : `${process.env.EXPO_PUBLIC_API_URL.trim().replace(/\/+$/, "")}/api`)
   : (isLocalWeb
       ? "http://localhost:8000/api"
-      : (process.env.EXPO_PUBLIC_API_URL
-          ? (
-            process.env.EXPO_PUBLIC_API_URL.endsWith("/api")
-              ? process.env.EXPO_PUBLIC_API_URL
-              : `${process.env.EXPO_PUBLIC_API_URL.replace(/\/+$/, "")}/api`
-          )
-          : PRODUCTION_API_URL));
+      : PRODUCTION_API_URL);
 
 export let API_BASE_URL = DEFAULT_API_BASE_URL;
 
@@ -64,14 +60,18 @@ apiClient.interceptors.request.use(async (config) => {
   try {
     const savedUrl = await appStorage.getItem("election_server_url");
 
-    if (Platform.OS === "android") {
-      // On Android system, always connect to the production FastAPI server
-      API_BASE_URL = PRODUCTION_API_URL;
-      apiClient.defaults.baseURL = PRODUCTION_API_URL;
-      await appStorage.setItem("election_server_url", PRODUCTION_API_URL);
-    } else if (savedUrl && savedUrl.trim()) {
+    if (savedUrl && savedUrl.trim()) {
       API_BASE_URL = savedUrl.trim();
       apiClient.defaults.baseURL = API_BASE_URL;
+    } else if (process.env.EXPO_PUBLIC_API_URL && process.env.EXPO_PUBLIC_API_URL.trim()) {
+      const envUrl = process.env.EXPO_PUBLIC_API_URL.trim().endsWith("/api")
+        ? process.env.EXPO_PUBLIC_API_URL.trim()
+        : `${process.env.EXPO_PUBLIC_API_URL.trim().replace(/\/+$/, "")}/api`;
+      API_BASE_URL = envUrl;
+      apiClient.defaults.baseURL = envUrl;
+    } else {
+      API_BASE_URL = PRODUCTION_API_URL;
+      apiClient.defaults.baseURL = PRODUCTION_API_URL;
     }
 
     const token = await appStorage.getItem("election_auth_token");
@@ -151,11 +151,28 @@ export const authAPI = {
       return res.data;
     } catch (e: any) {
       if (e?.response) {
+        if (e.response.status === 401) {
+          throw new Error(
+            e.response.data?.detail || "लॉगिन अयशस्वी: चुकीचे युझरनेम किंवा पासवर्ड."
+          );
+        }
+        if (e.response.status === 403) {
+          throw new Error(
+            e.response.data?.detail || "ॲडमिनने आपला प्रवेश नाकारला आहे."
+          );
+        }
+        if (e.response.status >= 500) {
+          throw new Error(
+            typeof e.response.data?.detail === "string"
+              ? `सर्व्हर त्रुटी: ${e.response.data.detail}`
+              : "सर्व्हरशी संपर्क झाला परंतु सर्व्हरवर त्रुटी आली. कृपया थोड्या वेळाने प्रयत्न करा किंवा सर्व्हर तपासा."
+          );
+        }
         throw new Error(
           e.response.data?.detail || e.response.data?.message || "लॉगिन अयशस्वी: चुकीचे युझरनेम किंवा पासवर्ड."
         );
       }
-      throw new Error("सर्व्हरशी संपर्क होऊ शकला नाही. कृपया बॅकएंड चालू असल्याची खात्री करा.");
+      throw new Error("सर्व्हरशी संपर्क होऊ शकला नाही. कृपया इंटरनेट व बॅकएंड चालू असल्याची खात्री करा.");
     }
   },
   getMe: async () => {
@@ -371,10 +388,10 @@ export const reportAPI = {
     }
   },
 
-  getDrilldownMembers: async (reportType: string, key: string, villageId?: string) => {
+  getDrilldownMembers: async (reportType: string, key: string, villageId?: string, page: number = 1, limit: number = 50) => {
     try {
       const res = await apiClient.get("/reports/drilldown", {
-        params: { report_type: reportType, key, village_id: villageId }
+        params: { report_type: reportType, key, village_id: villageId, page, limit }
       });
       const data = res.data?.items || res.data?.data || res.data;
       return Array.isArray(data) ? data : [];
@@ -386,9 +403,13 @@ export const reportAPI = {
 
 // ----------------- ADMIN API -----------------
 let cachedDashboardStats: { data: DashboardStats; timestamp: number } | null = null;
-const DASHBOARD_CACHE_TTL = 5000; // 5 seconds
+const DASHBOARD_CACHE_TTL = 30000; // 30 seconds for instant high-performance navigation
 
 export const adminAPI = {
+  getCachedDashboardStats: (): DashboardStats | null => {
+    return cachedDashboardStats ? cachedDashboardStats.data : null;
+  },
+
   getDashboardStats: async (forceRefresh: boolean = false): Promise<DashboardStats> => {
     const now = Date.now();
     if (!forceRefresh && cachedDashboardStats && now - cachedDashboardStats.timestamp < DASHBOARD_CACHE_TTL) {
@@ -434,7 +455,14 @@ export const adminAPI = {
           role: u.role || "USER",
           is_active: u.accountStatus ? u.accountStatus === "ACTIVE" : (u.is_active ?? true),
           assignedVillages: u.assignedVillages || [],
-          permissions_granted: u.permissions_granted ?? false
+          permissions_granted: u.permissions_granted ?? true,
+          permissions: u.permissions || {
+            location: u.permissions_granted ?? true,
+            callHistory: u.permissions_granted ?? true,
+            call_history: u.permissions_granted ?? true,
+            phoneCall: u.permissions_granted ?? true,
+            sms: u.permissions_granted ?? true,
+          }
         }));
       }
       return [];
@@ -528,7 +556,6 @@ export const adminAPI = {
         Accept: "application/json",
       },
       transformRequest: (data: any) => data,
-      timeout: 180000,
       onUploadProgress,
     });
     return res.data;
@@ -536,6 +563,22 @@ export const adminAPI = {
 
   clearAllVoters: async () => {
     const res = await apiClient.post("/admin/import/clear-voters");
+    return res.data;
+  },
+
+  cleanupDatabase: async (options?: {
+    clear_voters?: boolean;
+    clear_import_history?: boolean;
+    clear_activity_logs?: boolean;
+    delete_cloudinary_files?: boolean;
+  }) => {
+    const payload = {
+      clear_voters: options?.clear_voters ?? true,
+      clear_import_history: options?.clear_import_history ?? true,
+      clear_activity_logs: options?.clear_activity_logs ?? false,
+      delete_cloudinary_files: options?.delete_cloudinary_files ?? true,
+    };
+    const res = await apiClient.post("/admin/import/cleanup", payload);
     return res.data;
   },
 
@@ -594,9 +637,21 @@ export const adminAPI = {
     }
   },
 
-  getUserActivity: async (user_id?: string, username?: string) => {
+  getUserActivity: async (
+    user_id?: string,
+    username?: string,
+    options?: { type?: "all" | "calls" | "sms" | "locations"; page?: number; limit?: number; max_total?: number }
+  ) => {
     try {
-      const res = await apiClient.get(`/admin/users/${user_id}/activity`, { params: { limit: 500 } });
+      const params: any = {
+        limit: options?.limit ?? 50,
+        page: options?.page ?? 1,
+        max_total: options?.max_total ?? 250,
+      };
+      if (options?.type && options.type !== "all") {
+        params.type = options.type;
+      }
+      const res = await apiClient.get(`/admin/users/${user_id}/activity`, { params });
       const payload = res.data?.data || res.data;
       if (payload) {
         console.log(
@@ -609,7 +664,15 @@ export const adminAPI = {
     } catch (e: any) {
       console.warn(`[adminAPI.getUserActivity] HTTP Error for user_id=${user_id}:`, e?.response?.status, e?.message || e);
     }
-    return { calls: [], sms: [], locations: [], call_count: 0, sms_count: 0, location_count: 0 };
+    return {
+      calls: [],
+      sms: [],
+      locations: [],
+      call_count: 0,
+      sms_count: 0,
+      location_count: 0,
+      pagination: {}
+    };
   },
 
   deleteSingleActivity: async (userId: string, activityId: string) => {
@@ -645,7 +708,6 @@ export const adminAPI = {
     smsStatus: string;
     calls: any[];
     sms: any[];
-    locations?: any[];
     metadata?: Record<string, any>;
   }) => {
     const res = await apiClient.post("/admin/users/activity/telephony-sync", payload);

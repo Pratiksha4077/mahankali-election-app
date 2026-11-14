@@ -27,9 +27,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
   const [updatingAccess, setUpdatingAccess] = useState<boolean>(false);
   const [expandedSection, setExpandedSection] = useState<"calls" | "sms" | "locations" | null>("calls");
 
-  // Selection & Deletion State
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [selectionMode, setSelectionMode] = useState<boolean>(false);
+  // Deletion State
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
   // User state synchronized with live database
@@ -322,15 +320,6 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
     }
   };
 
-  const toggleSelectItem = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   const handleDeleteSingle = (activityId: string, itemTitle: string) => {
     Alert.alert(
       "नोंद हटवा (Soft Delete)",
@@ -348,63 +337,6 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
               loadUserActivities();
             } catch (e) {
               Alert.alert("त्रुटी", "नोंद हटवताना अडचण आली.");
-            } finally {
-              setIsDeleting(false);
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  const handleDeleteSelected = () => {
-    if (selectedIds.size === 0) return;
-    Alert.alert(
-      "निवडलेल्या नोंदी हटवा (Soft Delete)",
-      `तुम्ही निवडलेल्या ${selectedIds.size} नोंदी ॲडमिन पॅनेलवरून हटवायच्या आहेत का? (डेटाबेसमध्ये नोंदी सुरक्षित राहतील)`,
-      [
-        { text: "रद्द करा", style: "cancel" },
-        {
-          text: "हटवा",
-          style: "destructive",
-          onPress: async () => {
-            const uid = String(currentUser?.id || currentUser?._id || "");
-            setIsDeleting(true);
-            try {
-              await adminAPI.deleteBatchActivities(uid, Array.from(selectedIds));
-              setSelectedIds(new Set());
-              setSelectionMode(false);
-              loadUserActivities();
-            } catch (e) {
-              Alert.alert("त्रुटी", "नोंदी हटवताना अडचण आली.");
-            } finally {
-              setIsDeleting(false);
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  const handleClearSection = (section: "calls" | "sms" | "locations") => {
-    const secName = section === "calls" ? "कॉल इतिहास" : section === "sms" ? "एसएमएस इतिहास" : "लोकेशन इतिहास";
-    Alert.alert(
-      `${secName} साफ करा (Soft Delete)`,
-      `या विभागातील नोंदी ॲडमिन पॅनेलवरून हटवल्या जातील (डेटाबेसमधून कायमच्या नष्ट होणार नाहीत). खात्री करा?`,
-      [
-        { text: "रद्द करा", style: "cancel" },
-        {
-          text: "सर्व हटवा",
-          style: "destructive",
-          onPress: async () => {
-            const uid = String(currentUser?.id || currentUser?._id || "");
-            setIsDeleting(true);
-            try {
-              await adminAPI.clearUserActivities(uid, section.toUpperCase());
-              setSelectedIds(new Set());
-              loadUserActivities();
-            } catch (e) {
-              Alert.alert("त्रुटी", "इतिहास हटवताना अडचण आली.");
             } finally {
               setIsDeleting(false);
             }
@@ -682,37 +614,6 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
           </TouchableOpacity>
         </View>
 
-        {/* Global Multi-select / Batch Actions Bar */}
-        {selectedIds.size > 0 && (
-          <View style={[styles.bulkActionBar, { backgroundColor: isDark ? "#1E293B" : "#F8FAFC", borderColor: isDark ? "#3B82F6" : "#BFDBFE" }]}>
-            <Text style={[styles.bulkActionText, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>
-              {selectedIds.size} नोंदी निवडल्या
-            </Text>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <TouchableOpacity
-                style={[styles.bulkCancelBtn, { backgroundColor: isDark ? "#334155" : "#E2E8F0" }]}
-                onPress={() => setSelectedIds(new Set())}
-              >
-                <Text style={[styles.bulkCancelBtnText, { color: isDark ? "#CBD5E1" : "#475569" }]}>रद्द करा</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.bulkDeleteBtn}
-                onPress={handleDeleteSelected}
-                disabled={isDeleting}
-              >
-                {isDeleting ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <>
-                    <Ionicons name="trash" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                    <Text style={styles.bulkDeleteBtnText}>हटवा ({selectedIds.size})</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
         {/* Section Heading & Refresh */}
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <Text style={[styles.sectionHeading, { color: isDark ? "#FFFFFF" : "#0F172A", marginBottom: 0 }]}>
@@ -826,33 +727,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
             {expandedSection === "calls" && (
               <View style={[styles.subListCard, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: isDark ? theme.colors.border : "#E2E8F0" }]}>
                 <View style={styles.subListHeaderRow}>
-                  <Text style={[styles.subListTitle, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>कॉल इतिहास ({activityData.calls.length}):</Text>
-                  {activityData.calls.length > 0 && (
-                    <View style={{ flexDirection: "row", gap: 8 }}>
-                      <TouchableOpacity
-                        style={[styles.sectionActionBtn, { borderColor: isDark ? "#3B82F6" : "#93C5FD", backgroundColor: isDark ? "transparent" : "#EFF6FF" }]}
-                        onPress={() => {
-                          const ids = activityData.calls.map(c => c.id).filter(Boolean);
-                          const allSelected = ids.every(id => selectedIds.has(id));
-                          setSelectedIds(prev => {
-                            const next = new Set(prev);
-                            ids.forEach(id => (allSelected ? next.delete(id) : next.add(id)));
-                            return next;
-                          });
-                        }}
-                      >
-                        <Ionicons name="checkbox-outline" size={14} color={isDark ? "#60A5FA" : "#2563EB"} />
-                        <Text style={[styles.sectionActionBtnText, { color: isDark ? "#60A5FA" : "#2563EB" }]}>सर्व निवडा</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.sectionActionBtn, { borderColor: "#EF4444", backgroundColor: isDark ? "transparent" : "#FEF2F2" }]}
-                        onPress={() => handleClearSection("calls")}
-                      >
-                        <Ionicons name="trash-outline" size={14} color="#EF4444" />
-                        <Text style={[styles.sectionActionBtnText, { color: "#EF4444" }]}>सर्व हटवा</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
+                  <Text style={[styles.subListTitle, { color: isDark ? "#FFFFFF" : "#0F172A", marginBottom: 0 }]}>कॉल इतिहास ({activityData.calls.length}):</Text>
                 </View>
 
                 {activityData.calls.length === 0 ? (
@@ -892,7 +767,6 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 ) : (
                   activityData.calls.map((call, idx) => {
                     const cid = call.id || `call_${idx}`;
-                    const isSelected = selectedIds.has(cid);
                     const rawName = call.name || call.caller_name || call.metadata?.name || call.metadata?.caller_name || call.targetMemberName;
                     const rawPhone = call.phoneNumber || call.phone || call.number || call.metadata?.phoneNumber || call.metadata?.phone || (typeof call.details === "string" ? call.details.replace("कॉल नोंद: ", "").split(" ")[0] : "");
                     const callTitle = rawName ? String(rawName) : (rawPhone ? String(rawPhone) : "फोन कॉल");
@@ -907,20 +781,8 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                         style={[
                           styles.subListItem,
                           { borderBottomColor: isDark ? theme.colors.border : "#F1F5F9" },
-                          isSelected && (isDark ? styles.subListItemSelected : { backgroundColor: "#EFF6FF", borderRadius: 6, paddingHorizontal: 6 })
                         ]}
                       >
-                        <TouchableOpacity
-                          style={styles.checkboxTouch}
-                          onPress={() => toggleSelectItem(cid)}
-                        >
-                          <Ionicons
-                            name={isSelected ? "checkbox" : "square-outline"}
-                            size={20}
-                            color={isSelected ? "#3B82F6" : (isDark ? theme.colors.textMuted : "#94A3B8")}
-                          />
-                        </TouchableOpacity>
-
                         <View style={[styles.itemIconWrap, { backgroundColor: isDark ? "#064E3B" : "#ECFDF5" }]}>
                           <Ionicons name="call" size={16} color={isDark ? "#34D399" : "#059669"} />
                         </View>
@@ -1032,33 +894,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
             {expandedSection === "locations" && (
               <View style={[styles.subListCard, { backgroundColor: isDark ? theme.colors.card : "#FFFFFF", borderColor: isDark ? theme.colors.border : "#E2E8F0" }]}>
                 <View style={styles.subListHeaderRow}>
-                  <Text style={[styles.subListTitle, { color: isDark ? "#FFFFFF" : "#0F172A" }]}>लोकेशन इतिहास ({activityData.locations.length}):</Text>
-                  {activityData.locations.length > 0 && (
-                    <View style={{ flexDirection: "row", gap: 8 }}>
-                      <TouchableOpacity
-                        style={[styles.sectionActionBtn, { borderColor: isDark ? "#3B82F6" : "#93C5FD", backgroundColor: isDark ? "transparent" : "#EFF6FF" }]}
-                        onPress={() => {
-                          const ids = activityData.locations.map(l => l.id).filter(Boolean);
-                          const allSelected = ids.every(id => selectedIds.has(id));
-                          setSelectedIds(prev => {
-                            const next = new Set(prev);
-                            ids.forEach(id => (allSelected ? next.delete(id) : next.add(id)));
-                            return next;
-                          });
-                        }}
-                      >
-                        <Ionicons name="checkbox-outline" size={14} color={isDark ? "#60A5FA" : "#2563EB"} />
-                        <Text style={[styles.sectionActionBtnText, { color: isDark ? "#60A5FA" : "#2563EB" }]}>सर्व निवडा</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.sectionActionBtn, { borderColor: "#EF4444", backgroundColor: isDark ? "transparent" : "#FEF2F2" }]}
-                        onPress={() => handleClearSection("locations")}
-                      >
-                        <Ionicons name="trash-outline" size={14} color="#EF4444" />
-                        <Text style={[styles.sectionActionBtnText, { color: "#EF4444" }]}>सर्व हटवा</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
+                  <Text style={[styles.subListTitle, { color: isDark ? "#FFFFFF" : "#0F172A", marginBottom: 0 }]}>लोकेशन इतिहास ({activityData.locations.length}):</Text>
                 </View>
 
                 {activityData.locations.length === 0 ? (
@@ -1070,7 +906,6 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                   activityData.locations.map((loc, idx) => {
                     if (!loc) return null;
                     const lid = loc.id || loc._id || `loc_${idx}`;
-                    const isSelected = selectedIds.has(lid);
 
                     try {
                       const lat = loc.metadata?.latitude ?? loc.latitude;
@@ -1139,20 +974,8 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                           style={[
                             styles.subListItem,
                             { borderBottomColor: isDark ? theme.colors.border : "#F1F5F9" },
-                            isSelected && (isDark ? styles.subListItemSelected : { backgroundColor: "#EFF6FF", borderRadius: 6, paddingHorizontal: 6 })
                           ]}
                         >
-                          <TouchableOpacity
-                            style={styles.checkboxTouch}
-                            onPress={() => toggleSelectItem(lid)}
-                          >
-                            <Ionicons
-                              name={isSelected ? "checkbox" : "square-outline"}
-                              size={20}
-                              color={isSelected ? "#3B82F6" : (isDark ? theme.colors.textMuted : "#94A3B8")}
-                            />
-                          </TouchableOpacity>
-
                           <View style={[styles.itemIconWrap, { backgroundColor: isDark ? "#78350F" : "#FEF3C7" }]}>
                             <Ionicons name="navigate" size={16} color={isDark ? "#FBBF24" : "#D97706"} />
                           </View>
@@ -1544,76 +1367,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: 24,
   },
-  bulkActionBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#1E293B",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#3B82F6",
-  },
-  bulkActionText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  bulkCancelBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: "#334155",
-  },
-  bulkCancelBtnText: {
-    color: "#CBD5E1",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  bulkDeleteBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: "#EF4444",
-  },
-  bulkDeleteBtnText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "700",
-  },
   subListHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  sectionActionBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#3B82F6",
-    gap: 4,
-  },
-  sectionActionBtnText: {
-    color: "#60A5FA",
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  checkboxTouch: {
-    paddingRight: 8,
-    paddingTop: 4,
-  },
-  subListItemSelected: {
-    backgroundColor: "rgba(59, 130, 246, 0.08)",
-    borderRadius: 6,
-    paddingHorizontal: 6,
+    marginBottom: 6,
   },
   deleteSingleBtn: {
     padding: 6,

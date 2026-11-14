@@ -43,11 +43,22 @@ export interface PermissionStatusResult {
   realLocation?: RealtimeLocationResult;
 }
 
+// In-memory cache to prevent multiple hardware GPS triggers within a 30-second window
+let _cachedGpsLocation: RealtimeLocationResult | null = null;
+let _lastGpsFetchTime = 0;
+const GPS_CACHE_TTL_MS = 30 * 1000; // 30 seconds
+
 /**
  * Get real-time GPS location of the user using expo-location.
+ * Uses a 30-second in-memory cache to avoid duplicate GPS triggers on app open/foreground.
  * Returns null if location is disabled or permission denied.
  */
-export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResult | null> {
+export async function getRealtimeDeviceLocation(forceRefresh = false): Promise<RealtimeLocationResult | null> {
+  // If we already fetched a valid GPS location within the last 30 seconds, reuse it immediately
+  if (!forceRefresh && _cachedGpsLocation && (Date.now() - _lastGpsFetchTime < GPS_CACHE_TTL_MS)) {
+    return _cachedGpsLocation;
+  }
+
   try {
     const hasServices = await Location.hasServicesEnabledAsync().catch(() => true);
     if (!hasServices) {
@@ -242,7 +253,7 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
 
     const coordsDisplay = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
 
-    return {
+    const result: RealtimeLocationResult = {
       latitude,
       longitude,
       accuracy: accuracy ?? 10,
@@ -256,6 +267,10 @@ export async function getRealtimeDeviceLocation(): Promise<RealtimeLocationResul
       timeStr,
       timestamp: pos.timestamp || Date.now(),
     };
+
+    _cachedGpsLocation = result;
+    _lastGpsFetchTime = Date.now();
+    return result;
   } catch (e) {
     console.error("GPS location error:", e);
     return null;

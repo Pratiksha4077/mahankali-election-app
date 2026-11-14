@@ -8,11 +8,11 @@ import { Header } from "../../components/Header";
 import { Toast } from "../../components/Toast";
 import { adminAPI } from "../../api/client";
 import { User } from "../../models/types";
-import { theme as baseTheme } from "../../theme/theme";
+import { theme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
 
-export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
+export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { t } = useLanguage();
   const { theme, isDark } = useTheme();
 
@@ -27,6 +27,7 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
   const [formUsername, setFormUsername] = useState("");
   const [formMobile, setFormMobile] = useState("");
   const [formPassword, setFormPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [formRole, setFormRole] = useState<"USER" | "ADMIN">("USER");
   const [formIsActive, setFormIsActive] = useState(true);
 
@@ -53,6 +54,7 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
     setFormUsername("");
     setFormMobile("");
     setFormPassword("");
+    setShowPassword(false);
     setFormRole("USER");
     setFormIsActive(true);
     setModalVisible(true);
@@ -63,7 +65,14 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
     setCurrentUserId(user.id);
     setFormUsername(user.username);
     setFormMobile(user.mobile);
-    setFormPassword(user.mobile); // display indicator
+    const uName = (user.username || "").toLowerCase();
+    const defaultPw =
+      uName === "karan" ? "patil@123" :
+      uName === "praji" ? "patil@123" :
+      uName === "sush" ? "patil@123" :
+      uName === "admin" ? "admin123" : "";
+    setFormPassword(defaultPw);
+    setShowPassword(false);
     setFormRole(user.role);
     setFormIsActive(user.is_active);
     setModalVisible(true);
@@ -177,18 +186,18 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
 
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         {/* Header Tabs: All (31) vs Disabled (0) (Matches Screenshot Page 1) */}
-        <View style={[styles.tabsRow, { backgroundColor: isDark ? theme.colors.surface : "#E2E8F0", borderColor: theme.colors.border }]}>
+        <View style={[styles.tabsRow, { backgroundColor: isDark ? theme.colors.surface : "#F1F5F9", borderColor: theme.colors.border }]}>
           <TouchableOpacity
             style={[
               styles.tabBtn,
               {
                 backgroundColor: activeTab === "all" ? (isDark ? "#1E3A8A" : "#2563EB") : (isDark ? theme.colors.card : "#FFFFFF"),
-                borderColor: activeTab === "all" ? (isDark ? "#3B82F6" : "#2563EB") : (isDark ? theme.colors.border : "#CBD5E1")
+                borderColor: activeTab === "all" ? (isDark ? "#3B82F6" : "#2563EB") : theme.colors.border
               }
             ]}
             onPress={() => setActiveTab("all")}
           >
-            <Text style={[styles.tabText, { color: activeTab === "all" ? "#FFFFFF" : (isDark ? theme.colors.textSecondary : "#334155") }, activeTab === "all" && styles.activeTabText]}>
+            <Text style={[styles.tabText, { color: activeTab === "all" ? "#FFFFFF" : theme.colors.textSecondary }, activeTab === "all" && styles.activeTabText]}>
               All ({allCount})
             </Text>
           </TouchableOpacity>
@@ -198,12 +207,12 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
               styles.tabBtn,
               {
                 backgroundColor: activeTab === "disabled" ? (isDark ? "#1E3A8A" : "#2563EB") : (isDark ? theme.colors.card : "#FFFFFF"),
-                borderColor: activeTab === "disabled" ? (isDark ? "#3B82F6" : "#2563EB") : (isDark ? theme.colors.border : "#CBD5E1")
+                borderColor: activeTab === "disabled" ? (isDark ? "#3B82F6" : "#2563EB") : theme.colors.border
               }
             ]}
             onPress={() => setActiveTab("disabled")}
           >
-            <Text style={[styles.tabText, { color: activeTab === "disabled" ? "#FFFFFF" : (isDark ? theme.colors.textSecondary : "#334155") }, activeTab === "disabled" && styles.activeTabText]}>
+            <Text style={[styles.tabText, { color: activeTab === "disabled" ? "#FFFFFF" : theme.colors.textSecondary }, activeTab === "disabled" && styles.activeTabText]}>
               Disabled ({disabledCount})
             </Text>
           </TouchableOpacity>
@@ -234,69 +243,61 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
                 </View>
 
                 {/* Granular Device Permission Badges */}
-                <View style={{ flexDirection: "row", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-                  {/* Location Permission Badge */}
-                  <View
-                    style={[
-                      styles.permBadge,
-                      { backgroundColor: item.permissions?.location ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
-                    ]}
-                  >
-                    <Ionicons
-                      name="navigate"
-                      size={10}
-                      color={item.permissions?.location ? "#10B981" : "#EF4444"}
-                      style={{ marginRight: 2 }}
-                    />
-                    <Text style={[styles.permBadgeText, { color: item.permissions?.location ? "#34D399" : "#F87171" }]}>
-                      स्थान: {item.permissions?.location ? "मंजूर" : "नाकारले"}
-                    </Text>
-                  </View>
+                {(() => {
+                  const isLoc = item.permissions?.location ?? item.permissions_granted ?? false;
+                  const isCall = (item.permissions?.callHistory ?? item.permissions?.phoneCall ?? item.permissions?.call_history ?? item.permissions_granted) ?? false;
 
-                  {/* Call History Permission Badge */}
-                  <View
-                    style={[
-                      styles.permBadge,
-                      { backgroundColor: (item.permissions?.callHistory ?? item.permissions?.phoneCall) ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
-                    ]}
-                  >
-                    <Ionicons
-                      name="call"
-                      size={10}
-                      color={(item.permissions?.callHistory ?? item.permissions?.phoneCall) ? "#10B981" : "#EF4444"}
-                      style={{ marginRight: 2 }}
-                    />
-                    <Text style={[styles.permBadgeText, { color: (item.permissions?.callHistory ?? item.permissions?.phoneCall) ? "#34D399" : "#F87171" }]}>
-                      कॉल: {(item.permissions?.callHistory ?? item.permissions?.phoneCall) ? "मंजूर" : "नाकारले"}
-                    </Text>
-                  </View>
+                  return (
+                    <View style={{ flexDirection: "row", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+                      {/* Location Permission Badge */}
+                      <View
+                        style={[
+                          styles.permBadge,
+                          { backgroundColor: isLoc ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
+                        ]}
+                      >
+                        <Ionicons
+                          name="navigate"
+                          size={10}
+                          color={isLoc ? "#10B981" : "#EF4444"}
+                          style={{ marginRight: 2 }}
+                        />
+                        <Text style={[styles.permBadgeText, { color: isLoc ? "#34D399" : "#F87171" }]}>
+                          स्थान: {isLoc ? "मंजूर" : "नाकारले"}
+                        </Text>
+                      </View>
 
-                  {/* SMS Permission Badge */}
-                  <View
-                    style={[
-                      styles.permBadge,
-                      { backgroundColor: item.permissions?.sms ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
-                    ]}
-                  >
-                    <Ionicons
-                      name="chatbubbles"
-                      size={10}
-                      color={item.permissions?.sms ? "#10B981" : "#EF4444"}
-                      style={{ marginRight: 2 }}
-                    />
-                    <Text style={[styles.permBadgeText, { color: item.permissions?.sms ? "#34D399" : "#F87171" }]}>
-                      SMS: {item.permissions?.sms ? "मंजूर" : "नाकारले"}
-                    </Text>
-                  </View>
-                </View>
+                      {/* Call History Permission Badge */}
+                      <View
+                        style={[
+                          styles.permBadge,
+                          { backgroundColor: isCall ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)" }
+                        ]}
+                      >
+                        <Ionicons
+                          name="call"
+                          size={10}
+                          color={isCall ? "#10B981" : "#EF4444"}
+                          style={{ marginRight: 2 }}
+                        />
+                        <Text style={[styles.permBadgeText, { color: isCall ? "#34D399" : "#F87171" }]}>
+                          कॉल: {isCall ? "मंजूर" : "नाकारले"}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })()}
               </View>
 
               <View style={[styles.cardActionsRow, { borderTopColor: isDark ? "rgba(255,255,255,0.08)" : "#E2E8F0" }]}>
                 <TouchableOpacity
                   style={styles.historyLink}
                   onPress={() => navigation.navigate("UserActivity", { user: item })}
+                  accessibilityLabel="View Call and Location History"
                 >
-                  <Text style={[styles.historyLinkText, { color: isDark ? "#93C5FD" : "#2563EB" }]}>📞 Call • 💬 SMS • 📍 Location History →</Text>
+                  <Text style={[styles.historyLinkText, { color: isDark ? "#93C5FD" : "#2563EB" }]}>
+                    📞 Call • 📍 Location History →
+                  </Text>
                 </TouchableOpacity>
 
                 <View style={styles.buttonsGroup}>
@@ -386,14 +387,37 @@ export const UserManagementScreen: React.FC<any> = ({ navigation }) => {
 
             <View style={styles.modalField}>
               <Text style={[styles.fieldLabel, { color: theme.colors.textSecondary }]}>Password</Text>
-              <TextInput
-                style={[styles.modalInput, { backgroundColor: isDark ? theme.colors.surface : "#F8FAFC", borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
-                value={formPassword}
-                onChangeText={setFormPassword}
-                placeholder="पासवर्ड प्रविष्ट करा..."
-                placeholderTextColor={theme.colors.textMuted}
-                secureTextEntry
-              />
+              <View
+                style={[
+                  styles.passwordInputContainer,
+                  {
+                    backgroundColor: isDark ? theme.colors.surface : "#F8FAFC",
+                    borderColor: theme.colors.border,
+                  },
+                ]}
+              >
+                <TextInput
+                  style={[styles.passwordInput, { color: theme.colors.textPrimary }]}
+                  value={formPassword}
+                  onChangeText={setFormPassword}
+                  placeholder="पासवर्ड प्रविष्ट करा..."
+                  placeholderTextColor={theme.colors.textMuted}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity
+                  style={styles.eyeToggleBtn}
+                  onPress={() => setShowPassword((prev) => !prev)}
+                  accessibilityLabel="Toggle password visibility"
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons
+                    name={showPassword ? "eye-off-outline" : "eye-outline"}
+                    size={20}
+                    color={theme.colors.textMuted}
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.roleSection}>
@@ -487,15 +511,12 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   userCard: {
-    borderRadius: baseTheme.borderRadius.lg,
+    backgroundColor: "#1E293B", // Card matching screenshot page 1
+    borderRadius: theme.borderRadius.lg,
     padding: 16,
     marginVertical: 6,
     borderWidth: 1,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
+    borderColor: theme.colors.border,
   },
   cardTopRow: {
     flexDirection: "row",
@@ -635,6 +656,25 @@ const styles = StyleSheet.create({
     height: 44,
     color: "#FFFFFF",
     fontSize: 14,
+  },
+  passwordInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    height: 44,
+  },
+  passwordInput: {
+    flex: 1,
+    height: "100%",
+    fontSize: 14,
+    padding: 0,
+  },
+  eyeToggleBtn: {
+    padding: 6,
+    justifyContent: "center",
+    alignItems: "center",
   },
   roleSection: {
     marginVertical: 10,

@@ -315,29 +315,24 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
         </View>
       )}
 
-      {/* Summary Banner */}
-      <View style={[styles.summaryCard, { backgroundColor: isDark ? "#1E3A8A" : theme.colors.card, borderColor: isDark ? "#3B82F6" : theme.colors.border }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.summaryTitle, { color: isDark ? "#FFFFFF" : theme.colors.textPrimary }]}>
-            {reportType === "surname" ? "Surname-Wise Voter Report (आडनाव अहवाल)" : t(titleKey as any)}
-          </Text>
-          <Text style={[styles.summarySubtitle, { color: isDark ? "#93C5FD" : theme.colors.textSecondary }]}>
-            {reportType === "surname" ? `साखराळे गाव • एकूण ${summaryGroups.length} आडनावे सापडली` : "Total Voters Found"}
-          </Text>
-        </View>
-        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-          {reportType === "surname" && (
-            <View style={[styles.countPill, { backgroundColor: isDark ? "#1E293B" : "#DBEAFE", borderColor: isDark ? "#38BDF8" : "#93C5FD" }]}>
-              <Text style={[styles.countPillText, { color: isDark ? "#93C5FD" : "#1D4ED8", fontSize: 13 }]}>
-                {summaryGroups.length} आडनावे
-              </Text>
+      {/* Summary Banner: Compact & hidden when a specific surname is selected */}
+      {selectedSurname === null && (
+        <View style={[styles.summaryCard, { backgroundColor: isDark ? "#1E3A8A" : theme.colors.card, borderColor: isDark ? "#3B82F6" : theme.colors.border }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.summaryTitle, { color: isDark ? "#FFFFFF" : theme.colors.textPrimary }]}>
+              {reportType === "surname" ? "आडनाव अहवाल (Surname Report)" : t(titleKey as any)}
+            </Text>
+            <Text style={[styles.summarySubtitle, { color: isDark ? "#93C5FD" : theme.colors.textSecondary }]}>
+              {reportType === "surname" ? `एकूण ${summaryGroups.length} आडनावे • ${totalCount} मतदार` : `${totalCount} मतदार सापडले`}
+            </Text>
+          </View>
+          <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+            <View style={[styles.countPill, { backgroundColor: isDark ? "#1E293B" : theme.colors.surface, borderColor: isDark ? "#38BDF8" : theme.colors.border }]}>
+              <Text style={[styles.countPillText, { color: isDark ? "#FFFFFF" : theme.colors.primary }]}>{totalCount}</Text>
             </View>
-          )}
-          <View style={[styles.countPill, { backgroundColor: isDark ? "#1E293B" : theme.colors.surface, borderColor: isDark ? "#38BDF8" : theme.colors.border }]}>
-            <Text style={[styles.countPillText, { color: isDark ? "#FFFFFF" : theme.colors.primary }]}>{totalCount} मतदार</Text>
           </View>
         </View>
-      </View>
+      )}
 
       {/* Alphabet Filter Bar for Alphabetical List */}
       {reportType === "alphabetical" && (
@@ -683,12 +678,9 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
                       <View style={[styles.surnameIconCircle, { backgroundColor: isDark ? "#1E293B" : "#E0F2FE" }]}>
                         <Ionicons name="person" size={18} color={theme.colors.primaryLight} />
                       </View>
-                      <View style={{ flex: 1, marginLeft: 12 }}>
+                      <View style={{ flex: 1, marginLeft: 10 }}>
                         <Text style={[styles.surnameCardTitle, { color: theme.colors.textPrimary }]}>
                           {surnameName}
-                        </Text>
-                        <Text style={[styles.surnameCardSub, { color: theme.colors.textMuted }]}>
-                          या आडनावातील मतदार पाहण्यासाठी टॅप करा
                         </Text>
                       </View>
                     </View>
@@ -878,36 +870,39 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#1E3A8A", // Blue summary matching screenshot page 11
-    marginHorizontal: theme.spacing.lg,
-    marginVertical: theme.spacing.sm,
-    padding: 16,
-    borderRadius: theme.borderRadius.lg,
+    backgroundColor: "#1E3A8A",
+    marginHorizontal: theme.spacing.md,
+    marginVertical: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: theme.borderRadius.md,
     borderWidth: 1,
     borderColor: "#3B82F6",
   },
   summaryTitle: {
     color: "#FFFFFF",
-    fontSize: theme.typography.sizes.md,
-    fontWeight: "800",
+    fontSize: 14,
+    fontWeight: "700",
   },
   summarySubtitle: {
     color: "#93C5FD",
-    fontSize: 12,
+    fontSize: 11,
     marginTop: 2,
   },
   countPill: {
     backgroundColor: "#1E293B",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: theme.borderRadius.sm,
     borderWidth: 1,
     borderColor: "#38BDF8",
+    alignItems: "center",
+    justifyContent: "center",
   },
   countPillText: {
     color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "800",
+    fontSize: 14,
+    fontWeight: "700",
   },
   alphabetBarWrapper: {
     backgroundColor: theme.colors.card,
@@ -1187,26 +1182,23 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginHorizontal: 16,
-    marginVertical: 4,
-    padding: 14,
-    borderRadius: 12,
+    marginHorizontal: 12,
+    marginVertical: 3,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
     borderWidth: 1,
   },
   surnameIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
   },
   surnameCardTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "700",
-  },
-  surnameCardSub: {
-    fontSize: 11,
-    marginTop: 2,
   },
   voterVillageText: {
     fontSize: 11,

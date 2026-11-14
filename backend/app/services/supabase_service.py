@@ -4,9 +4,10 @@ import time
 import uuid
 import re
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 import psycopg2
+import psycopg2.pool
 from psycopg2.extras import Json, RealDictCursor, execute_values
 
 from app.config.config import settings
@@ -16,29 +17,70 @@ logger = logging.getLogger("election_app.supabase")
 SAKHARALE_VILLAGE_ID = "11111111-1111-1111-1111-111111111111"
 SUPABASE_POOLER_URL = "postgresql://postgres.yqndmvoxlipybxqbmqcn:sTGw5Jrsvvx8qKY0@aws-0-eu-west-1.pooler.supabase.com:5432/postgres"
 
+_supabase_pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
+
+def get_supabase_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    global _supabase_pool
+    if _supabase_pool is None or _supabase_pool.closed:
+        db_url = settings.DATABASE_URL
+        if not db_url or not db_url.startswith("postgres"):
+            db_url = SUPABASE_POOLER_URL
+        if "db.yqndmvoxlipybxqbmqcn.supabase.co" in db_url:
+            db_url = db_url.replace(
+                "db.yqndmvoxlipybxqbmqcn.supabase.co:5432",
+                "aws-0-eu-west-1.pooler.supabase.com:5432"
+            ).replace(
+                "postgres:sTGw5Jrsvvx8qKY0@",
+                "postgres.yqndmvoxlipybxqbmqcn:sTGw5Jrsvvx8qKY0@"
+            )
+        try:
+            _supabase_pool = psycopg2.pool.ThreadedConnectionPool(minconn=2, maxconn=15, dsn=db_url)
+            logger.info("[SupabasePool] Initialized ThreadedConnectionPool successfully")
+        except Exception as e:
+            logger.warning(f"[SupabasePool] Primary pool creation error: {e}. Falling back to SUPABASE_POOLER_URL.")
+            _supabase_pool = psycopg2.pool.ThreadedConnectionPool(minconn=2, maxconn=15, dsn=SUPABASE_POOLER_URL)
+    return _supabase_pool
+
+class PooledConnectionWrapper:
+    """Wrapper that returns connection to pool when close() is called."""
+    def __init__(self, conn, pool):
+        self._conn = conn
+        self._pool = pool
+        self._closed = False
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def close(self):
+        if not self._closed:
+            self._closed = True
+            try:
+                self._pool.putconn(self._conn)
+            except Exception:
+                pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
 def get_supabase_conn():
-    """Returns a psycopg2 connection to Supabase PostgreSQL with pooler fallback."""
-    db_url = settings.DATABASE_URL
-    if not db_url or not db_url.startswith("postgres"):
-        db_url = SUPABASE_POOLER_URL
-
-    # Automatically transform IPv6-only direct host into IPv4/IPv6 session pooler for Render & mobile
-    if "db.yqndmvoxlipybxqbmqcn.supabase.co" in db_url:
-        db_url = db_url.replace(
-            "db.yqndmvoxlipybxqbmqcn.supabase.co:5432",
-            "aws-0-eu-west-1.pooler.supabase.com:5432"
-        ).replace(
-            "postgres:sTGw5Jrsvvx8qKY0@",
-            "postgres.yqndmvoxlipybxqbmqcn:sTGw5Jrsvvx8qKY0@"
-        )
-
+    """Returns a high-speed pooled connection to Supabase PostgreSQL."""
     try:
-        return psycopg2.connect(db_url, connect_timeout=10)
+        pool = get_supabase_pool()
+        conn = pool.getconn()
+        if conn.closed:
+            pool.putconn(conn, close=True)
+            conn = pool.getconn()
+        conn.autocommit = True
+        return PooledConnectionWrapper(conn, pool)
     except Exception as e:
-        logger.warning(f"[Supabase] Connection attempt to {db_url.split('@')[-1]} failed: {e}. Falling back to pooler.")
-        if db_url != SUPABASE_POOLER_URL:
-            return psycopg2.connect(SUPABASE_POOLER_URL, connect_timeout=10)
-        raise e
+        logger.warning(f"[Supabase] Pool checkout fallback: {e}")
+        db_url = settings.DATABASE_URL or SUPABASE_POOLER_URL
+        if "db.yqndmvoxlipybxqbmqcn.supabase.co" in db_url:
+            db_url = SUPABASE_POOLER_URL
+        return psycopg2.connect(db_url, connect_timeout=10)
 
 def format_voter_as_member(row: Dict[str, Any]) -> Dict[str, Any]:
     """Formats a database voter row into the exact frontend Member JSON schema."""
@@ -662,6 +704,15 @@ class SupabaseMemberService:
         page: int = 1,
         limit: int = 40
     ) -> Dict[str, Any]:
+        from app.services.cache_service import CacheService
+
+        is_default_query = not search_query and not category_id and not my_assigned_only and status in ("ACTIVE", "ALL")
+        cache_key = f"voters:page:{page}:limit:{limit}:{status}:{village_id or 'all'}" if is_default_query and page <= 3 else None
+        if cache_key:
+            cached_val = CacheService.get(cache_key)
+            if cached_val:
+                return cached_val
+
         conn = get_supabase_conn()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -701,8 +752,15 @@ class SupabaseMemberService:
 
                 where_str = f"WHERE {' AND '.join(where_clauses)}"
 
-                cur.execute(f"SELECT count(*) FROM public.voters {where_str};", tuple(params))
-                total = cur.fetchone()["count"]
+                total = None
+                if is_default_query:
+                    total = CacheService.get("voters:default_total")
+
+                if total is None:
+                    cur.execute(f"SELECT count(*) FROM public.voters {where_str};", tuple(params))
+                    total = cur.fetchone()["count"]
+                    if is_default_query:
+                        CacheService.set("voters:default_total", total, ttl=120)
 
                 limit = max(1, min(limit, 250))
                 offset = max(0, (page - 1) * limit)
@@ -718,13 +776,16 @@ class SupabaseMemberService:
 
                 items = [format_voter_as_member(r) for r in rows]
                 pages = math.ceil(total / limit) if limit > 0 else 1
-                return {
+                result = {
                     "items": items,
                     "total": total,
                     "page": page,
                     "pages": pages,
                     "limit": limit
                 }
+                if cache_key:
+                    CacheService.set(cache_key, result, ttl=60)
+                return result
         finally:
             conn.close()
 
@@ -1663,15 +1724,31 @@ class SupabaseActivityService:
                         if cur.fetchone():
                             continue
 
+                    call_dt = datetime.now(timezone.utc)
+                    raw_ts = c.get("timestamp") or c.get("date")
+                    if raw_ts:
+                        try:
+                            if isinstance(raw_ts, (int, float)) or (isinstance(raw_ts, str) and raw_ts.isdigit()):
+                                ms_val = float(raw_ts)
+                                if ms_val > 1000000000000:
+                                    call_dt = datetime.fromtimestamp(ms_val / 1000.0, timezone.utc)
+                                elif ms_val > 0:
+                                    call_dt = datetime.fromtimestamp(ms_val, timezone.utc)
+                            elif isinstance(raw_ts, str):
+                                call_dt = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+                        except Exception:
+                            pass
+
                     cur.execute("""
                         INSERT INTO public.activity_logs (
                             user_id, username, action, entity_type, entity_id, details, metadata, timestamp
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         target_user_uuid, username, "CALL_LOG", "CALL",
                         c_entity_id,
                         f"कॉल नोंद: {c_phone} {f'({c_name})' if c_name else ''} [{c_type}]",
-                        Json(c_meta)
+                        Json(c_meta),
+                        call_dt
                     ))
                     saved_calls += 1
 
@@ -1701,20 +1778,29 @@ class SupabaseActivityService:
                     ))
                     saved_locs += 1
 
-                # 5. Update user permissions & last_telephony_sync
+                # 5. Update user permissions & last_telephony_sync & invalidate cache
                 if target_user_uuid:
+                    is_call_ok = (call_status == "GRANTED")
+                    is_loc_ok = (saved_locs > 0 or len(locations) > 0)
                     cur.execute("""
                         UPDATE public.users
                         SET last_activity = NOW(),
+                            permissions_granted = %s,
                             permissions = jsonb_set(
-                                COALESCE(permissions, '{}'::jsonb),
-                                '{call_history}', %s::jsonb
+                                jsonb_set(
+                                    COALESCE(permissions, '{}'::jsonb),
+                                    '{call_history}', %s::jsonb
+                                ),
+                                '{location}', %s::jsonb
                             )
                         WHERE id = %s
                     """, (
-                        json.dumps(call_status == "GRANTED"),
+                        (is_call_ok or is_loc_ok),
+                        json.dumps(is_call_ok),
+                        json.dumps(is_loc_ok),
                         target_user_uuid
                     ))
+                    SupabaseUserService._invalidate_user_cache(user_id=str(target_user_uuid), username=username)
 
             conn.close()
             return {
