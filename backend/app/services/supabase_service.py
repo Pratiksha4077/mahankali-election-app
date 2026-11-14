@@ -1063,15 +1063,25 @@ class SupabaseReportService:
                 params = []
 
                 if rtype == "surname":
-                    where_clauses.append("""
-                        (
-                            surname_marathi ILIKE %s OR
-                            surname ILIKE %s OR
-                            split_part(TRIM(full_name_marathi), ' ', 1) ILIKE %s OR
-                            full_name_marathi ILIKE %s
-                        )
-                    """)
-                    params.extend([k, k, k, f"%{k}%"])
+                    if k in ["इतर", "other", "Other", "अनिर्णित"]:
+                        where_clauses.append("""
+                            (
+                                surname_marathi IS NULL OR
+                                TRIM(surname_marathi) = '' OR
+                                surname_marathi ILIKE '%%इतर%%' OR
+                                split_part(TRIM(full_name_marathi), ' ', 1) = 'इतर'
+                            )
+                        """)
+                    else:
+                        where_clauses.append("""
+                            (
+                                surname_marathi ILIKE %s OR
+                                surname ILIKE %s OR
+                                split_part(TRIM(full_name_marathi), ' ', 1) ILIKE %s OR
+                                full_name_marathi ILIKE %s
+                            )
+                        """)
+                        params.extend([k, k, k, f"%{k}%"])
                 elif rtype in ["category", "color-rating"]:
                     where_clauses.append("(category_color = %s OR category_code ILIKE %s OR category_id::text = %s)")
                     params.extend([k, k, k])
@@ -1101,17 +1111,43 @@ class SupabaseReportService:
                 elif rtype == "deceased":
                     where_clauses.append("status = 'DECEASED'")
                 elif rtype == "religion":
-                    where_clauses.append("religion = %s")
-                    params.append(k)
+                    if not k or "इतर" in k or "अनिर्दिष्ट" in k or k.lower() in ["other", "unspecified", "none"]:
+                        where_clauses.append("(religion IS NULL OR TRIM(religion) = '' OR religion ILIKE '%%इतर%%' OR religion ILIKE '%%अनिर्दिष्ट%%')")
+                    else:
+                        where_clauses.append("religion = %s")
+                        params.append(k)
                 elif rtype == "caste":
-                    where_clauses.append("caste = %s")
-                    params.append(k)
+                    if not k or "इतर" in k or "अनिर्दिष्ट" in k or k.lower() in ["other", "unspecified", "none"]:
+                        where_clauses.append("(caste IS NULL OR TRIM(caste) = '' OR caste ILIKE '%%इतर%%' OR caste ILIKE '%%अनिर्दिष्ट%%')")
+                    else:
+                        where_clauses.append("caste = %s")
+                        params.append(k)
                 elif rtype == "profession":
-                    where_clauses.append("profession = %s")
-                    params.append(k)
+                    if not k or "इतर" in k or "अनिर्दिष्ट" in k or k.lower() in ["other", "unspecified", "none"]:
+                        where_clauses.append("(profession IS NULL OR TRIM(profession) = '' OR profession ILIKE '%%इतर%%' OR profession ILIKE '%%अनिर्दिष्ट%%')")
+                    else:
+                        where_clauses.append("profession = %s")
+                        params.append(k)
                 elif rtype == "designation":
-                    where_clauses.append("designation = %s")
-                    params.append(k)
+                    if not k or "सामान्य" in k or "general" in k.lower() or "इतर" in k or "अनिर्दिष्ट" in k:
+                        where_clauses.append("(designation IS NULL OR TRIM(designation) = '' OR designation ILIKE '%%सामान्य%%' OR designation ILIKE '%%general%%')")
+                    else:
+                        where_clauses.append("designation = %s")
+                        params.append(k)
+                elif rtype in ["membership", "serial", "range"]:
+                    nums = [int(s) for s in re.findall(r'\d+', k)]
+                    if len(nums) >= 2:
+                        where_clauses.append("serial_number >= %s AND serial_number <= %s")
+                        params.extend([nums[0], nums[1]])
+                    elif len(nums) == 1 and ("+" in k or "अधिक" in k):
+                        where_clauses.append("serial_number >= %s")
+                        params.append(nums[0])
+                    else:
+                        where_clauses.append("(full_name_marathi ILIKE %s OR surname_marathi ILIKE %s)")
+                        params.extend([f"%{k}%", f"%{k}%"])
+                elif rtype == "village":
+                    where_clauses.append("(village_id = %s OR village_name_mr ILIKE %s OR village_name ILIKE %s)")
+                    params.extend([k, f"%{k}%", f"%{k}%"])
                 else:
                     where_clauses.append("(full_name_marathi ILIKE %s OR surname_marathi ILIKE %s)")
                     params.extend([f"%{k}%", f"%{k}%"])
@@ -1707,13 +1743,13 @@ class SupabaseActivityService:
                     if r:
                         target_user_uuid = r[0]
 
-                # 2. Insert Calls (avoiding duplicate syncs)
-                for c in calls[:150]:
+                # 2. Insert Calls (avoiding duplicate syncs, supporting full history up to 1500 calls)
+                for c in calls[:1500]:
                     c_phone = c.get("phoneNumber") or c.get("phone") or c.get("number") or ""
                     c_name = c.get("name") or c.get("caller_name") or ""
                     c_type = c.get("callType") or c.get("type") or "CALL"
                     c_meta = {**meta_base, **c, "phoneNumber": c_phone, "name": c_name, "callType": c_type, "call_status": call_status}
-                    c_entity_id = str(c.get("id") or c.get("syncKey") or c.get("recordId") or "")
+                    c_entity_id = str(c.get("recordId") or c.get("id") or c.get("syncKey") or "")
 
                     if c_entity_id and target_user_uuid:
                         cur.execute("""
@@ -1831,9 +1867,9 @@ class SupabaseActivityService:
         req_type: Optional[str] = None,
         page: int = 1,
         limit: int = 50,
-        max_total: int = 250
+        max_total: int = 1500
     ) -> Dict[str, Any]:
-        """Queries structured call and location activities for a user (SMS removed)."""
+        """Queries structured call and location activities for a user (SMS removed, supporting up to 1500 records)."""
         try:
             conn = get_supabase_conn()
             offset = max(0, (page - 1) * limit)

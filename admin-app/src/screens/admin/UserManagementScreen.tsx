@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  SafeAreaView, Alert, Modal, TextInput, Switch, Platform
+  SafeAreaView, Alert, Modal, TextInput, Switch, Platform,
+  ActivityIndicator, RefreshControl
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
@@ -11,6 +12,9 @@ import { User } from "../../models/types";
 import { theme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
 import { useTheme } from "../../context/ThemeContext";
+import { appStorage } from "../../utils/storage";
+
+const CACHE_KEY = "cached_admin_users";
 
 export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { t } = useLanguage();
@@ -19,6 +23,7 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
   const [users, setUsers] = useState<User[]>([]);
   const [activeTab, setActiveTab] = useState<"all" | "disabled">("all");
   const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
 
   // Modal State for Add / Edit
   const [modalVisible, setModalVisible] = useState(false);
@@ -34,19 +39,53 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
 
+  // Instant Stale-While-Revalidate: load cache in 0ms, then revalidate in background
   useEffect(() => {
-    loadUsers();
+    let isMounted = true;
+    (async () => {
+      try {
+        const cached = await appStorage.getItem(CACHE_KEY);
+        if (cached && isMounted) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setUsers(parsed);
+            setLoading(false);
+          }
+        }
+      } catch (e) {
+        // Cache read fallback
+      }
+      if (isMounted) {
+        loadUsers(false);
+      }
+    })();
+    return () => {
+      isMounted = false;
+    };
   }, [activeTab]);
 
-  const loadUsers = async () => {
-    setLoading(true);
+  const loadUsers = async (showSpinner: boolean = true) => {
+    if (showSpinner && users.length === 0) setLoading(true);
     try {
       const data = await adminAPI.getUsers(activeTab === "disabled" ? false : undefined);
-      setUsers(data);
+      if (Array.isArray(data)) {
+        setUsers(data);
+        if (activeTab === "all" && data.length > 0) {
+          appStorage.setItem(CACHE_KEY, JSON.stringify(data)).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.warn("[UserManagement] Failed to fetch users:", err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
+
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadUsers(false);
+  }, [activeTab]);
 
   const handleOpenAdd = () => {
     setModalMode("add");
@@ -198,7 +237,7 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
             onPress={() => setActiveTab("all")}
           >
             <Text style={[styles.tabText, { color: activeTab === "all" ? "#FFFFFF" : theme.colors.textSecondary }, activeTab === "all" && styles.activeTabText]}>
-              All ({allCount})
+              All ({loading && userList.length === 0 ? "..." : allCount})
             </Text>
           </TouchableOpacity>
 
@@ -213,16 +252,40 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
             onPress={() => setActiveTab("disabled")}
           >
             <Text style={[styles.tabText, { color: activeTab === "disabled" ? "#FFFFFF" : theme.colors.textSecondary }, activeTab === "disabled" && styles.activeTabText]}>
-              Disabled ({disabledCount})
+              Disabled ({loading && userList.length === 0 ? "..." : disabledCount})
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Users List (Matches Screenshot Page 1) */}
-        <FlatList
-          data={userList}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
+        {/* Loading Indicator or Users List */}
+        {loading && userList.length === 0 ? (
+          <View style={styles.centerLoading}>
+            <ActivityIndicator size="large" color={theme.colors.primaryLight} />
+            <Text style={[styles.centerLoadingText, { color: theme.colors.textMuted }]}>
+              वापरकर्त्यांची माहिती लोड होत आहे...
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={userList}
+            keyExtractor={(item) => item.id}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                colors={[theme.colors.primaryLight]}
+                tintColor={theme.colors.primaryLight}
+              />
+            }
+            ListEmptyComponent={
+              <View style={styles.centerLoading}>
+                <Ionicons name="people-outline" size={48} color={theme.colors.textMuted} />
+                <Text style={[styles.centerLoadingText, { color: theme.colors.textMuted }]}>
+                  {activeTab === "disabled" ? "कोणतेही नाकारलेले वापरकर्ते नाहीत." : "कोणतेही वापरकर्ते आढळले नाहीत."}
+                </Text>
+              </View>
+            }
+            renderItem={({ item }) => (
             <View style={[styles.userCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
               <View style={styles.cardTopRow}>
                 <Text style={[styles.userName, { color: theme.colors.textPrimary }]}>{item.username}</Text>
@@ -339,6 +402,7 @@ export const UserManagementScreen: React.FC<{ navigation: any }> = ({ navigation
           )}
           contentContainerStyle={{ paddingBottom: 80 }}
         />
+        )}
 
         {/* Floating Add User Button (+) (Matches Screenshot Page 1 & 5) */}
         <TouchableOpacity style={styles.fabButton} onPress={handleOpenAdd}>
@@ -748,5 +812,17 @@ const styles = StyleSheet.create({
   permBadgeText: {
     fontSize: 10,
     fontWeight: "700",
+  },
+  centerLoading: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 50,
+    gap: 12,
+  },
+  centerLoadingText: {
+    fontSize: 13,
+    fontWeight: "500",
+    textAlign: "center",
   },
 });

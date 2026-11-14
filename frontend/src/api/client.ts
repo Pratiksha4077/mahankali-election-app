@@ -393,10 +393,21 @@ export const reportAPI = {
       const res = await apiClient.get("/reports/drilldown", {
         params: { report_type: reportType, key, village_id: villageId, page, limit }
       });
-      const data = res.data?.items || res.data?.data || res.data;
-      return Array.isArray(data) ? data : [];
+      const rawList = res.data?.items || res.data?.data || (Array.isArray(res.data) ? res.data : []);
+      const items = Array.isArray(rawList) ? rawList : [];
+      const total = typeof res.data?.total === "number" ? res.data.total : items.length;
+      const pages = typeof res.data?.pages === "number" ? res.data.pages : (total > 0 ? Math.ceil(total / limit) : 1);
+      const hasMore = typeof res.data?.hasMore === "boolean" ? res.data.hasMore : (page < pages);
+      return {
+        items,
+        data: items,
+        total,
+        page: res.data?.page || page,
+        pages,
+        hasMore
+      };
     } catch (e) {
-      return [];
+      return { items: [], data: [], total: 0, page, pages: 1, hasMore: false };
     }
   }
 };

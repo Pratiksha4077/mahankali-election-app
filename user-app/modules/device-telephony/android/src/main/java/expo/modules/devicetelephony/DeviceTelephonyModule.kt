@@ -28,7 +28,7 @@ class DeviceTelephonyModule : Module() {
         return@Function result
       }
 
-      val maxLimit = if (limit != null && limit in 1..1000) limit else 50
+      val maxLimit = if (limit != null && limit in 1..2000) limit else 1000
       val skipCount = if (offset != null && offset > 0) offset else 0
       val projection = arrayOf(
         CallLog.Calls._ID,
@@ -55,9 +55,6 @@ class DeviceTelephonyModule : Module() {
           if (skipCount >= totalRows) {
             return@Function result
           }
-          if (skipCount > 0) {
-            it.moveToPosition(skipCount - 1)
-          }
 
           val idCol = it.getColumnIndex(CallLog.Calls._ID)
           val numCol = it.getColumnIndex(CallLog.Calls.NUMBER)
@@ -66,8 +63,13 @@ class DeviceTelephonyModule : Module() {
           val dateCol = it.getColumnIndex(CallLog.Calls.DATE)
           val durCol = it.getColumnIndex(CallLog.Calls.DURATION)
 
+          var currentPos = 0
           var count = 0
           while (it.moveToNext()) {
+            if (currentPos < skipCount) {
+              currentPos++
+              continue
+            }
             if (count >= maxLimit) {
               break
             }
@@ -90,6 +92,7 @@ class DeviceTelephonyModule : Module() {
             if (durCol != -1) map["duration"] = it.getInt(durCol)
             result.add(map)
             count++
+            currentPos++
           }
         }
         Log.d("DeviceTelephony", "getCallLogs successfully extracted ${result.size} records (offset=$skipCount, limit=$maxLimit)")
