@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   SafeAreaView, ActivityIndicator, RefreshControl, Alert,
-  TextInput, FlatList
+  TextInput, FlatList, Platform
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Header } from "../../components/Header";
@@ -320,30 +320,65 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
     }
   };
 
-  const handleDeleteSingle = (activityId: string, itemTitle: string) => {
-    Alert.alert(
-      "नोंद हटवा (Soft Delete)",
-      `'${itemTitle}' ही नोंद ॲडमिन पॅनेलवरून हटवायची आहे का? (डेटाबेसमध्ये ही नोंद सुरक्षित राहील)`,
-      [
-        { text: "रद्द करा", style: "cancel" },
-        {
-          text: "हटवा",
-          style: "destructive",
-          onPress: async () => {
-            const uid = String(currentUser?.id || currentUser?._id || "");
-            setIsDeleting(true);
-            try {
-              await adminAPI.deleteSingleActivity(uid, activityId);
-              loadUserActivities();
-            } catch (e) {
-              Alert.alert("त्रुटी", "नोंद हटवताना अडचण आली.");
-            } finally {
-              setIsDeleting(false);
-            }
-          }
+  const handleDeleteSingle = async (activityId: string, itemTitle: string) => {
+    if (!activityId) return;
+
+    let confirmed = false;
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined" && window.confirm) {
+        confirmed = window.confirm(`'${itemTitle}' ही नोंद ॲडमिन पॅनेलवरून हटवायची आहे का?`);
+      } else {
+        confirmed = true;
+      }
+    } else {
+      confirmed = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          "नोंद हटवा (Soft Delete)",
+          `'${itemTitle}' ही नोंद ॲडमिन पॅनेलवरून हटवायची आहे का? (डेटाबेसमध्ये ही नोंद सुरक्षित राहील)`,
+          [
+            { text: "रद्द करा", style: "cancel", onPress: () => resolve(false) },
+            { text: "हटवा", style: "destructive", onPress: () => resolve(true) }
+          ],
+          { cancelable: true, onDismiss: () => resolve(false) }
+        );
+      });
+    }
+
+    if (!confirmed) return;
+
+    const uid = String(currentUser?.id || currentUser?._id || "");
+
+    // 1. Optimistic UI update: remove item immediately from view so the button reacts instantly
+    setActivityData((prev) => ({
+      ...prev,
+      calls: prev.calls.filter((c) => String(c.id) !== String(activityId)),
+      locations: prev.locations.filter((l) => String(l.id || l._id) !== String(activityId)),
+      call_count: prev.calls.some((c) => String(c.id) === String(activityId))
+        ? Math.max(0, prev.call_count - 1)
+        : prev.call_count,
+      location_count: prev.locations.some((l) => String(l.id || l._id) === String(activityId))
+        ? Math.max(0, prev.location_count - 1)
+        : prev.location_count,
+    }));
+
+    // 2. Perform backend deletion
+    try {
+      setIsDeleting(true);
+      await adminAPI.deleteSingleActivity(uid, activityId);
+    } catch (e) {
+      console.error("[UserActivityScreen] Failed to delete activity:", e);
+      // Reload from database if deletion failed
+      loadUserActivities();
+      if (Platform.OS === "web") {
+        if (typeof window !== "undefined" && window.alert) {
+          window.alert("नोंद हटवताना अडचण आली.");
         }
-      ]
-    );
+      } else {
+        Alert.alert("त्रुटी", "नोंद हटवताना अडचण आली.");
+      }
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const filteredUsers = usersList.filter((u) => {
@@ -806,6 +841,9 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                         <TouchableOpacity
                           style={styles.deleteSingleBtn}
                           onPress={() => handleDeleteSingle(cid, callTitle)}
+                          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                          activeOpacity={0.6}
+                          accessibilityLabel="Delete Call Record"
                         >
                           <Ionicons name="trash-outline" size={18} color="#EF4444" />
                         </TouchableOpacity>
@@ -1015,6 +1053,9 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                           <TouchableOpacity
                             style={styles.deleteSingleBtn}
                             onPress={() => handleDeleteSingle(lid, locTitle)}
+                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                            activeOpacity={0.6}
+                            accessibilityLabel="Delete Location Record"
                           >
                             <Ionicons name="trash-outline" size={18} color="#EF4444" />
                           </TouchableOpacity>
@@ -1374,9 +1415,12 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   deleteSingleBtn: {
-    padding: 6,
+    padding: 8,
     marginLeft: 6,
     alignSelf: "center",
+    borderRadius: 6,
+    zIndex: 10,
+    ...(Platform.OS === "web" ? ({ cursor: "pointer" } as any) : {}),
   },
   workerSearchCard: {
     flexDirection: "row",

@@ -676,8 +676,18 @@ export const adminAPI = {
   },
 
   deleteSingleActivity: async (userId: string, activityId: string) => {
-    const res = await apiClient.delete(`/admin/users/${userId}/activity/${activityId}`);
-    return res.data;
+    try {
+      const res = await apiClient.delete(`/admin/users/${userId}/activity/${activityId}`);
+      return res.data;
+    } catch (err: any) {
+      if (err?.response?.status === 404 || err?.response?.status === 405) {
+        const res2 = await apiClient.delete(`/admin/users/${userId}/activity`, {
+          data: { activity_ids: [activityId] }
+        });
+        return res2.data;
+      }
+      throw err;
+    }
   },
 
   deleteBatchActivities: async (userId: string, activityIds: string[]) => {
