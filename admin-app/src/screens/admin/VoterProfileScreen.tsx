@@ -12,7 +12,6 @@ import { theme } from "../../theme/theme";
 import { useLanguage } from "../../context/LanguageContext";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
-import { getRealtimeDeviceLocation } from "../../utils/devicePermissions";
 
 export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ route, navigation }) => {
   const { memberId } = route.params || { memberId: "m-1" };
@@ -107,22 +106,11 @@ export const VoterProfileScreen: React.FC<{ route: any; navigation: any }> = ({ 
   };
 
   const logContactAction = async (action: string) => {
-    let liveLoc: any = null;
-    try {
-      liveLoc = await getRealtimeDeviceLocation();
-    } catch (e) { }
-
-    const vName = member?.village_name_mr || member?.village_name_en || liveLoc?.city || "";
+    const vName = member?.village_name_mr || member?.village_name_en || "";
     const meta: Record<string, any> = {
       phone: mobileNumber,
       voter: member?.full_name_mr || member?.full_name_en,
       village: vName,
-      latitude: liveLoc?.latitude,
-      longitude: liveLoc?.longitude,
-      accuracy: liveLoc?.accuracy,
-      city: liveLoc?.city,
-      district: liveLoc?.district,
-      address: liveLoc?.address
     };
 
     await logUserActivity({
