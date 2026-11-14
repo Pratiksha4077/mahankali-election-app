@@ -334,7 +334,7 @@ async def get_user_activity(
     type: Optional[str] = Query("all"),
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=250),
-    max_total: int = Query(1000, ge=1, le=2000),
+    max_total: int = Query(250, ge=1, le=1000),
     admin: AuthUser = Depends(require_admin)
 ):
     """Admin retrieves a user's phone calls, SMS records, and GPS location history from Supabase."""

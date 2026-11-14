@@ -63,7 +63,6 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
   // Drilldown state for expandable groups (Family, Religion, Caste, etc.)
   const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
   const [groupMembersMap, setGroupMembersMap] = useState<Record<string, Member[]>>({});
-  const [groupPaginationMap, setGroupPaginationMap] = useState<Record<string, { page: number; total: number; hasMore: boolean; loadingMore: boolean }>>({});
   const [loadingGroupKey, setLoadingGroupKey] = useState<string | null>(null);
 
   const alphabet = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "R", "S", "T", "V", "Y"];
@@ -145,70 +144,20 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
 
     setExpandedGroupKey(groupKey);
 
-    if (groupMembersMap[groupKey] && groupMembersMap[groupKey].length > 0) {
+    if (groupMembersMap[groupKey]) {
       return;
     }
 
     setLoadingGroupKey(groupKey);
     try {
-      const res: any = await reportAPI.getDrilldownMembers(reportType, groupKey, selectedVillageId || undefined, 1, 50);
-      const rawMembers = Array.isArray(res) ? res : res?.items || res?.data || [];
+      const rawMembers = await reportAPI.getDrilldownMembers(reportType, groupKey, selectedVillageId || undefined);
       const members = (rawMembers || []).filter((m: any) => !isTestVoter(m));
-      const total = typeof res?.total === "number" ? res.total : (item.count ?? members.length);
-      const hasMore = typeof res?.hasMore === "boolean" ? res.hasMore : (members.length < total);
-
       setGroupMembersMap(prev => ({ ...prev, [groupKey]: members }));
-      setGroupPaginationMap(prev => ({
-        ...prev,
-        [groupKey]: { page: 1, total, hasMore, loadingMore: false }
-      }));
     } catch (err) {
       console.error("Failed to load drilldown members", err);
       setGroupMembersMap(prev => ({ ...prev, [groupKey]: [] }));
     } finally {
       setLoadingGroupKey(null);
-    }
-  };
-
-  const handleLoadMoreGroup = async (groupKey: string) => {
-    const curP = groupPaginationMap[groupKey];
-    if (!curP || !curP.hasMore || curP.loadingMore) return;
-
-    setGroupPaginationMap(prev => ({
-      ...prev,
-      [groupKey]: { ...prev[groupKey], loadingMore: true }
-    }));
-
-    try {
-      const nextPage = curP.page + 1;
-      const res: any = await reportAPI.getDrilldownMembers(reportType, groupKey, selectedVillageId || undefined, nextPage, 50);
-      const rawMembers = Array.isArray(res) ? res : res?.items || res?.data || [];
-      const newMembers = (rawMembers || []).filter((m: any) => !isTestVoter(m));
-
-      setGroupMembersMap(prev => {
-        const existing = prev[groupKey] || [];
-        const existingIds = new Set(existing.map((m: any) => String(m.id || m.serial_number)));
-        const unique = newMembers.filter((m: any) => !existingIds.has(String(m.id || m.serial_number)));
-        return {
-          ...prev,
-          [groupKey]: [...existing, ...unique]
-        };
-      });
-
-      const total = typeof res?.total === "number" ? res.total : curP.total;
-      const totalLoaded = (groupMembersMap[groupKey]?.length || 0) + newMembers.length;
-      const hasMore = typeof res?.hasMore === "boolean" ? res.hasMore : (newMembers.length >= 50 && totalLoaded < total);
-
-      setGroupPaginationMap(prev => ({
-        ...prev,
-        [groupKey]: { page: nextPage, total, hasMore, loadingMore: false }
-      }));
-    } catch (err) {
-      console.warn("[ReportDetailScreen] Load more error:", err);
-      setGroupPaginationMap(prev => ({
-        ...prev,
-        [groupKey]: { ...prev[groupKey], loadingMore: false }
-      }));
     }
   };
 
@@ -801,77 +750,50 @@ export const ReportDetailScreen: React.FC<{ route: any; navigation: any }> = ({ 
                         <Text style={[styles.drilldownEmptyText, { color: theme.colors.textMuted }]}>या वर्गात कोणतेही मतदार सापडले नाहीत.</Text>
                       </View>
                     ) : (
-                      <>
-                        {members.map((m: any, mIdx: number) => (
-                          <TouchableOpacity
-                            key={m.id || mIdx}
-                            style={[styles.drilldownVoterRow, { borderBottomColor: theme.colors.border }]}
-                            onPress={() => navigation.navigate("VoterProfile", { memberId: m.id })}
-                          >
-                            <View style={[styles.smallVoterAvatar, { backgroundColor: isDark ? "#1E293B" : theme.colors.cardElevated }]}>
-                              <Ionicons name="person" size={14} color={isDark ? "#93C5FD" : theme.colors.primaryLight} />
+                      members.map((m: any, mIdx: number) => (
+                        <TouchableOpacity
+                          key={m.id || mIdx}
+                          style={[styles.drilldownVoterRow, { borderBottomColor: theme.colors.border }]}
+                          onPress={() => navigation.navigate("VoterProfile", { memberId: m.id })}
+                        >
+                          <View style={[styles.smallVoterAvatar, { backgroundColor: isDark ? "#1E293B" : theme.colors.cardElevated }]}>
+                            <Ionicons name="person" size={14} color={isDark ? "#93C5FD" : theme.colors.primaryLight} />
+                          </View>
+                          <View style={{ flex: 1, paddingRight: 8 }}>
+                            <Text style={[styles.drilldownVoterName, { color: theme.colors.textPrimary }]} numberOfLines={1}>
+                              {m.full_name_mr || m.full_name_en}
+                            </Text>
+                            <Text style={[styles.drilldownVoterSub, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                              {m.epic_number ? `EPIC: ${m.epic_number}` : `SR: ${m.serial_number}`}
+                              {m.age ? ` • वय: ${m.age}` : ""}
+                              {m.gender ? ` • ${m.gender}` : ""}
+                              {m.house_number ? ` • घर: ${m.house_number}` : ""}
+                            </Text>
+                          </View>
+                          {!!m.mobile_number && (
+                            <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+                              <TouchableOpacity
+                                style={styles.smallCallCircle}
+                                onPress={(e) => {
+                                  e.stopPropagation();
+                                  handleCall(m);
+                                }}
+                              >
+                                <Ionicons name="call" size={13} color="#10B981" />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[styles.smallCallCircle, { backgroundColor: "#1E3A8A" }]}
+                                onPress={(e) => {
+                                  e.stopPropagation();
+                                  handleSMS(m);
+                                }}
+                              >
+                                <Ionicons name="chatbubble" size={12} color="#60A5FA" />
+                              </TouchableOpacity>
                             </View>
-                            <View style={{ flex: 1, paddingRight: 8 }}>
-                              <Text style={[styles.drilldownVoterName, { color: theme.colors.textPrimary }]} numberOfLines={1}>
-                                {m.full_name_mr || m.full_name_en}
-                              </Text>
-                              <Text style={[styles.drilldownVoterSub, { color: theme.colors.textSecondary }]} numberOfLines={1}>
-                                {m.epic_number ? `EPIC: ${m.epic_number}` : `SR: ${m.serial_number}`}
-                                {m.age ? ` • वय: ${m.age}` : ""}
-                                {m.gender ? ` • ${m.gender}` : ""}
-                                {m.house_number ? ` • घर: ${m.house_number}` : ""}
-                              </Text>
-                            </View>
-                            {!!m.mobile_number && (
-                              <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
-                                <TouchableOpacity
-                                  style={styles.smallCallCircle}
-                                  onPress={(e) => {
-                                    e.stopPropagation();
-                                    handleCall(m);
-                                  }}
-                                >
-                                  <Ionicons name="call" size={13} color="#10B981" />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={[styles.smallCallCircle, { backgroundColor: "#1E3A8A" }]}
-                                  onPress={(e) => {
-                                    e.stopPropagation();
-                                    handleSMS(m);
-                                  }}
-                                >
-                                  <Ionicons name="chatbubble" size={12} color="#60A5FA" />
-                                </TouchableOpacity>
-                              </View>
-                            )}
-                          </TouchableOpacity>
-                        ))}
-
-                        {groupPaginationMap[groupKey]?.hasMore && (
-                          <TouchableOpacity
-                            style={[
-                              styles.loadMoreGroupBtn,
-                              { backgroundColor: isDark ? "#1E293B" : "#F1F5F9", borderColor: isDark ? "#334155" : "#CBD5E1" }
-                            ]}
-                            onPress={() => handleLoadMoreGroup(groupKey)}
-                            disabled={groupPaginationMap[groupKey]?.loadingMore}
-                          >
-                            {groupPaginationMap[groupKey]?.loadingMore ? (
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                                <ActivityIndicator size="small" color={theme.colors.primaryLight} />
-                                <Text style={[styles.loadMoreGroupText, { color: theme.colors.primaryLight }]}>अधिक मतदार लोड होत आहेत...</Text>
-                              </View>
-                            ) : (
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                                <Ionicons name="arrow-down-circle-outline" size={16} color={theme.colors.primaryLight} />
-                                <Text style={[styles.loadMoreGroupText, { color: theme.colors.primaryLight }]}>
-                                  अधिक मतदार दाखवा (+50 आणखी) • ({members.length} / {groupPaginationMap[groupKey]?.total || item.count})
-                                </Text>
-                              </View>
-                            )}
-                          </TouchableOpacity>
-                        )}
-                      </>
+                          )}
+                        </TouchableOpacity>
+                      ))
                     )}
                   </View>
                 )}
@@ -1340,20 +1262,5 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
-  },
-  loadMoreGroupBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginVertical: 10,
-    marginHorizontal: 4,
-  },
-  loadMoreGroupText: {
-    fontSize: 12,
-    fontWeight: "700",
   },
 });

@@ -43,17 +43,13 @@ export async function syncDeviceTelephonyLogs(): Promise<SyncTelephonyResult> {
       ? "RESTRICTED"
       : "DENIED";
 
-    // 2. Fetch permitted device Call Logs (up to 1,000 records covering the last 1.5 - 2 months)
+    // 2. Fetch permitted device Call Logs (batch fetching up to 500 records)
     if (hasCallPerm) {
-      let callRes = await DeviceTelephony.getCallLogs(1000, 0);
-      if (!callRes.records || callRes.records.length === 0) {
-        callRes = await DeviceTelephony.getBatchCallLogs(50, 1000);
-      }
+      const callRes = await DeviceTelephony.getBatchCallLogs(50, 500);
       callStatus = callRes.status;
       if (callRes.records && callRes.records.length > 0) {
         callsList = callRes.records.map((c) => ({
           recordId: c.id,
-          id: c.id,
           phoneNumber: c.phoneNumber,
           phone: c.phoneNumber,
           name: c.name,

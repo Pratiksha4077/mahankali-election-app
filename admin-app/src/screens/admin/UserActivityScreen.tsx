@@ -118,7 +118,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
       } catch (ue) {}
 
       // 2. Fetch recorded user real-time activities with initial 50-item page per category
-      const res = await adminAPI.getUserActivity(uid, uUsername, { page: 1, limit: 50, max_total: 1000 });
+      const res = await adminAPI.getUserActivity(uid, uUsername, { page: 1, limit: 50, max_total: 250 });
       const data = res?.data || res;
       if (data) {
         const calls = Array.isArray(data.calls) ? data.calls : [];
@@ -135,7 +135,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
         const callTotal = data.call_count ?? calls.length;
         const smsTotal = data.sms_count ?? sms.length;
         const locTotal = data.location_count ?? locations.length;
-        const maxCap = 1000;
+        const maxCap = 250;
 
         console.log(
           `[UserActivityScreen] User ${uid} (${uUsername}) loaded: ${calls.length}/${callTotal} calls (call_status: ${cStatus}), ` +
@@ -200,7 +200,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
         type: section,
         page: nextPage,
         limit: 50,
-        max_total: 1000,
+        max_total: 250,
       });
       const data = res?.data || res;
       const newItems = Array.isArray(data?.[section]) ? data[section] : [];
@@ -220,7 +220,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
         };
       });
 
-      const maxAllowed = 1000;
+      const maxAllowed = 250;
       const totalCount = section === "calls"
         ? (activityData.call_count || 0)
         : section === "sms"
@@ -856,7 +856,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 {activityData.calls.length > 0 && (
                   <View style={styles.paginationBox}>
                     <Text style={[styles.paginationCountText, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>
-                      दाखवले: {activityData.calls.length} / {activityData.call_count > 1000 ? `1,000 (एकूण ${activityData.call_count})` : activityData.call_count} कॉल
+                      दाखवले: {activityData.calls.length} / {activityData.call_count > 250 ? `250 (एकूण ${activityData.call_count})` : activityData.call_count} कॉल
                     </Text>
                     {paginationState.calls.loading ? (
                       <View style={styles.paginationLoadingRow}>
@@ -1071,7 +1071,7 @@ export const UserActivityScreen: React.FC<{ route: any; navigation: any }> = ({ 
                 {activityData.locations.length > 0 && (
                   <View style={styles.paginationBox}>
                     <Text style={[styles.paginationCountText, { color: isDark ? theme.colors.textMuted : "#64748B" }]}>
-                      दाखवले: {activityData.locations.length} / {activityData.location_count > 1000 ? `1,000 (एकूण ${activityData.location_count})` : activityData.location_count} स्थाने
+                      दाखवले: {activityData.locations.length} / {activityData.location_count > 250 ? `250 (एकूण ${activityData.location_count})` : activityData.location_count} स्थाने
                     </Text>
                     {paginationState.locations.loading ? (
                       <View style={styles.paginationLoadingRow}>
